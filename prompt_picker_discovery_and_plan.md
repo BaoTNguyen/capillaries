@@ -160,11 +160,17 @@ Tie-breakers:
 ### I) Blockers / Clarifying Questions captured then resolved
 - Major blocker identified: sparse metadata in active non-clippings corpus.
 - User clarified:
-  - table is still being filled,
+  - table is still being filled (backfill planned),
   - keep excluding `Clippings` for now,
   - canonical lower snake case is acceptable,
   - output should be dynamic by task complexity,
   - ranking must optimize workflow compatibility across multiple steps, not only individual prompt relevance.
+
+### J) Post-Analysis Insights
+- **Core insight**: This is workflow orchestration, not traditional RAG
+- **Database choice**: Single database approach insufficient - need hybrid PostgreSQL + Qdrant
+- **Main challenge**: Chain construction optimization and quality prediction without execution
+- **Implementation focus**: Algorithmic sophistication > retrieval quality improvements
 
 ## 3) Inferred YAML Frontmatter Fields (excluding Clippings)
 
@@ -233,12 +239,43 @@ For a chain `C = [p1..pn]`:
   - `best_single_score >= T_single`
   - and `best_chain_score - best_single_score < delta`
 
-## 6) Ready-to-Implement Next Step
+## 6) Critical Implementation Challenges Identified
 
-Build Phase 1 pipeline with:
+### 6.1 Beyond Simple Retrieval Problems
+After analysis, the core challenges are **not** query/retrieval issues (which are ~20% of problems), but:
+
+**Missing Metadata (40% of issues):**
+- Need input/output schema fields for transition compatibility
+- Need explicit dependency relationships stored
+- Need context_variables or handoff_schema fields
+- Need complexity_level and accomplishes fields
+
+**Orchestration Algorithm Problems (40% of issues):**
+- **Chain Construction**: Combinatorial explosion requires beam search optimization
+- **Context State Management**: Dynamic re-ranking as chains build with context flow simulation
+- **Scoring Calibration**: Current weighted formula needs A/B testing and historical success data
+- **Performance**: Complex analysis needs caching, pre-computation, async processing
+- **Quality Prediction**: Need to assess chain success without execution
+
+### 6.2 Database Architecture Decision
+**Recommendation: PostgreSQL + Qdrant hybrid approach**
+- PostgreSQL: Structured filtering, metadata relationships, workflow logic
+- Qdrant: Vector search with metadata filtering (better than pgvector for serious RAG)
+- Rationale: pgvector insufficient for sophisticated vector operations needed
+
+## 7) Ready-to-Implement Next Step
+
+### Phase 1 Pipeline (Updated):
 1. Ingestion + canonicalization of frontmatter
-2. Metadata enrichment for sparse fields
-3. Hybrid retrieval (BM25 + vectors)
-4. Workflow-aware chain construction and dynamic `k`
-5. Strict output contract returning selected prompt(s) and order rationale
+2. **Metadata enrichment focusing on workflow-specific fields**
+3. **PostgreSQL setup with relationship modeling + Qdrant for vectors**
+4. **Prompt compatibility matrix pre-computation**
+5. **Workflow-aware chain construction with beam search**
+6. **Context state tracking and dynamic re-ranking**
+7. Strict output contract returning selected prompt(s) and order rationale
+
+### Critical Success Factors:
+- **Pre-compute prompt pair compatibility scores** (avoid real-time combinatorial explosion)
+- **Implement context state simulation** (predict chain success without execution)
+- **Build calibration system** (learn from historical chain performance)
 

@@ -13,6 +13,7 @@ Scope:
 
 ## 2) Weaknesses In Current Scope And Required Fixes
 
+### 2.1 Current Known Weaknesses
 | Weakness | Risk | Phase 1 Fix |
 |---|---|---|
 | No abstain/clarify policy | Bad retrieval on ambiguous tasks | Add confidence gates and explicit `clarify` outcome |
@@ -22,6 +23,16 @@ Scope:
 | No state machine for retries/fallback | Fragile control flow | Add bounded planner-critic loop with fallback |
 | Weak explainability | Hard to trust outputs | Return per-prompt evidence and score components |
 | No version/freshness controls | Stale vectors and drift | Hash/version prompts and incremental reindex |
+
+### 2.2 Core Workflow Orchestration Problems
+| Problem Category | Specific Issue | Implementation Impact |
+|---|---|---|
+| **Chain Construction Optimization** | Combinatorial explosion (600 prompts × 5 stages = millions of chains) | Need beam search with early pruning, pre-computed compatibility matrices |
+| **Context State Management** | Chain prompts modify context - later selections depend on earlier outputs | Requires dynamic re-ranking, context state modeling |
+| **Scoring Calibration** | Weighted formula coefficients are arbitrary/uncalibrated | Need A/B testing, user feedback loops, historical success tracking |
+| **Dynamic Chain Length** | No principled way to decide 1 prompt vs 5-prompt chain | Requires confidence thresholds, task complexity classification |
+| **Real-Time Performance** | Complex workflow analysis is computationally expensive | Need caching, pre-computation, async processing |
+| **Quality Assessment** | Scoring chains before execution - unknown real compatibility | Need historical success rates, simulated validation, dry-run checks |
 
 ## 3) Phase 1 Architecture
 
@@ -241,6 +252,8 @@ Hard limits:
 - max candidates passed to planner: 80
 - max chain length: 5
 - max latency target: p95 <= 2.5s (excluding offline indexing)
+- max beam search width: 10 (for chain construction)
+- max compatibility matrix cache: 10k prompt pairs
 
 ## 8) Observability And Safeguards
 
@@ -326,11 +339,26 @@ Output:
 
 ## 11) Build Breakdown (Implementation Order)
 
+### Phase 1A: Foundation
 1. Finalize canonical schemas and JSON validators.
 2. Implement intake and ambiguity agents.
 3. Implement hybrid retriever with source attribution.
-4. Implement planner and critic loop (bounded retries).
-5. Implement selector policy and packager contract.
-6. Add logging, metrics, and evaluation harness.
-7. Calibrate thresholds and lock initial operating point.
+4. **Build prompt compatibility matrix and caching layer.**
+
+### Phase 1B: Core Orchestration
+5. Implement planner with beam search optimization.
+6. Implement critic loop with context state tracking.
+7. **Add dynamic chain length decision logic.**
+8. Implement selector policy and packager contract.
+
+### Phase 1C: Optimization & Validation
+9. **Implement performance optimizations (caching, pre-computation).**
+10. Add logging, metrics, and evaluation harness.
+11. **Build scoring calibration system with A/B testing capability.**
+12. Calibrate thresholds using historical success data.
+
+### Phase 2 (Future): Learning & Adaptation
+13. **Add user feedback loops for scoring refinement.**
+14. **Implement context state simulation for quality prediction.**
+15. **Add real-time performance monitoring and auto-scaling.**
 
