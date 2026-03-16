@@ -14,13 +14,9 @@ from typing import List, Dict, Any
 import hashlib
 
 # Path configuration
-OBSIDIAN_VAULT_PATH = Path("/home/bao/Documents/Obsidian/Main-Vault")
+OBSIDIAN_VAULT_PATH = Path("/c/Users/baotn/Obsidian Vaults/Main Vault")
 PROMPTS_PATH = OBSIDIAN_VAULT_PATH / "Areas/AI/Prompts"
 BASE_DB_PATH = OBSIDIAN_VAULT_PATH / "Bases/Prompt Database.base"
-
-# Alternative paths (commented out)
-# PROMPTS_PATH = Path("~/Documents/Obsidian/Main Vault/Bases/Prompt Database.base")
-# PROMPTS_PATH = Path("/home/bao/Coding/Projects/prompt-flow")
 
 # Database connection settings
 DB_CONFIG = {
@@ -55,7 +51,12 @@ def create_database_schema(cursor):
         secondary_stages VARCHAR[] DEFAULT '{}',
         complexity_level INTEGER CHECK (complexity_level BETWEEN 1 AND 5),
 
-        -- Interface fields for chain compatibility
+        -- Chain compatibility flags (populated by batch classification)
+        accepts_prior_output BOOLEAN DEFAULT FALSE,
+        has_template_vars BOOLEAN DEFAULT FALSE,
+        is_chain_prompt BOOLEAN DEFAULT FALSE,
+
+        -- Retained for display/reference; not used in chain construction
         input_schema TEXT,
         output_schema TEXT,
         context_variables VARCHAR[] DEFAULT '{}',
@@ -79,7 +80,7 @@ def create_database_schema(cursor):
         metadata_confidence JSONB DEFAULT '{}',
         classification_version VARCHAR DEFAULT 'v1',
         last_classified TIMESTAMP,
-        backfill_status VARCHAR DEFAULT 'pending' CHECK (backfill_status IN ('pending', 'processing', 'completed', 'failed')),
+        backfill_status VARCHAR DEFAULT 'pending' CHECK (backfill_status IN ('pending', 'processing', 'complete', 'needs_review', 'failed')),
 
         -- Vector search
         embedding_version VARCHAR,
@@ -97,21 +98,6 @@ def create_database_schema(cursor):
     );
     """
     cursor.execute(create_prompts_table)
-
-    # Prompt compatibility matrix for chain building
-    create_compatibility_table = """
-    CREATE TABLE IF NOT EXISTS prompt_compatibility (
-        from_prompt_id VARCHAR REFERENCES prompts(prompt_id),
-        to_prompt_id VARCHAR REFERENCES prompts(prompt_id),
-        coherence_score FLOAT DEFAULT 0.0,
-        transition_type VARCHAR DEFAULT 'sequential',
-        context_overlap TEXT,
-        confidence FLOAT DEFAULT 0.0,
-        last_computed TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (from_prompt_id, to_prompt_id)
-    );
-    """
-    cursor.execute(create_compatibility_table)
 
     # Classification feedback for continuous learning
     create_feedback_table = """
@@ -157,7 +143,8 @@ def create_database_schema(cursor):
         "CREATE INDEX IF NOT EXISTS idx_prompts_embedding ON prompts USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);",
         "CREATE INDEX IF NOT EXISTS idx_prompts_confidence ON prompts USING GIN (metadata_confidence);",
         "CREATE INDEX IF NOT EXISTS idx_prompts_backfill ON prompts (backfill_status);",
-        "CREATE INDEX IF NOT EXISTS idx_compatibility_scores ON prompt_compatibility (coherence_score);",
+        "CREATE INDEX IF NOT EXISTS idx_prompts_accepts_prior ON prompts (accepts_prior_output);",
+        "CREATE INDEX IF NOT EXISTS idx_prompts_is_chain ON prompts (is_chain_prompt);",
     ]
 
     for index_sql in indexes:
@@ -177,8 +164,6 @@ def parse_frontmatter_to_canonical(metadata: Dict[str, Any]) -> Dict[str, Any]:
         'Intent': 'intent',
         'Task Type': 'task_type',
         'Category': 'domain',  # Map Category to domain
-        'Expected Input': 'input_schema',
-        'Expected Output': 'output_schema',
         'status': 'status',
         'Status': 'status',
         'Models Tested': 'models_tested',
@@ -255,12 +240,12 @@ def insert_prompts_batch(cursor, prompts: List[Dict[str, Any]]):
     insert_sql = """
     INSERT INTO prompts (
         prompt_id, file_path, prompt_text, content_hash, file_mtime,
-        intent, task_type, domain, status, input_schema, output_schema,
+        intent, task_type, domain, status,
         parent_prompt, original_link, models_tested, notes, last_evaluated,
         backfill_status, last_updated
     ) VALUES (
         %(prompt_id)s, %(file_path)s, %(prompt_text)s, %(content_hash)s, %(file_mtime)s,
-        %(intent)s, %(task_type)s, %(domain)s, %(status)s, %(input_schema)s, %(output_schema)s,
+        %(intent)s, %(task_type)s, %(domain)s, %(status)s,
         %(parent_prompt)s, %(original_link)s, %(models_tested)s, %(notes)s, %(last_evaluated)s,
         'pending', CURRENT_TIMESTAMP
     ) ON CONFLICT (prompt_id) DO UPDATE SET
@@ -277,7 +262,6 @@ def insert_prompts_batch(cursor, prompts: List[Dict[str, Any]]):
     # Prepare data for batch insert
     batch_data = []
     for prompt in prompts:
-        # Set defaults for missing fields
         data = {
             'prompt_id': prompt['prompt_id'],
             'file_path': prompt['file_path'],
@@ -288,8 +272,6 @@ def insert_prompts_batch(cursor, prompts: List[Dict[str, Any]]):
             'task_type': prompt.get('task_type', []),
             'domain': prompt.get('domain', []),
             'status': prompt.get('status', 'active'),
-            'input_schema': prompt.get('input_schema'),
-            'output_schema': prompt.get('output_schema'),
             'parent_prompt': prompt.get('parent_prompt'),
             'original_link': prompt.get('original_link'),
             'models_tested': prompt.get('models_tested', []),
