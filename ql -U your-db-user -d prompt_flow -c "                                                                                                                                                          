@@ -1,0 +1,61 @@
+                                           Table "public.prompts"
+         Column         |            Type             | Collation | Nullable |           Default            
+------------------------+-----------------------------+-----------+----------+------------------------------
+ prompt_id              | character varying           |           | not null | 
+ file_path              | text                        |           | not null | 
+ prompt_text            | text                        |           | not null | 
+ intent                 | character varying[]         |           |          | '{}'::character varying[]
+ task_type              | character varying[]         |           |          | '{}'::character varying[]
+ domain                 | character varying[]         |           |          | '{}'::character varying[]
+ status                 | character varying           |           |          | 'active'::character varying
+ primary_stage          | character varying           |           |          | 
+ secondary_stages       | character varying[]         |           |          | '{}'::character varying[]
+ complexity_level       | integer                     |           |          | 
+ accepts_prior_output   | boolean                     |           |          | false
+ has_template_vars      | boolean                     |           |          | false
+ is_chain_prompt        | boolean                     |           |          | false
+ input_schema           | text                        |           |          | 
+ output_schema          | text                        |           |          | 
+ context_variables      | character varying[]         |           |          | '{}'::character varying[]
+ accomplishes           | text                        |           |          | 
+ parent_prompt          | character varying           |           |          | 
+ original_link          | text                        |           |          | 
+ models_tested          | character varying[]         |           |          | '{}'::character varying[]
+ notes                  | text                        |           |          | 
+ content_hash           | character varying           |           | not null | 
+ file_mtime             | timestamp without time zone |           |          | 
+ last_updated           | timestamp without time zone |           |          | CURRENT_TIMESTAMP
+ last_evaluated         | date                        |           |          | 
+ metadata_confidence    | jsonb                       |           |          | '{}'::jsonb
+ classification_version | character varying           |           |          | 'v1'::character varying
+ last_classified        | timestamp without time zone |           |          | 
+ backfill_status        | character varying           |           |          | 'pending'::character varying
+ embedding_version      | character varying           |           |          | 
+ embedding              | vector(1536)                |           |          | 
+ search_vector          | tsvector                    |           |          | 
+Indexes:
+    "prompts_pkey" PRIMARY KEY, btree (prompt_id)
+    "idx_prompts_accepts_prior" btree (accepts_prior_output)
+    "idx_prompts_backfill" btree (backfill_status)
+    "idx_prompts_complexity" btree (complexity_level)
+    "idx_prompts_confidence" gin (metadata_confidence)
+    "idx_prompts_domain" gin (domain)
+    "idx_prompts_embedding" ivfflat (embedding vector_cosine_ops) WITH (lists='100')
+    "idx_prompts_intent" gin (intent)
+    "idx_prompts_is_chain" btree (is_chain_prompt)
+    "idx_prompts_search" gin (search_vector)
+    "idx_prompts_stage" btree (primary_stage)
+    "idx_prompts_status" btree (status)
+    "idx_prompts_task_type" gin (task_type)
+Check constraints:
+    "prompts_backfill_status_check" CHECK (backfill_status::text = ANY (ARRAY['pending'::character varying, 'processing'::character varying, 'complete'::character varying, 'needs_review'::character varying, 'failed'::character varying]::text[]))
+    "prompts_complexity_level_check" CHECK (complexity_level >= 1 AND complexity_level <= 5)
+    "prompts_primary_stage_check" CHECK (primary_stage::text = ANY (ARRAY['clarify'::character varying, 'plan'::character varying, 'execute'::character varying, 'verify'::character varying, 'reflect'::character varying]::text[]))
+    "prompts_status_check" CHECK (status::text = ANY (ARRAY['active'::character varying, 'deferred'::character varying, 'archived'::character varying]::text[]))
+Foreign-key constraints:
+    "prompts_parent_prompt_fkey" FOREIGN KEY (parent_prompt) REFERENCES prompts(prompt_id)
+Referenced by:
+    TABLE "batch_processing_log" CONSTRAINT "batch_processing_log_prompt_id_fkey" FOREIGN KEY (prompt_id) REFERENCES prompts(prompt_id)
+    TABLE "classification_feedback" CONSTRAINT "classification_feedback_prompt_id_fkey" FOREIGN KEY (prompt_id) REFERENCES prompts(prompt_id)
+    TABLE "prompts" CONSTRAINT "prompts_parent_prompt_fkey" FOREIGN KEY (parent_prompt) REFERENCES prompts(prompt_id)
+

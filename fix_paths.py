@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+"""One-shot script to fix remaining file_path mismatches in the DB."""
+import psycopg2, re
+from pathlib import Path
+from path_config import DB_CONFIG
+
+conn = psycopg2.connect(**DB_CONFIG)
+cur = conn.cursor()
+cur.execute("SELECT prompt_id, file_path FROM prompts")
+
+fixed = 0
+for pid, fp in cur.fetchall():
+    if Path(fp).exists():
+        continue
+
+    d = Path(fp).parent
+    stem = Path(fp).stem
+    # Strip quotes (straight and curly), parentheses
+    cleaned = re.sub(r'[()"\u201c\u201d\u2018\u2019\'"]', '', stem)
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    candidate = d / (cleaned + '.md')
+
+    if candidate.exists():
+        cur.execute("UPDATE prompts SET file_path = %s WHERE prompt_id = %s",
+                    (str(candidate), pid))
+        fixed += 1
+        print(f"  FIXED: {pid}")
+    else:
+        print(f"  MISS:  {pid}")
+        print(f"         tried: {candidate.name}")
+
+conn.commit()
+cur.close()
+conn.close()
+print(f"\nFixed: {fixed}")

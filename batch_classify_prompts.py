@@ -1,19 +1,24 @@
 #!/usr/bin/env python3
 """
-Batch classification of prompts using Anthropic API.
-Sends 10-15 prompts per API call for cost efficiency.
-Model: claude-haiku-4-5-20251001
+Batch classification of prompts using a local Ollama model.
+Sends prompts in batches; writes results back to PostgreSQL.
 """
 
 import asyncio
 import json
-import psycopg2
-import anthropic
 import logging
+import httpx
+import psycopg2
 from typing import List, Dict, Any, Optional, Tuple
-from datetime import datetime
+from path_config import DB_CONFIG
 
 logger = logging.getLogger(__name__)
+
+OLLAMA_URL  = "http://localhost:11434/api/chat"
+OLLAMA_MODEL = "qwen3.5:latest"
+BATCH_SIZE  = 1   # one at a time for reliability with local model
+MAX_RETRIES = 2
+CONFIDENCE_THRESHOLD = 0.75
 
 # ---------------------------------------------------------------------------
 # Taxonomy
@@ -35,10 +40,8 @@ VALID_VALUES: Dict[str, set] = {
     'primary_stage': {'clarify', 'plan', 'execute', 'verify', 'reflect'},
 }
 
-CONFIDENCE_THRESHOLD = 0.75
-
 # ---------------------------------------------------------------------------
-# Prompt templates
+# Prompt templates (unchanged from original)
 # ---------------------------------------------------------------------------
 
 SYSTEM_PROMPT = """You are a prompt metadata classifier. Analyze each prompt and \
@@ -143,18 +146,15 @@ Return a JSON array of {n} objects in the same order as the prompts above."""
 # ---------------------------------------------------------------------------
 
 class BatchClassifier:
-    def __init__(self, db_config: Dict[str, str], api_key: str,
-                 batch_size: int = 12, max_concurrent: int = 3):
+    def __init__(self, db_config: Dict, batch_size: int = BATCH_SIZE):
         self.db_config = db_config
-        self.client = anthropic.AsyncAnthropic(api_key=api_key)
         self.batch_size = batch_size
-        self.semaphore = asyncio.Semaphore(max_concurrent)
 
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
 
-    def _build_prompt_blocks(self, prompts: List[Dict[str, Any]]) -> str:
+    def _build_prompt_blocks(self, prompts: List[Dict]) -> str:
         blocks = []
         for i, p in enumerate(prompts, 1):
             title = p.get('title', p['prompt_id'])
@@ -167,99 +167,139 @@ class BatchClassifier:
             return 'needs_review'
         return 'complete' if min(confidence.values()) >= CONFIDENCE_THRESHOLD else 'needs_review'
 
+    def _repair_classification(self, c: Dict) -> Dict:
+        """Fix common cross-field confusion: task_type values in intent and vice versa."""
+        intent_only   = VALID_VALUES['intent']
+        tasktype_only = VALID_VALUES['task_type']
+
+        if 'intent' in c and isinstance(c['intent'], list):
+            misplaced = [v for v in c['intent'] if v not in intent_only and v in tasktype_only]
+            if misplaced:
+                c['intent'] = [v for v in c['intent'] if v in intent_only]
+                existing_tt = c.get('task_type', [])
+                c['task_type'] = list(dict.fromkeys(existing_tt + misplaced))  # dedupe, preserve order
+
+        if 'task_type' in c and isinstance(c['task_type'], list):
+            misplaced = [v for v in c['task_type'] if v not in tasktype_only and v in intent_only]
+            if misplaced:
+                c['task_type'] = [v for v in c['task_type'] if v in tasktype_only]
+                existing_i = c.get('intent', [])
+                c['intent'] = list(dict.fromkeys(existing_i + misplaced))
+
+        # Drop any remaining invalid values rather than hard-failing the whole record
+        for field in ('intent', 'task_type', 'domain'):
+            if field in c and isinstance(c[field], list):
+                c[field] = [v for v in c[field] if v in VALID_VALUES[field]]
+
+        if 'primary_stage' in c and c['primary_stage'] not in VALID_VALUES['primary_stage']:
+            c['primary_stage'] = None  # will fail validation cleanly
+
+        return c
+
+    def _extract_json(self, text: str) -> str:
+        """Strip markdown fences and extract the JSON array."""
+        text = text.strip()
+        if text.startswith('```'):
+            text = text.split('\n', 1)[1]
+        if text.endswith('```'):
+            text = text.rsplit('```', 1)[0].strip()
+        # Find first '[' in case model added preamble despite instructions
+        start = text.find('[')
+        if start != -1:
+            text = text[start:]
+        return text
+
     # ------------------------------------------------------------------
-    # API call — batch of 10-15 prompts in a single request
+    # Ollama API call
     # ------------------------------------------------------------------
 
-    async def classify_batch(
-        self, prompts: List[Dict[str, Any]]
-    ) -> List[Optional[Dict[str, Any]]]:
-        async with self.semaphore:
+    async def classify_batch(self, prompts: List[Dict]) -> List[Optional[Dict]]:
+        user_content = (
+            USER_PROMPT_TEMPLATE
+            .replace("{prompt_blocks}", self._build_prompt_blocks(prompts))
+            .replace("{n}", str(len(prompts)))
+        )
+        payload = {
+            "model": OLLAMA_MODEL,
+            "stream": False,
+            "options": {"temperature": 0.1},
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user",   "content": user_content},
+            ]
+        }
+
+        for attempt in range(1, MAX_RETRIES + 1):
             try:
-                user_content = USER_PROMPT_TEMPLATE.format(
-                    prompt_blocks=self._build_prompt_blocks(prompts),
-                    n=len(prompts)
-                )
+                async with httpx.AsyncClient(timeout=600.0) as client:
+                    response = await client.post(OLLAMA_URL, json=payload)
+                    response.raise_for_status()
 
-                response = await self.client.messages.create(
-                    model="claude-haiku-4-5-20251001",
-                    max_tokens=4096,
-                    system=SYSTEM_PROMPT,
-                    messages=[{'role': 'user', 'content': user_content}]
-                )
-
-                text = response.content[0].text.strip()
-                # Strip accidental markdown fences
-                if text.startswith('```'):
-                    text = text.split('\n', 1)[1]
-                if text.endswith('```'):
-                    text = text.rsplit('```', 1)[0].strip()
-
+                text = response.json()["message"]["content"]
+                text = self._extract_json(text)
                 results = json.loads(text)
 
                 if not isinstance(results, list) or len(results) != len(prompts):
-                    logger.error(
+                    raise ValueError(
                         f"Expected {len(prompts)} results, got "
-                        f"{len(results) if isinstance(results, list) else type(results).__name__}"
+                        f"{len(results) if isinstance(results, list) else type(results)}"
                     )
-                    return [None] * len(prompts)
 
                 for i, result in enumerate(results):
                     result['prompt_id'] = prompts[i]['prompt_id']
 
                 return results
 
-            except json.JSONDecodeError as e:
-                logger.error(f"JSON parse error in batch: {e}")
-                return [None] * len(prompts)
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.warning(f"Attempt {attempt}/{MAX_RETRIES} — parse error: {e}")
+                if attempt == MAX_RETRIES:
+                    return [None] * len(prompts)
+                await asyncio.sleep(2.0)
+
             except Exception as e:
-                logger.error(f"Batch classification error: {e}")
-                return [None] * len(prompts)
+                logger.error(f"Attempt {attempt}/{MAX_RETRIES} — request error: {e}")
+                if attempt == MAX_RETRIES:
+                    return [None] * len(prompts)
+                await asyncio.sleep(2.0)
+
+        return [None] * len(prompts)
 
     # ------------------------------------------------------------------
     # Validation
     # ------------------------------------------------------------------
 
-    def validate_classification(
-        self, classification: Dict[str, Any]
-    ) -> Tuple[bool, List[str]]:
+    def validate_classification(self, c: Dict) -> Tuple[bool, List[str]]:
         errors = []
-
         required = [
             'intent', 'task_type', 'domain', 'primary_stage', 'complexity',
             'accepts_prior_output', 'has_template_vars', 'is_chain_prompt', 'confidence'
         ]
         for field in required:
-            if field not in classification:
+            if field not in c:
                 errors.append(f"Missing field: {field}")
 
-        # Array + enum fields
         for field in ('intent', 'task_type', 'domain'):
-            if field in classification:
-                if not isinstance(classification[field], list):
+            if field in c:
+                if not isinstance(c[field], list):
                     errors.append(f"{field} must be an array")
                 else:
-                    invalid = [v for v in classification[field] if v not in VALID_VALUES[field]]
+                    invalid = [v for v in c[field] if v not in VALID_VALUES[field]]
                     if invalid:
                         errors.append(f"Invalid {field} values: {invalid}")
 
-        if 'primary_stage' in classification:
-            if classification['primary_stage'] not in VALID_VALUES['primary_stage']:
-                errors.append(f"Invalid primary_stage: {classification['primary_stage']}")
+        if 'primary_stage' in c and c['primary_stage'] not in VALID_VALUES['primary_stage']:
+            errors.append(f"Invalid primary_stage: {c['primary_stage']}")
 
-        if 'complexity' in classification:
-            c = classification['complexity']
-            if not isinstance(c, int) or not (1 <= c <= 5):
-                errors.append(f"complexity must be integer 1–5, got: {c}")
+        if 'complexity' in c:
+            if not isinstance(c['complexity'], int) or not (1 <= c['complexity'] <= 5):
+                errors.append(f"complexity must be integer 1–5, got: {c['complexity']}")
 
-        for bool_field in ('accepts_prior_output', 'has_template_vars', 'is_chain_prompt'):
-            if bool_field in classification:
-                if not isinstance(classification[bool_field], bool):
-                    errors.append(f"{bool_field} must be boolean")
+        for bf in ('accepts_prior_output', 'has_template_vars', 'is_chain_prompt'):
+            if bf in c and not isinstance(c[bf], bool):
+                errors.append(f"{bf} must be boolean")
 
-        if 'confidence' in classification:
-            if not isinstance(classification['confidence'], dict):
-                errors.append("confidence must be a per-field dict")
+        if 'confidence' in c and not isinstance(c['confidence'], dict):
+            errors.append("confidence must be a per-field dict")
 
         return len(errors) == 0, errors
 
@@ -267,19 +307,17 @@ class BatchClassifier:
     # Database
     # ------------------------------------------------------------------
 
-    async def get_pending_prompts(self) -> List[Dict[str, Any]]:
+    def get_pending_prompts(self) -> List[Dict]:
         conn = psycopg2.connect(**self.db_config)
-        cursor = conn.cursor()
-        cursor.execute("""
+        cur = conn.cursor()
+        cur.execute("""
             SELECT prompt_id, prompt_text, file_path
             FROM prompts
             WHERE backfill_status = 'pending'
             ORDER BY last_updated DESC
         """)
-        rows = cursor.fetchall()
-        cursor.close()
-        conn.close()
-
+        rows = cur.fetchall()
+        cur.close(); conn.close()
         return [
             {
                 'prompt_id': r[0],
@@ -289,14 +327,13 @@ class BatchClassifier:
             for r in rows
         ]
 
-    async def save_classification(self, classification: Dict[str, Any]) -> bool:
+    def save_classification(self, c: Dict) -> bool:
         try:
-            confidence = classification.get('confidence', {})
+            confidence = c.get('confidence', {})
             status = self._backfill_status(confidence)
-
             conn = psycopg2.connect(**self.db_config)
-            cursor = conn.cursor()
-            cursor.execute("""
+            cur = conn.cursor()
+            cur.execute("""
                 UPDATE prompts SET
                     intent                = %s,
                     task_type             = %s,
@@ -312,26 +349,24 @@ class BatchClassifier:
                     backfill_status       = %s
                 WHERE prompt_id = %s
             """, (
-                classification.get('intent', []),
-                classification.get('task_type', []),
-                classification.get('domain', []),
-                classification.get('primary_stage'),
-                classification.get('complexity'),
-                classification.get('accepts_prior_output', False),
-                classification.get('has_template_vars', False),
-                classification.get('is_chain_prompt', False),
+                c.get('intent', []),
+                c.get('task_type', []),
+                c.get('domain', []),
+                c.get('primary_stage'),
+                c.get('complexity'),
+                c.get('accepts_prior_output', False),
+                c.get('has_template_vars', False),
+                c.get('is_chain_prompt', False),
                 json.dumps(confidence),
-                'v1.0-haiku',
+                f'v1.0-{OLLAMA_MODEL.replace(":", "-")}',
                 status,
-                classification['prompt_id']
+                c['prompt_id']
             ))
             conn.commit()
-            cursor.close()
-            conn.close()
+            cur.close(); conn.close()
             return True
-
         except Exception as e:
-            logger.error(f"DB save error for {classification['prompt_id']}: {e}")
+            logger.error(f"DB save error for {c['prompt_id']}: {e}")
             return False
 
     # ------------------------------------------------------------------
@@ -339,54 +374,48 @@ class BatchClassifier:
     # ------------------------------------------------------------------
 
     async def process_all_prompts(self) -> Dict[str, int]:
-        pending = await self.get_pending_prompts()
+        pending = self.get_pending_prompts()
         if not pending:
             logger.info("No prompts pending classification")
             return {'total': 0, 'successful': 0, 'failed': 0, 'needs_review': 0}
 
-        logger.info(f"Classifying {len(pending)} prompts in batches of {self.batch_size}")
-        stats = {'total': len(pending), 'successful': 0, 'failed': 0, 'needs_review': 0}
-
         total_batches = (len(pending) - 1) // self.batch_size + 1
+        logger.info(f"Classifying {len(pending)} prompts — {total_batches} batches of {self.batch_size}")
+        stats = {'total': len(pending), 'successful': 0, 'failed': 0, 'needs_review': 0}
 
         for i in range(0, len(pending), self.batch_size):
             batch = pending[i:i + self.batch_size]
             batch_num = i // self.batch_size + 1
-            logger.info(f"Batch {batch_num}/{total_batches} ({len(batch)} prompts)")
+            logger.info(f"Batch {batch_num}/{total_batches} ({len(batch)} prompts) ...")
 
             results = await self.classify_batch(batch)
 
             for j, result in enumerate(results):
                 prompt_id = batch[j]['prompt_id']
-
                 if result is None:
                     stats['failed'] += 1
                     continue
 
+                result = self._repair_classification(result)
                 is_valid, errors = self.validate_classification(result)
                 if not is_valid:
-                    logger.error(f"Validation failed for {prompt_id}: {errors}")
+                    logger.warning(f"  ✗ {prompt_id} — validation errors: {errors}")
                     stats['failed'] += 1
                     continue
 
-                saved = await self.save_classification(result)
-                if saved:
-                    confidence = result.get('confidence', {})
-                    bstatus = self._backfill_status(confidence)
+                if self.save_classification(result):
+                    bstatus = self._backfill_status(result.get('confidence', {}))
                     if bstatus == 'needs_review':
                         stats['needs_review'] += 1
                     stats['successful'] += 1
                     logger.info(
-                        f"✓ {prompt_id} [{bstatus}] "
+                        f"  ✓ {prompt_id} [{bstatus}] "
                         f"intent={result.get('intent')} "
                         f"stage={result.get('primary_stage')} "
-                        f"chain={result.get('is_chain_prompt')}"
+                        f"complexity={result.get('complexity')}"
                     )
                 else:
                     stats['failed'] += 1
-
-            if i + self.batch_size < len(pending):
-                await asyncio.sleep(1.0)
 
         logger.info(
             f"\nDone — {stats['successful']}/{stats['total']} classified "
@@ -400,28 +429,30 @@ class BatchClassifier:
 # ---------------------------------------------------------------------------
 
 async def main():
-    import os
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s %(message)s',
+        handlers=[
+            logging.FileHandler('classification.log'),
+            logging.StreamHandler()
+        ]
+    )
+    classifier = BatchClassifier(db_config=DB_CONFIG)
+    stats = await classifier.process_all_prompts()
+    print(f"\nFinal results: {stats}")
 
-    DB_CONFIG = {
-        'host': 'localhost',
-        'database': 'prompt_flow',
-        'user': 'bao',
-        'password': ''
-    }
-
-    api_key = os.getenv('ANTHROPIC_API_KEY')
-    if not api_key:
-        print("Set ANTHROPIC_API_KEY environment variable")
-        return
-
-    logging.basicConfig(level=logging.INFO, format='%(message)s')
-
-    classifier = BatchClassifier(db_config=DB_CONFIG, api_key=api_key)
-    results = await classifier.process_all_prompts()
-
-    print(f"\nResults:")
-    for k, v in results.items():
-        print(f"  {k}: {v}")
+    # Auto-sync classified prompts back to Obsidian frontmatter
+    if stats['successful'] > 0:
+        print("\nSyncing classifications to Obsidian frontmatter...")
+        from sync_to_obsidian import get_classified_prompts, sync_prompt_to_file, mark_synced
+        prompts = get_classified_prompts()
+        synced = []
+        for p in prompts:
+            if sync_prompt_to_file(p):
+                synced.append(p['prompt_id'])
+        if synced:
+            mark_synced(synced)
+        print(f"Synced {len(synced)} files to Obsidian")
 
 
 if __name__ == "__main__":

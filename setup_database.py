@@ -13,18 +13,8 @@ from datetime import datetime
 from typing import List, Dict, Any
 import hashlib
 
-# Path configuration
-OBSIDIAN_VAULT_PATH = Path("/c/Users/baotn/Obsidian Vaults/Main Vault")
-PROMPTS_PATH = OBSIDIAN_VAULT_PATH / "Areas/AI/Prompts"
-BASE_DB_PATH = OBSIDIAN_VAULT_PATH / "Bases/Prompt Database.base"
-
-# Database connection settings
-DB_CONFIG = {
-    'host': 'localhost',
-    'database': 'prompt_flow',
-    'user': 'bao',  # adjust to your username
-    'password': '',  # set if needed
-}
+# Path and database configuration (centralised in path_config.py)
+from path_config import OBSIDIAN_VAULT_PATH, PROMPTS_PATH, BASE_DB_PATH, DB_CONFIG
 
 def create_database_schema(cursor):
     """Create the complete database schema"""
@@ -86,15 +76,8 @@ def create_database_schema(cursor):
         embedding_version VARCHAR,
         embedding VECTOR(1536),  -- OpenAI Ada-002 dimension
 
-        -- Full-text search
-        search_vector TSVECTOR GENERATED ALWAYS AS (
-            to_tsvector('english',
-                prompt_text || ' ' ||
-                COALESCE(array_to_string(intent, ' '), '') || ' ' ||
-                COALESCE(array_to_string(task_type, ' '), '') || ' ' ||
-                COALESCE(array_to_string(domain, ' '), '')
-            )
-        ) STORED
+        -- Full-text search (populated on insert/update via application code)
+        search_vector TSVECTOR
     );
     """
     cursor.execute(create_prompts_table)
@@ -186,6 +169,10 @@ def parse_frontmatter_to_canonical(metadata: Dict[str, Any]) -> Dict[str, Any]:
                     canonical[canonical_key] = value
                 else:
                     canonical[canonical_key] = [str(value)] if value else []
+            elif canonical_key == 'status':
+                # Normalize to lowercase; default to 'active' if unrecognized
+                v = str(value).lower().strip()
+                canonical[canonical_key] = v if v in ('active', 'deferred', 'archived') else 'active'
             else:
                 canonical[canonical_key] = value
 
@@ -242,12 +229,18 @@ def insert_prompts_batch(cursor, prompts: List[Dict[str, Any]]):
         prompt_id, file_path, prompt_text, content_hash, file_mtime,
         intent, task_type, domain, status,
         parent_prompt, original_link, models_tested, notes, last_evaluated,
-        backfill_status, last_updated
+        backfill_status, last_updated, search_vector
     ) VALUES (
         %(prompt_id)s, %(file_path)s, %(prompt_text)s, %(content_hash)s, %(file_mtime)s,
         %(intent)s, %(task_type)s, %(domain)s, %(status)s,
         %(parent_prompt)s, %(original_link)s, %(models_tested)s, %(notes)s, %(last_evaluated)s,
-        'pending', CURRENT_TIMESTAMP
+        'pending', CURRENT_TIMESTAMP,
+        to_tsvector('english',
+            %(prompt_text)s || ' ' ||
+            COALESCE(array_to_string(%(intent)s::varchar[], ' '), '') || ' ' ||
+            COALESCE(array_to_string(%(task_type)s::varchar[], ' '), '') || ' ' ||
+            COALESCE(array_to_string(%(domain)s::varchar[], ' '), '')
+        )
     ) ON CONFLICT (prompt_id) DO UPDATE SET
         prompt_text = EXCLUDED.prompt_text,
         content_hash = EXCLUDED.content_hash,

@@ -13,6 +13,8 @@ from typing import Dict, List, Any
 import json
 import time
 
+from path_config import OBSIDIAN_VAULT_PATH, PROMPTS_PATH, BASE_DB_PATH, DB_CONFIG
+
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
@@ -24,18 +26,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Configuration
+# Configuration — paths and DB settings come from path_config.py
 CONFIG = {
-    'obsidian_vault_path': Path('/home/bao/Documents/Obsidian/Main-Vault'),
-    'prompts_path': Path('/home/bao/Documents/Obsidian/Main-Vault/Areas/AI/Prompts'),
-    'base_db_path': Path('/home/bao/Documents/Obsidian/Main-Vault/Bases/Prompt Database.base'),
+    'obsidian_vault_path': OBSIDIAN_VAULT_PATH,
+    'prompts_path': PROMPTS_PATH,
+    'base_db_path': BASE_DB_PATH,
 
-    'db_config': {
-        'host': 'localhost',
-        'database': 'prompt_flow',
-        'user': 'bao',
-        'password': ''  # Update if you set a password
-    },
+    'db_config': DB_CONFIG,
 
     'search_strategy': 'annoy',  # 'annoy', 'multi_index', or 'hybrid'
 
@@ -420,7 +417,7 @@ async def main():
     if not CONFIG['prompts_path'].exists():
         logger.error(f"Prompts path does not exist: {CONFIG['prompts_path']}")
         logger.info("Please update the CONFIG paths at the top of this script")
-        logger.info("Your prompts should be in: /home/bao/Documents/Obsidian/Main-Vault/Areas/AI/Prompts")
+        logger.info(f"Your prompts should be in: {CONFIG['prompts_path']}")
         return
 
     # Set API key if provided via environment
