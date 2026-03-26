@@ -22,7 +22,7 @@ import logging
 import sys
 from pathlib import Path
 from typing import Dict, Any, List
-from path_config import DB_CONFIG
+from prompt_flow.config.paths import DB_CONFIG
 
 logging.basicConfig(
     level=logging.INFO,

@@ -13,7 +13,7 @@ from typing import Dict, List, Any
 import json
 import time
 
-from path_config import OBSIDIAN_VAULT_PATH, PROMPTS_PATH, BASE_DB_PATH, DB_CONFIG
+from prompt_flow.config.paths import OBSIDIAN_VAULT_PATH, PROMPTS_PATH, BASE_DB_PATH, DB_CONFIG
 
 # Setup logging
 logging.basicConfig(
@@ -144,7 +144,7 @@ class CompleteSystemSetup:
         """Set up PostgreSQL database and schema"""
         try:
             # Import and run database setup
-            from setup_database import main as setup_db_main
+            from prompt_flow.db.setup import main as setup_db_main
 
             # Check if prompts path exists
             if not self.config['prompts_path'].exists():
@@ -156,7 +156,7 @@ class CompleteSystemSetup:
             logger.info(f"Setting up database with prompts from: {self.config['prompts_path']}")
 
             # Update the setup_database paths temporarily
-            import setup_database
+            import prompt_flow.db.setup as setup_database
             original_prompts_path = setup_database.PROMPTS_PATH
             original_db_config = setup_database.DB_CONFIG
 
@@ -266,7 +266,7 @@ class CompleteSystemSetup:
     async def initialize_search(self) -> bool:
         """Initialize the search engine"""
         try:
-            from custom_search_engine_updated import CustomSearchEngine
+            from prompt_flow.search.engine import CustomSearchEngine
 
             logger.info(f"Initializing search engine with strategy: {self.config['search_strategy']}")
 
@@ -363,7 +363,7 @@ class CompleteSystemSetup:
         example_code = '''
 # Example usage:
 import asyncio
-from custom_search_engine_updated import CustomSearchEngine
+from prompt_flow.search.engine import CustomSearchEngine
 
 async def search_prompts():
     # Initialize search engine

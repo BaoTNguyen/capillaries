@@ -1,0 +1,28 @@
+# Advanced search profile — FAISS, full ML stack, production monitoring
+-r lightweight.txt
+
+# FAISS for high-throughput vector search (use faiss-gpu for GPU)
+faiss-cpu>=1.7.4
+
+# Heavy ML / NLP
+transformers>=4.21.0
+torch>=1.12.0
+
+# Clustering and dimensionality reduction
+umap-learn>=0.5.3
+hdbscan>=0.8.28
+
+# Caching (adds Redis on top of diskcache)
+redis>=4.3.0
+
+# Monitoring
+prometheus-client>=0.14.0
+
+# Advanced graph metrics (system package — install separately)
+# graph-tool>=2.45  # conda install -c conda-forge graph-tool
+
+# Dev / testing
+pytest>=7.1.0
+pytest-asyncio>=0.19.0
+black>=22.6.0
+mypy>=0.971

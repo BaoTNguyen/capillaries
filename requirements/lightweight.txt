@@ -1,0 +1,21 @@
+# Lightweight search profile — Annoy-based, no FAISS or heavy ML models
+-r base.txt
+
+# Vector search (no FAISS)
+sentence-transformers>=2.2.0
+annoy>=1.17.0
+
+# Graph analysis
+networkx>=2.8.0
+python-louvain>=0.16
+
+# NLP
+spacy>=3.4.0
+# After install: python -m spacy download en_core_web_sm
+
+# Caching and performance
+diskcache>=5.4.0
+joblib>=1.1.0
+
+# Logging and monitoring
+structlog>=22.1.0

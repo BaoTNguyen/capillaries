@@ -14,7 +14,7 @@ from typing import List, Dict, Any
 import hashlib
 
 # Path and database configuration (centralised in path_config.py)
-from path_config import OBSIDIAN_VAULT_PATH, PROMPTS_PATH, BASE_DB_PATH, DB_CONFIG
+from prompt_flow.config.paths import OBSIDIAN_VAULT_PATH, PROMPTS_PATH, BASE_DB_PATH, DB_CONFIG
 
 def create_database_schema(cursor):
     """Create the complete database schema"""

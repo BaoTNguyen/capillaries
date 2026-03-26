@@ -2,7 +2,7 @@
 """One-shot script to fix remaining file_path mismatches in the DB."""
 import psycopg2, re
 from pathlib import Path
-from path_config import DB_CONFIG
+from prompt_flow.config.paths import DB_CONFIG
 
 conn = psycopg2.connect(**DB_CONFIG)
 cur = conn.cursor()

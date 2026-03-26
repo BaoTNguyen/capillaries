@@ -16,8 +16,8 @@ import psycopg2
 import logging
 
 # Import our custom vector search implementations
-from custom_vector_search import MultiIndexVectorSearch, VectorSearchResult
-from annoy_vector_search import AdaptiveAnnoySearch, AnnoySearchResult
+from prompt_flow.search.vector import MultiIndexVectorSearch, VectorSearchResult
+from prompt_flow.search.annoy import AdaptiveAnnoySearch, AnnoySearchResult
 
 logger = logging.getLogger(__name__)
 

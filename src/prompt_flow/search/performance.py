@@ -468,7 +468,7 @@ class OptimizedSearchEngine:
 async def production_search_example():
     """Example of production-optimized search"""
 
-    from custom_search_engine import HybridSearchEngine
+    from prompt_flow.search.engine_v1 import HybridSearchEngine
 
     DB_CONFIG = {
         'host': 'localhost',

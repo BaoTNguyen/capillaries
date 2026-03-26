@@ -10,7 +10,7 @@ import logging
 import httpx
 import psycopg2
 from typing import List, Dict, Any, Optional, Tuple
-from path_config import DB_CONFIG
+from prompt_flow.config.paths import DB_CONFIG
 
 logger = logging.getLogger(__name__)
 
