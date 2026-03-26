@@ -45,6 +45,9 @@ FIELD_MAP = {
     'accepts_prior_output': ('Accepts Prior Output', lambda v: v),
     'has_template_vars':    ('Has Template Vars',    lambda v: v),
     'is_chain_prompt':      ('Is Chain Prompt',      lambda v: v),
+    'models_tested':        ('Models Tested',        lambda v: v if v else []),
+    'last_evaluated':       ('Last Evaluated',       lambda v: str(v) if v else None),
+    'notes':                ('Notes',                lambda v: v if v else None),
 }
 
 
@@ -56,7 +59,8 @@ def get_classified_prompts() -> List[Dict[str, Any]]:
         SELECT prompt_id, file_path,
                intent, task_type, domain, status,
                primary_stage, complexity_level,
-               accepts_prior_output, has_template_vars, is_chain_prompt
+               accepts_prior_output, has_template_vars, is_chain_prompt,
+               models_tested, last_evaluated, notes
         FROM prompts
         WHERE backfill_status IN ('complete', 'needs_review')
           AND last_classified IS NOT NULL
@@ -65,7 +69,8 @@ def get_classified_prompts() -> List[Dict[str, Any]]:
         'prompt_id', 'file_path',
         'intent', 'task_type', 'domain', 'status',
         'primary_stage', 'complexity_level',
-        'accepts_prior_output', 'has_template_vars', 'is_chain_prompt'
+        'accepts_prior_output', 'has_template_vars', 'is_chain_prompt',
+        'models_tested', 'last_evaluated', 'notes'
     ]
     rows = [dict(zip(columns, row)) for row in cur.fetchall()]
     cur.close()
@@ -87,15 +92,16 @@ def sync_prompt_to_file(prompt: Dict[str, Any], dry_run: bool = False) -> bool:
         logger.error(f"  ERROR reading {file_path.name}: {e}")
         return False
 
+    # Fields that should be written even when empty (so they appear in Obsidian Base)
+    ALWAYS_WRITE = {'models_tested', 'last_evaluated', 'notes'}
+
     changed = False
     for db_field, (fm_key, transform) in FIELD_MAP.items():
         db_value = prompt.get(db_field)
-        if db_value is None:
+        if db_value is None and db_field not in ALWAYS_WRITE:
             continue
 
-        new_value = transform(db_value)
-        if new_value is None:
-            continue
+        new_value = transform(db_value) if db_value is not None else None
 
         old_value = post.metadata.get(fm_key)
 
