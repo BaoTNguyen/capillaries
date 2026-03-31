@@ -123,7 +123,7 @@ def create_database_schema(cursor):
         "CREATE INDEX IF NOT EXISTS idx_prompts_complexity ON prompts (complexity_level);",
         "CREATE INDEX IF NOT EXISTS idx_prompts_status ON prompts (status);",
         "CREATE INDEX IF NOT EXISTS idx_prompts_search ON prompts USING GIN (search_vector);",
-        "CREATE INDEX IF NOT EXISTS idx_prompts_embedding ON prompts USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);",
+        "CREATE INDEX IF NOT EXISTS idx_prompts_embedding ON prompts USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);",
         "CREATE INDEX IF NOT EXISTS idx_prompts_confidence ON prompts USING GIN (metadata_confidence);",
         "CREATE INDEX IF NOT EXISTS idx_prompts_backfill ON prompts (backfill_status);",
         "CREATE INDEX IF NOT EXISTS idx_prompts_accepts_prior ON prompts (accepts_prior_output);",

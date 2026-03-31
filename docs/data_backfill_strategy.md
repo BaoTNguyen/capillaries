@@ -304,14 +304,51 @@ CREATE TABLE classification_feedback (
 - System integration: 1 week
 - Initial user testing: 2 weeks from start
 
-## Next Steps
+---
 
-1. **Validate approach**: Test classification prompt on 20 diverse sample prompts
-2. **Cost estimation**: Get accurate LLM API pricing for batch processing
-3. **Engineering setup**: Prepare batch processing infrastructure
-4. **Quality framework**: Define validation criteria and spot-check procedures
-5. **Begin processing**: Start with highest-priority fields (intent, task_type, domain)
+## Post-Backfill Status (2026-03-29)
+
+Phase 1 backfill is **complete**. All 572 prompts classified via Ollama `qwen3.5-latest`.
+
+### What was filled
+
+| Field | Fill rate | Notes |
+|-------|-----------|-------|
+| `intent` | 99.1% | 11 valid values |
+| `task_type` | 100% | 10 valid values |
+| `domain` | 100% | 10 valid values, multi-valued |
+| `primary_stage` | 100% | 5 stages, heavily skewed (execute 47%, reflect 0.9%) |
+| `complexity_level` | 100% | 1-5 scale, median 3 |
+
+### What remains unfilled (blocks chain quality)
+
+| Field | Fill rate | Impact on retrieval | Priority |
+|-------|-----------|---------------------|----------|
+| `secondary_stages` | 0% | Prompts can only appear in one stage — chains miss prompts that fit multiple stages | **P0** |
+| `input_schema` | 0% | Can't verify chain coherence (does step N output feed step N+1 input?) | **P1** |
+| `output_schema` | 0% | Same as input_schema — both needed together | **P1** |
+| `accomplishes` | 0% | Reduces semantic precision for chain scoring | P2 |
+| `accepts_prior_output` | 3.8% | Can't detect which prompts continue prior output | P2 |
+
+### How to measure backfill impact on retrieval
+
+Each backfill should be validated against the eval report, not just by fill-rate:
+
+1. **Before the backfill**: run `python scripts/eval_report.py` and save the report
+2. **Run the backfill** (e.g. populate `secondary_stages`)
+3. **After**: run the eval again, diff the two reports
+4. **Check**: did chain coverage improve? Did any previously good results regress?
+5. **Regression guard**: run `pytest tests/test_search.py -x -v` after every backfill
+
+The diagnostic table in `docs/schema.md` (section "Evaluation & Diagnostics") maps observed retrieval problems to the data field that needs work.
+
+### Next backfill priorities
+
+1. **`secondary_stages`** — Re-run classification with an updated prompt template that asks for secondary stages. Most prompts tagged `execute` also have plan or verify aspects. This is the single highest-leverage data improvement for chain quality.
+2. **`input_schema` / `output_schema`** — Add to classification template. Even short descriptions ("expects a list of requirements" / "produces a prioritized backlog") enable chain coherence scoring.
+3. **Add reflect-stage prompts** — Only 5 exist. Write 20-30 generic reflection/retrospective prompts and add to the vault. No classification change needed, just more data.
+4. **Audit singleton domain arrays** — Many prompts span multiple domains but were classified with only one. Broadening these improves filter recall.
 
 ---
 
-**Decision Point**: Recommend starting with **Approach 1 (Batch LLM)** for speed and accuracy, then iterating toward hybrid approach based on initial results and user feedback.
+**Decision Point**: Phase 1 (Batch LLM) is complete. Next priority is **`secondary_stages` backfill** using an updated classification prompt, validated by eval report comparison before and after.

@@ -1,0 +1,665 @@
+================================================================================
+PROMPT SEARCH EVALUATION REPORT
+Generated : 2026-03-29 15:16
+Results   : top 3 per query
+Queries   : 10
+
+================================================================================
+
+QUERY 1/10: build a 13-week cash flow model
+candidates retrieved: 50
+--------------------------------------------------------------------------------
+
+  [1] 13-Week Cash Flow Model (Exec-Ready)
+      rerank=8.67  rrf=0.0164  dense_sim=0.781
+      stage=execute  |  domain=['finance', 'business']  |  complexity=5  |  intent=['build']
+
+    Context: You need a detailed weekly cash flow projection to manage short-term liquidity, often required by lenders or to manage tight cash positions.
+
+    Prompt Chain:
+
+    Step 1 - Weekly Structure Setup:
+
+    [... truncated]
+
+
+  [2] 13-Week Cash Flow Model
+      rerank=8.67  rrf=0.0161  dense_sim=0.781
+      stage=execute  |  domain=['finance', 'business']  |  complexity=5  |  intent=['build']
+
+    Context: You need a detailed weekly cash flow projection to manage short-term liquidity, often required by lenders or to manage tight cash positions.
+
+    Prompt Chain:
+
+    Step 1 - Weekly Structure Setup:
+
+    [... truncated]
+
+
+  [3] SaaS Financial Model (Investor-Ready)
+      rerank=-7.14  rrf=0.0152  dense_sim=0.637
+      stage=execute  |  domain=['finance', 'business']  |  complexity=5  |  intent=['build']
+
+    Context: You need a specialized financial model for a SaaS business with all the metrics and details investors expect—MRR buildup, bookings vs. revenue, cohort analysis, and SaaS-specific KPIs.
+
+    Prompt Chain:
+
+    Step 1 - MRR Buildup and Bookings Model:
+
+    [... truncated]
+
+================================================================================
+
+QUERY 2/10: write a go-to-market strategy
+candidates retrieved: 50
+--------------------------------------------------------------------------------
+
+  [1] Head of Sales - Sales Strategy Document
+      rerank=6.61  rrf=0.0268  dense_sim=0.644
+      stage=execute  |  domain=['business', 'strategy']  |  complexity=3  |  intent=['communicate', 'build']
+
+    I'm a Head of Sales writing a strategy document for the sales organization. Audience is sales team and executive leadership.
+
+    Current State:
+    [Performance metrics, what's working, what's not]
+
+    Market Context:
+    [Customer landscape, competitive dynamics, opportunities]
+
+    Strategic Priorities:
+    [Where we're focusing - segments, verticals, deal sizes, etc.]
+
+    Go-to-Market Approach:
+    [Sales motion, pricing strategy, packaging]
+
+    Team Structure & Capacity:
+    [Territories, specialization, hiring plan, quotas]
+
+    Enablement & Tools:
+    [What the team needs to execute - training, collateral, systems]
+
+    [... truncated]
+
+
+  [2] GTM & Launch Plan Review – Stress-Test the Plan
+      rerank=4.53  rrf=0.0161  dense_sim=0.713
+      stage=verify  |  domain=['business', 'strategy']  |  complexity=3  |  intent=['improve', 'decide']
+
+    You are my 2-hour GTM strategist.
+
+    I will give you a go-to-market plan, launch plan, or marketing strategy document.
+
+    Your job is to:
+    - understand what we're trying to do and for whom,
+    - stress-test whether the plan will actually work,
+    - and suggest concrete improvements.
+
+    PHASE 1 – PLAN SUMMARY
+    - What's being launched: product, feature, campaign, or initiative?
+    - Target customer: who exactly is this for? (segment, persona, company type)
+    - Goal: what does success look like? (metric, timeline)
+    - Core message: what's the main value prop or hook?
+    [... truncated]
+
+
+  [3] PRODUCT LAUNCH PRESENTATION
+      rerank=3.54  rrf=0.0149  dense_sim=0.668
+      stage=execute  |  domain=['business']  |  complexity=4  |  intent=['build', 'communicate']
+
+    SYSTEM PROMPT: PRODUCT LAUNCH PRESENTATION
+
+    PREREQUISITES:
+    Corporate Style Guide JSON (from Corporate Style Extractor)
+
+    WORKFLOW:
+    Use html2pptx with Corporate Style Applicator enforcement
+
+    OBJECTIVE:
+    Build comprehensive go-to-market launch presentation that coordinates internal teams and external stakeholders around new product/feature release with clear success metrics and execution plan.
+
+    INPUT REQUIREMENTS:
+    • Product specifications with [Features, User experience, Technical requirements, Performance benchmarks]
+    [... truncated]
+
+================================================================================
+
+QUERY 3/10: analyze customer churn  filters: {'domain': ['business']}
+candidates retrieved: 50
+--------------------------------------------------------------------------------
+
+  [1] Image Gen Churn Analysis Diagnostic
+      rerank=5.47  rrf=0.0164  dense_sim=0.783
+      stage=clarify  |  domain=['business', 'product']  |  complexity=3  |  intent=['build', 'communicate']
+
+    You are a customer success + analytics designer for executive reviews.
+
+    TASK
+    Help the user create a "Churn Analysis Diagnostic"—a single 16:9 image showing churn breakdown by reason, segment, cohort, and leading indicators, with actionable insights.
+
+    BEFORE CREATING ANYTHING, gather the following:
+
+    GROUP 1 — CONTEXT
+    - What product or business is this for?
+    - What time period does this analysis cover? (e.g., "Q4 2025," "Last 12 months")
+    - What type of churn? (Logo churn, Revenue churn, both?)
+    - Who is the audience? (CS leadership, exec team, board?)
+    - As-of date?
+
+    GROUP 2 — HEADLINE METRICS
+    [... truncated]
+
+
+  [2] Customer Success - Account Health Assessment & Risk Identification
+      rerank=3.63  rrf=0.0156  dense_sim=0.650
+      stage=execute  |  domain=['business', 'product']  |  complexity=3  |  intent=['build']
+
+    You are a customer success strategist conducting account health reviews to prevent churn and identify expansion opportunities.
+
+    ### TASK
+    Analyze the customer account data below and provide a comprehensive health assessment with action plans.
+
+    ### ACCOUNT DATA
+    """
+    [CSM PASTES: Usage metrics, support tickets, NPS/CSAT scores, product adoption data,
+    contract details, stakeholder engagement, communication history, business outcomes]
+    """
+
+    ### ACCOUNT CONTEXT
+    Account: [Company Name]
+    Tier: [Enterprise/Mid-Market/SMB]
+    ARR: [$Amount]
+    Contract Start: [Date]
+    Renewal Date: [Date] - [Days until renewal]
+    [... truncated]
+
+
+  [3] Revenue Bridge from Raw Data - Complete Prompt
+      rerank=3.42  rrf=0.0273  dense_sim=0.645
+      stage=execute  |  domain=['business', 'finance']  |  complexity=4  |  intent=['build']
+
+    textCONTEXT: I have customer transaction/subscription data that needs to be transformed into a comprehensive revenue bridge analysis showing the drivers of quarter-over-quarter revenue change.
+
+    CURRENT STATE: Raw customer data with transactions, start/end dates, and amounts, but no structured analysis of revenue movement components.
+
+    EDITING TASK: Build complete revenue bridge analysis by:
+
+    1. DATA PREPARATION AND SEGMENTATION:
+       - Clean and organize customer data by start date, transaction type, and amount
+       - Create customer cohorts based on acquisition period
+    [... truncated]
+
+================================================================================
+
+QUERY 4/10: write a product requirements document
+candidates retrieved: 50
+--------------------------------------------------------------------------------
+
+  [1] Product Manager - PRD (Product Requirements Document)
+      rerank=2.86  rrf=0.0308  dense_sim=0.664
+      stage=execute  |  domain=['product', 'business']  |  complexity=3  |  intent=['build', 'communicate']
+
+    I'm a product manager writing a PRD for a new feature or product. Audience is engineering, design, and leadership.
+
+    Problem Statement:
+    [What user problem are we solving, why does it matter]
+
+    Success Metrics:
+    [How we'll measure if this worked]
+
+    User Stories:
+    [Key use cases and user flows]
+
+    Requirements:
+    [Must-haves, should-haves, nice-to-haves]
+
+    Technical Considerations:
+    [Known constraints, dependencies, integrations]
+
+    Open Questions:
+    [What we still need to figure out]
+
+    Timeline & Scope:
+    [Launch target, phasing if applicable]
+
+    [... truncated]
+
+
+  [2] PRD (Product Requirements Document)
+      rerank=2.71  rrf=0.0156  dense_sim=0.680
+      stage=plan  |  domain=['product', 'business']  |  complexity=3  |  intent=['build', 'communicate']
+
+    You are writing a PRD that bridges what we're building (product/business) with how we'll build it (engineering).
+
+    CONTEXT:
+    Feature/Product name: [NAME]
+    Product owner: [WHO OWNS THIS]
+    Target release: [WHEN THIS SHIPS]
+    User problem being solved: [THE CORE PROBLEM]
+
+    INPUT PROVIDED:
+    [PASTE YOUR USER RESEARCH, TECHNICAL CONSTRAINTS, BUSINESS REQUIREMENTS, DESIGN MOCKS HERE]
+
+    YOUR TASK:
+    Create a PRD that gives engineering everything they need to build this without constant back-and-forth. This document will be referenced during implementation, so precision matters more than polish.
+
+    [... truncated]
+
+
+  [3] Vendor Evaluation for Purchase Decision
+      rerank=1.47  rrf=0.0161  dense_sim=0.698
+      stage=execute  |  domain=['business', 'product']  |  complexity=3  |  intent=['decide', 'validate', 'build']
+
+    JOB: Evaluate [VENDOR/PRODUCT NAME] for our specific use case: [DESCRIBE YOUR SITUATION, TEAM SIZE, REQUIREMENTS, AND CONSTRAINTS].
+
+    INPUTS:
+    - Official product documentation and feature specifications
+    - Official pricing page and any available pricing calculators
+    - G2, Capterra, TrustRadius reviews (filter for companies similar to ours)
+    - Reddit threads and community discussions
+    - Case studies or customer stories (note these are marketing materials)
+    - Integration documentation for [LIST YOUR KEY TOOLS]
+    - Security/compliance documentation if relevant
+
+    OUTPUT: A structured evaluation document:
+
+    [... truncated]
+
+================================================================================
+
+QUERY 5/10: choose between RAG fine-tuning and prompt engineering
+candidates retrieved: 50
+--------------------------------------------------------------------------------
+
+  [1] Technical Decision Pre-Read
+      rerank=3.35  rrf=0.0328  dense_sim=0.708
+      stage=plan  |  domain=['technical', 'AI']  |  complexity=2  |  intent=['decide', 'explore']
+
+    Context: My engineering team is deciding between:
+
+    DECISION: [e.g., RAG vs fine-tuning / embedding vendor choice / model swap]
+
+    Give me a 10-minute PM briefing:
+    1. The real trade-offs — not the polite or obvious ones.
+    2. Dependencies and risks that cascade into roadmap changes.
+    3. What failure looks like and what success unlocks.
+    4. Precise questions I must ask to force clarity.
+    5. How this affects UX, reliability, cost, and timeline.
+
+    Treat me as a senior PM who needs concise strategic signal.
+
+
+  [2] Prompt Lifecycle Assessment
+      rerank=-4.77  rrf=0.0159  dense_sim=0.667
+      stage=clarify  |  domain=['AI', 'learning']  |  complexity=3  |  intent=['explore', 'decide']
+
+    Role: You are the Prompt Lifecycle Architect.
+     You are an expert consultant based on the framework "The Prompt 
+    Lifecycle." Your goal is to interview the user to diagnose their 
+    operational maturity, identify specific stage-failures, and recommend 
+    the single best tool to level up their workflow.Context: The 6-Stage Framework
+    [... truncated]
+
+
+  [3] Reverse Prompting Template
+      rerank=-4.87  rrf=0.0313  dense_sim=0.705
+      stage=execute  |  domain=['AI', 'technical']  |  complexity=2  |  intent=['improve', 'build']
+
+    You are an expert prompt engineer. Your task is to write the single most effective prompt that would make an LLM solve this problem with maximum accuracy:
+
+    [DESCRIBE YOUR TASK AND OBJECTIVES]
+
+    Consider:
+    - What specific details and constraints matter for quality output
+    - What reasoning steps are essential to avoid common failure modes
+    - What output format would be most actionable for the end user
+    - What examples or edge cases would improve reliability
+
+    First, write the optimal prompt.
+
+================================================================================
+
+QUERY 6/10: map out stakeholders for a project
+candidates retrieved: 50
+--------------------------------------------------------------------------------
+
+  [1] Project Status Summary
+      rerank=-3.08  rrf=0.0132  dense_sim=0.632
+      stage=execute  |  domain=['business']  |  complexity=3  |  intent=['build', 'communicate']
+
+    JOB: Review all documentation for [PROJECT NAME] and create a status summary I can share with [AUDIENCE: team, leadership, stakeholders].
+
+    SOURCES: Review content in [FOLDER/DATABASE/PAGES TO CHECK]
+
+    OUTPUT: Create a status summary with these sections:
+
+    **Status at a Glance**
+    - Overall project status: [ON TRACK / AT RISK / BLOCKED / COMPLETED]
+    - One sentence explaining why you chose that status
+    - Target completion date: [from documentation or "Not specified"]
+    - Confidence level in hitting that date: [High / Medium / Low]
+
+    **Recent Progress** (past [TIMEFRAME])
+    [... truncated]
+
+
+  [2] Set Up Long - Running Project Memory
+      rerank=-3.89  rrf=0.0125  dense_sim=0.629
+      stage=execute  |  domain=['business', 'technical']  |  complexity=3  |  intent=['build', 'prepare']
+
+    You are my long-running project operator.
+
+    BACKGROUND (the memory approach):
+    For tasks that outlast a context window, the agent:
+    1. Summarizes progress ("compaction")
+    2. Writes state to files (markdown works fine)
+    3. Reboots with the summary as context
+    4. Maintains a "skills" file for preferences and workflows
+
+    This is deliberately simple. Complex memory infrastructure breaks when model capabilities change. Simple primitives adapt.
+
+    GOAL: Create a lightweight memory system I'll actually maintain for a project spanning multiple sessions.
+
+    PROJECT:
+    - Name: [project name]
+    [... truncated]
+
+
+  [3] Stakeholder Mapping
+      rerank=-5.23  rrf=0.0323  dense_sim=0.683
+      stage=plan  |  domain=['business', 'strategy']  |  complexity=2  |  intent=['decide']
+
+    Decision:
+    [X]
+    Stakeholders:
+    [LIST]
+
+    For each stakeholder:
+    1. What they care about most.
+    2. What helps them say yes.
+    3. What triggers a no.
+    4. Their relationship with others.
+    5. Ideal order of conversations.
+    6. Assumptions I’m making that deserve pushback.
+
+    Push me where I might be naive.
+
+================================================================================
+
+QUERY 7/10: run a personal sanity check on a decision
+candidates retrieved: 50
+--------------------------------------------------------------------------------
+
+  [1] Decision Helper (simple, powerful “think with me”)
+      rerank=-8.85  rrf=0.0164  dense_sim=0.706
+      stage=execute  |  domain=['personal', 'AI']  |  complexity=2  |  intent=['decide', 'communicate']
+
+    You are a GPT-5.1 decision-support assistant.
+
+    I will describe a decision I’m facing.
+
+    Your job is to help me think, not to decide for me.
+
+    For each decision, respond with FIVE sections:
+
+    1) RESTATE THE DECISION
+       - 2–3 sentences in my own terms.
+
+    2) OPTIONS ON THE TABLE
+       - 3–7 options (including “do nothing” if relevant).
+       - For each: 1-line description.
+
+    3) PROS / CONS / RISKS
+       - For each option:
+         - 2–4 pros
+         - 2–4 cons
+         - 1–3 specific risks or failure modes
+
+    4) WHAT MATTERS MOST (ASSUMPTIONS)
+    [... truncated]
+
+
+  [2] Architecture Ceiling Test
+      rerank=-9.01  rrf=0.0130
+      stage=clarify  |  domain=['AI', 'technical']  |  complexity=2  |  intent=['improve', 'validate']
+
+    You are helping me run the Bitter Lesson check on my agentic system architecture.
+
+    The question: if I swapped in a more capable model tomorrow, would my system's capabilities increase proportionally — or is my architecture the bottleneck?
+
+    Signs the architecture is the bottleneck:
+    - Hard-coded decision trees that a smarter model could handle dynamically
+    - Aggressive summarization that throws away information a smarter model could use
+    - Rigid tool schemas that prevent flexible tool use
+    - Multi-agent splits that exist because the model "couldn't handle it" rather than for genuine clarity
+
+    [... truncated]
+
+
+  [3] Adversarial Mini Check (Use Often)
+      rerank=-9.25  rrf=0.0143  dense_sim=0.638
+      stage=verify  |  domain=['technical']  |  complexity=3  |  intent=['validate', 'improve', 'reflect']
+
+    ADVERSARIAL MINI-CHECK (run before you ship)
+
+    Rules:
+    - No reassurance. Find problems.
+    - For factual claims: cite sources or label as uncertain/inference.
+
+    1) AUDIT BOUNDARY
+    What skills are required to verify this end-to-end?
+    Do I have those skills? If not: who does, specifically?
+
+    2) BREAK IT
+    List:
+    - 3 most likely failure modes
+    - the single strongest objection a credible expert would raise
+
+    3) EVIDENCE DISCIPLINE
+    What would falsify this?
+    What evidence would raise confidence?
+    For each: what source type would I trust (primary docs, benchmarks, statute, paper, logs, etc.)?
+
+    [... truncated]
+
+================================================================================
+
+QUERY 8/10: create a technical design document  filters: {'primary_stage': 'plan'}
+candidates retrieved: 50
+--------------------------------------------------------------------------------
+
+  [1] PRD (Product Requirements Document)
+      rerank=0.71  rrf=0.0161  dense_sim=0.663
+      stage=plan  |  domain=['product', 'business']  |  complexity=3  |  intent=['build', 'communicate']
+
+    You are writing a PRD that bridges what we're building (product/business) with how we'll build it (engineering).
+
+    CONTEXT:
+    Feature/Product name: [NAME]
+    Product owner: [WHO OWNS THIS]
+    Target release: [WHEN THIS SHIPS]
+    User problem being solved: [THE CORE PROBLEM]
+
+    INPUT PROVIDED:
+    [PASTE YOUR USER RESEARCH, TECHNICAL CONSTRAINTS, BUSINESS REQUIREMENTS, DESIGN MOCKS HERE]
+
+    YOUR TASK:
+    Create a PRD that gives engineering everything they need to build this without constant back-and-forth. This document will be referenced during implementation, so precision matters more than polish.
+
+    [... truncated]
+
+
+  [2] Engineer - Technical Design Doc
+      rerank=0.08  rrf=0.0328  dense_sim=0.712
+      stage=plan  |  domain=['technical', 'product']  |  complexity=2  |  intent=['build', 'communicate']
+
+    I'm a software engineer writing a design doc for a significant technical project. Audience is the engineering team and tech leads.
+
+    Problem:
+    [What we're solving, why current approach doesn't work]
+
+    Proposed Solution:
+    [Your technical design at a high level]
+
+    Architecture:
+    [System components, data flow, key technologies]
+
+    Alternatives Considered:
+    [Other approaches and why you didn't choose them]
+
+    Migration/Implementation Plan:
+    [How we roll this out, phases, risk mitigation]
+
+    Testing Strategy:
+    [How we validate this works]
+
+    Success Criteria:
+    [How we know this solved the problem]
+
+    [... truncated]
+
+
+  [3] Context Library Builder
+      rerank=-2.12  rrf=0.0130  dense_sim=0.588
+      stage=plan  |  domain=['AI', 'personal']  |  complexity=3  |  intent=['build']
+
+    ## Prompt 2: Context Library Builder
+
+    **Purpose:** Create permanent and evergreen memory documents
+    **Method:** Conversational interview extracting core work knowledge
+    **Output:** Three formatted markdown documents ready to use across AI tools
+
+    ---
+
+    ### Question Flow:
+
+    **Introduction**
+
+    "I'm going to help you build three core documents that will serve as your permanent AI context library:
+    1. **Profile & Preferences** - Who you are and how you work
+    2. **Work Playbooks** - Your repeatable processes and standards
+    3. **References** - Domain knowledge and technical specs you use regularly
+
+    [... truncated]
+
+================================================================================
+
+QUERY 9/10: build a quarterly business review
+candidates retrieved: 50
+--------------------------------------------------------------------------------
+
+  [1] Quarterly Business Review Builder
+      rerank=1.93  rrf=0.0164  dense_sim=0.697
+      stage=execute  |  domain=['business', 'product']  |  complexity=3  |  intent=['build', 'communicate']
+
+    PREREQUISITES:
+    Corporate Style Guide JSON (from Corporate Style Extractor)
+
+    WORKFLOW:
+    Use html2pptx with Corporate Style Applicator enforcement
+
+    OBJECTIVE:
+    Convert quarterly performance data into comprehensive business review presentation with trend analysis, performance insights, and strategic recommendations for next quarter.
+
+    INPUT REQUIREMENTS:
+    • Quarterly financial data Excel with [Revenue, Expenses, Margins by month and product/region]
+    • Operational metrics with [Customer acquisition, Retention, Support metrics, Product usage]
+    [... truncated]
+
+
+  [2] All-Hands Communicator
+      rerank=-1.24  rrf=0.0139  dense_sim=0.615
+      stage=execute  |  domain=['business', 'writing']  |  complexity=3  |  intent=['build', 'communicate']
+
+    PREREQUISITES:
+    Corporate Style Guide JSON (from Corporate Style Extractor)
+
+    WORKFLOW:
+    Use html2pptx with Corporate Style Applicator enforcement
+
+    OBJECTIVE:
+    Create comprehensive company-wide presentation that builds employee engagement through transparent performance communication, strategic direction, and organizational updates with consistent leadership messaging.
+
+    INPUT REQUIREMENTS:
+    • Company performance data with [Financial metrics, Growth indicators, Operational KPIs, Customer metrics]
+    [... truncated]
+
+
+  [3] Financial Advisor - Quarterly Portfolio Report
+      rerank=-1.48  rrf=0.0318  dense_sim=0.645
+      stage=execute  |  domain=['finance', 'business']  |  complexity=2  |  intent=['communicate', 'build']
+
+    I'm a financial advisor writing a quarterly portfolio review for a client.
+
+    Client Profile:
+    [Age, goals, risk tolerance, time horizon]
+
+    Portfolio Performance:
+    [Returns this quarter, year-to-date, vs. benchmark]
+
+    Market Context:
+    [What happened in markets this quarter]
+
+    Portfolio Positioning:
+    [Why your strategy performed as it did, what you're doing]
+
+    Looking Ahead:
+    [Your outlook and any adjustments]
+
+    Write this in accessible language focused on their specific goals. Be honest about performance.
+
+    Tone: reassuring but honest, focused on long-term.
+
+    [... truncated]
+
+================================================================================
+
+QUERY 10/10: evaluate an AI tool or vendor
+candidates retrieved: 50
+--------------------------------------------------------------------------------
+
+  [1] AI vendor and model evaluation
+      rerank=6.34  rrf=0.0156  dense_sim=0.717
+      stage=verify  |  domain=['AI', 'business']  |  complexity=3  |  intent=['decide', 'validate']
+
+    You are my advisor for evaluating an AI vendor or model from an accessibility perspective. I need to make an informed procurement decision.
+
+    You'll need to gather context about:
+    - The vendor or model I'm evaluating
+    - How I plan to use it in my product
+    - Integration scope (user-facing, internal tooling, infrastructure)
+    - My regulatory context (Section 508, ADA, EAA, specific WCAG level)
+    - My user population, including known disabled user groups
+    - My existing accessibility commitments to users or regulators
+
+    EVALUATION FRAMEWORK:
+
+    Once you have context, assess:
+
+    1. DOCUMENTATION & TRANSPARENCY
+    [... truncated]
+
+
+  [2] AI Tool Evaluation Prompt
+      rerank=4.70  rrf=0.0164  dense_sim=0.766
+      stage=clarify  |  domain=['AI', 'business']  |  complexity=3  |  intent=['decide', 'improve', 'communicate']
+
+    AI Tool Evaluation Advisor
+    You are a rigorous AI tool evaluation advisor. Your job is to help the user decide whether an AI tool is worth buying by walking them through three critical questions in a conversational, Socratic style. Most AI tools waste money because buyers skip hard questions upfront. Your role is to force specificity and challenge vague thinking.
+    Your conversational approach:
+    [... truncated]
+
+
+  [3] The Vendor Claim and Market Report Reality Check (News)
+      rerank=4.43  rrf=0.0141  dense_sim=0.682
+      stage=verify  |  domain=['AI', 'business']  |  complexity=2  |  intent=['validate', 'improve']
+
+    You are my skeptical analyst for enterprise AI claims, market research, and vendor marketing. You've seen hundreds of hype cycles and know the patterns of how technologies get oversold, undersold, and eventually adopted.
+
+    I'm evaluating a vendor claim, market research statistic, or analyst prediction about AI implementation. Your job is to help me separate marketing from reality, understand what the data actually shows, and translate the claim into actionable insight for my specific context.
+
+    CLAIM OR REPORT:
+    [Paste the specific claim, statistic, vendor promise, or analyst prediction]
+
+    [... truncated]
+
+================================================================================

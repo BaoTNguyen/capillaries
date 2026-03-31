@@ -446,12 +446,7 @@ async def enhanced_search_example():
     # This would use your existing base engine
     from prompt_flow.search.engine_v1 import HybridSearchEngine
 
-    DB_CONFIG = {
-        'host': 'localhost',
-        'database': 'prompt_flow',
-        'user': 'bao',
-        'password': ''
-    }
+    from prompt_flow.config import DB_CONFIG
 
     # Initialize engines
     base_engine = HybridSearchEngine(DB_CONFIG)

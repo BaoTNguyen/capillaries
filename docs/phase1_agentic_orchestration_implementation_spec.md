@@ -289,6 +289,81 @@ Calibration routine:
 2. sweep `T_single`, `T_chain`, `delta`, `T_ambiguity`
 3. pick operating point maximizing task-success proxy at acceptable abstain rate
 
+### 9.1) Current System Constants (as of 2026-03-29)
+
+These are the live values in the codebase. When tuning, change one at a time and re-evaluate.
+
+| Constant | File | Value | Purpose |
+|----------|------|-------|---------|
+| `RETRIEVAL_CANDIDATES` | `search/api.py` | 50 | Candidates sent to reranker |
+| `DENSE_CANDIDATES` | `search/retriever.py` | 50 | pgvector HNSW results per query |
+| `SPARSE_CANDIDATES` | `search/retriever.py` | 50 | pg_trgm results per query |
+| `RRF_K` | `search/retriever.py` | 60 | RRF smoothing — lower favors top ranks more aggressively |
+| `MAX_DOC_CHARS` | `search/reranker.py` | 1,200 | Prompt text truncation for cross-encoder input |
+| `MAX_QUERY_CHARS` | `search/reranker.py` | 200 | Query truncation for cross-encoder input |
+| `MODEL_NAME` | `search/reranker.py` | `cross-encoder/ms-marco-MiniLM-L-6-v2` | 22M param cross-encoder on CUDA |
+| `MAX_CHARS` | `db/embed.py` | 4,000 | Prompt text truncation before embedding |
+| `EMBED_MODEL` | `db/embed.py` | `nomic-embed-text` | 768-dim via Ollama, asymmetric prefixes |
+| HNSW params | `db/setup.py` | `m=16, ef_construction=64` | Index build params (good for <10K docs) |
+| `WEAK_MATCH_THRESHOLD` | `scripts/eval_report.py` | -3.0 | Rerank logit below which a chain step is flagged ⚠ WEAK |
+
+### 9.2) Layer-by-Layer Tuning Guide
+
+When eval results show a problem, the diagnostic table in `docs/schema.md` maps the symptom to a layer. This section describes how to tune each layer.
+
+**Data layer** (highest leverage, slowest to change)
+- Stage distribution is heavily skewed: execute 47%, reflect 0.9%. Chains can't form without reflect/clarify prompts.
+- `secondary_stages` at 0% — prompts can only appear in one stage. Populating this is the single biggest chain quality improvement.
+- `input_schema` / `output_schema` at 0% — without these, chain coherence scoring is impossible (can't verify step N feeds step N+1).
+- When adding prompts to the vault, add them where gaps are, not where you already have coverage.
+
+**Embedding layer** (medium leverage)
+- `MAX_CHARS=4000` — if a prompt's core intent is buried past 4000 chars, the embedding misses it. Inspect long prompts manually.
+- Asymmetric prefixes are critical: `search_document:` on all stored embeddings, `search_query:` on queries. Verify after any reembedding run.
+- To test: embed a query and a known-good prompt separately, compute cosine similarity manually. If it's low, the embedding isn't capturing the semantic relationship.
+
+**Indexing layer** (low leverage at current scale)
+- HNSW with m=16, ef_construction=64 gives near-perfect recall at 572 docs. Only revisit if corpus grows past ~10K.
+- Tune `ef_search` at query time (default is typically `ef_construction * 2`) if you need to trade latency for recall.
+
+**Retrieval layer** (medium leverage)
+- If the reranker consistently finds good results at positions 40-50 of the candidate list, increase `RETRIEVAL_CANDIDATES`.
+- `RRF_K=60` is the standard starting point. Lower K (e.g. 30) amplifies top-rank agreement; higher K (e.g. 120) flattens differences.
+- `DENSE_CANDIDATES` and `SPARSE_CANDIDATES` are balanced at 50 each. Increase sparse if keyword-heavy queries underperform.
+
+**Reranking layer** (high leverage, fast to iterate)
+- `MAX_DOC_CHARS=1200` is conservative — MiniLM-L-6 handles 512 tokens (~2000 chars). Can push to 1800 for longer prompts.
+- Scores are logits, not probabilities. Absolute values vary per query; only relative ordering within a query matters.
+- Upgrade path: `ms-marco-MiniLM-L-12-v2` has 2x parameters and measurably better ranking, still fast on a 3090.
+
+**Chain construction layer** (in eval_report.py)
+- The report generates all contiguous subsequences of populated stages plus unfiltered singles, ranked by mean rerank score.
+- `WEAK_MATCH_THRESHOLD=-3.0` flags poor fits but never drops them. Adjust if flags are too noisy or too rare.
+- Short chains naturally outscore long ones (fewer weak links to average). This is intentional — it surfaces the right granularity per query.
+
+### 9.3) Practical Eval Workflow
+
+```
+# 1. Run the eval (generates tests/artifacts/eval_<timestamp>.txt)
+python scripts/eval_report.py
+
+# 2. Run with a specific query to zoom in
+python scripts/eval_report.py --query "your specific query"
+
+# 3. Show more candidates per query
+python scripts/eval_report.py --top-k 8
+
+# 4. Run the regression suite to check for regressions after a change
+pytest tests/test_search.py -x -v
+```
+
+Iteration discipline:
+1. **One change at a time.** Never change retrieval constants AND reranker constants simultaneously — you won't know which helped.
+2. **Always re-run the full eval** after a change. Improvements on one query can regress another.
+3. **Use the golden set** in `tests/test_search.py` as the regression guard. If a change improves chains but breaks known-good single queries, the change is net-negative.
+4. **Track reports over time.** The timestamped filenames in `tests/artifacts/` are your changelog. Diff two reports to see exactly what moved.
+5. **Data fixes beat parameter tuning.** If 3 hours of threshold tweaking doesn't help, the issue is almost always missing or misclassified data.
+
 ## 10) Example End-To-End Run
 
 Input task:

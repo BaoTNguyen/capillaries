@@ -1,0 +1,484 @@
+PROMPT CHAIN EVALUATION REPORT
+Generated  : 2026-03-29 20:41
+Threshold  : rerank > -3.0  (weaker stages are dropped)
+Queries    : 10
+
+================================================================================
+TEST 1/10
+REQUEST: write a product requirements document for a new feature
+
+PRIMARY: 2-STEP CHAIN  (PLAN → EXECUTE)
+
+────────────────────────────────────────────────────────────
+Step 1  [PLAN]  —  PRD (Product Requirements Document)
+Score: rerank=2.43  rrf=0.0164  domain=['product', 'business']  complexity=3
+
+PROMPT TEXT:
+    You are writing a PRD that bridges what we're building (product/business) with how we'll build it (engineering).
+
+    CONTEXT:
+    Feature/Product name: [NAME]
+    Product owner: [WHO OWNS THIS]
+    Target release: [WHEN THIS SHIPS]
+    User problem being solved: [THE CORE PROBLEM]
+
+    INPUT PROVIDED:
+    [PASTE YOUR USER RESEARCH, TECHNICAL CONSTRAINTS, BUSINESS REQUIREMENTS, DESIGN MOCKS HERE]
+
+    YOUR TASK:
+    Create a PRD that gives engineering everything they need to build this without constant back-and-forth. This document will be referenced during implementation, so precision matters more than polish.
+
+    [... truncated]
+
+────────────────────────────────────────────────────────────
+Step 2  [EXECUTE]  —  Product Manager - PRD (Product Requirements Document)
+Score: rerank=6.31  rrf=0.0315  domain=['product', 'business']  complexity=3
+
+PROMPT TEXT:
+    I'm a product manager writing a PRD for a new feature or product. Audience is engineering, design, and leadership.
+
+    Problem Statement:
+    [What user problem are we solving, why does it matter]
+
+    Success Metrics:
+    [How we'll measure if this worked]
+
+    User Stories:
+    [Key use cases and user flows]
+
+    Requirements:
+    [Must-haves, should-haves, nice-to-haves]
+
+    Technical Considerations:
+    [Known constraints, dependencies, integrations]
+
+    Open Questions:
+    [What we still need to figure out]
+
+    Timeline & Scope:
+    [Launch target, phasing if applicable]
+
+    [... truncated]
+
+
+ALTERNATIVE: 2-STEP CHAIN  (PLAN → EXECUTE)
+
+────────────────────────────────────────────────────────────
+Step 1  [PLAN]  —  Sunset vs. Invest Decision
+Score: rerank=-2.49  rrf=0.0275  domain=['product', 'business']  complexity=3
+
+PROMPT TEXT:
+    Feature/product: [NAME]
+    - Built: [YEAR]
+    - Current usage: [%] of customers / [ABSOLUTE NUMBER] users
+    - Revenue impact: [GENERATES $X / COSTS $Y / NEUTRAL]
+    - Current state: [technical condition, maintenance burden]
+
+    Required action: [WHAT NEEDS TO HAPPEN AND WHY - security update, infrastructure
+    migration, compliance requirement, performance fix]
+    - Effort required: [TIME/COST]
+    [... truncated]
+
+────────────────────────────────────────────────────────────
+Step 2  [EXECUTE]  —  PRODUCT LAUNCH PRESENTATION
+Score: rerank=3.20  rrf=0.0149  domain=['business']  complexity=4
+
+PROMPT TEXT:
+    SYSTEM PROMPT: PRODUCT LAUNCH PRESENTATION
+
+    PREREQUISITES:
+    Corporate Style Guide JSON (from Corporate Style Extractor)
+
+    WORKFLOW:
+    Use html2pptx with Corporate Style Applicator enforcement
+
+    OBJECTIVE:
+    Build comprehensive go-to-market launch presentation that coordinates internal teams and external stakeholders around new product/feature release with clear success metrics and execution plan.
+
+    [... truncated]
+
+STAGES WITH NO STRONG MATCH: clarify, verify, reflect
+
+================================================================================
+TEST 2/10
+REQUEST: analyze profit and loss metrics for a business unit
+
+RESULT: No prompts met the relevance threshold.
+        Try a more specific query or lower --threshold.
+
+================================================================================
+TEST 3/10
+REQUEST: prioritize our technical debt and create a remediation roadmap
+FILTERS: {'domain': ['technical']}
+
+PRIMARY: SINGLE PROMPT  (PLAN)
+
+────────────────────────────────────────────────────────────
+Prompt  [PLAN]  —  Engineering - Technical Debt Assessment & Prioritization
+Score: rerank=4.90  rrf=0.0320  domain=['technical', 'business']  complexity=3
+
+PROMPT TEXT:
+    You are a senior engineering manager conducting a quarterly technical debt review.
+
+    ### TASK
+    Analyze the codebase issues below and create a prioritized technical debt remediation plan.
+
+    ### INPUT: TECHNICAL DEBT INVENTORY
+    """
+    [ENGINEER PASTES: GitHub issues tagged "tech-debt", architecture concerns,
+    performance bottlenecks, security findings, testing gaps]
+    """
+
+    ### TEAM CONTEXT
+    Team Size: [Number]
+    Sprint Capacity: [Story points per sprint]
+    Upcoming Major Features: [List]
+    System Criticality: [Customer-facing/Internal/Infrastructure]
+
+    ### REQUIRED OUTPUT FORMAT
+
+    [... truncated]
+
+STAGES WITH NO STRONG MATCH: clarify, execute, verify, reflect
+
+================================================================================
+TEST 4/10
+REQUEST: build a sales strategy document for a new market segment
+FILTERS: {'domain': ['business', 'strategy']}
+
+PRIMARY: 2-STEP CHAIN  (EXECUTE → VERIFY)
+
+────────────────────────────────────────────────────────────
+Step 1  [EXECUTE]  —  Head of Sales - Sales Strategy Document
+Score: rerank=3.86  rrf=0.0320  domain=['business', 'strategy']  complexity=3
+
+PROMPT TEXT:
+    I'm a Head of Sales writing a strategy document for the sales organization. Audience is sales team and executive leadership.
+
+    Current State:
+    [Performance metrics, what's working, what's not]
+
+    Market Context:
+    [Customer landscape, competitive dynamics, opportunities]
+
+    Strategic Priorities:
+    [Where we're focusing - segments, verticals, deal sizes, etc.]
+
+    Go-to-Market Approach:
+    [Sales motion, pricing strategy, packaging]
+
+    Team Structure & Capacity:
+    [Territories, specialization, hiring plan, quotas]
+
+    Enablement & Tools:
+    [What the team needs to execute - training, collateral, systems]
+
+    [... truncated]
+
+────────────────────────────────────────────────────────────
+Step 2  [VERIFY]  —  GTM & Launch Plan Review – Stress-Test the Plan
+Score: rerank=0.10  rrf=0.0309  domain=['business', 'strategy']  complexity=3
+
+PROMPT TEXT:
+    You are my 2-hour GTM strategist.
+
+    I will give you a go-to-market plan, launch plan, or marketing strategy document.
+
+    Your job is to:
+    - understand what we're trying to do and for whom,
+    - stress-test whether the plan will actually work,
+    - and suggest concrete improvements.
+
+    PHASE 1 – PLAN SUMMARY
+    - What's being launched: product, feature, campaign, or initiative?
+    - Target customer: who exactly is this for? (segment, persona, company type)
+    - Goal: what does success look like? (metric, timeline)
+    - Core message: what's the main value prop or hook?
+    [... truncated]
+
+
+ALTERNATIVE: SINGLE PROMPT  (EXECUTE)
+
+────────────────────────────────────────────────────────────
+Prompt  [EXECUTE]  —  PRODUCT LAUNCH PRESENTATION
+Score: rerank=2.46  rrf=0.0159  domain=['business']  complexity=4
+
+PROMPT TEXT:
+    SYSTEM PROMPT: PRODUCT LAUNCH PRESENTATION
+
+    PREREQUISITES:
+    Corporate Style Guide JSON (from Corporate Style Extractor)
+
+    WORKFLOW:
+    Use html2pptx with Corporate Style Applicator enforcement
+
+    OBJECTIVE:
+    Build comprehensive go-to-market launch presentation that coordinates internal teams and external stakeholders around new product/feature release with clear success metrics and execution plan.
+
+    [... truncated]
+
+STAGES WITH NO STRONG MATCH: clarify, plan, reflect
+
+================================================================================
+TEST 5/10
+REQUEST: evaluate AI vendors and select one for our product
+FILTERS: {'domain': ['AI', 'business']}
+
+PRIMARY: 3-STEP CHAIN  (CLARIFY → EXECUTE → VERIFY)
+
+────────────────────────────────────────────────────────────
+Step 1  [CLARIFY]  —  AI Tool Evaluation Prompt
+Score: rerank=-2.32  rrf=0.0264  domain=['AI', 'business']  complexity=3
+
+PROMPT TEXT:
+    AI Tool Evaluation Advisor
+    You are a rigorous AI tool evaluation advisor. Your job is to help the user decide whether an AI tool is worth buying by walking them through three critical questions in a conversational, Socratic style. Most AI tools waste money because buyers skip hard questions upfront. Your role is to force specificity and challenge vague thinking.
+    Your conversational approach:
+    [... truncated]
+
+────────────────────────────────────────────────────────────
+Step 2  [EXECUTE]  —  Vendor Evaluation for Purchase Decision
+Score: rerank=0.21  rrf=0.0156  domain=['business', 'product']  complexity=3
+
+PROMPT TEXT:
+    JOB: Evaluate [VENDOR/PRODUCT NAME] for our specific use case: [DESCRIBE YOUR SITUATION, TEAM SIZE, REQUIREMENTS, AND CONSTRAINTS].
+
+    INPUTS:
+    - Official product documentation and feature specifications
+    - Official pricing page and any available pricing calculators
+    - G2, Capterra, TrustRadius reviews (filter for companies similar to ours)
+    - Reddit threads and community discussions
+    - Case studies or customer stories (note these are marketing materials)
+    - Integration documentation for [LIST YOUR KEY TOOLS]
+    - Security/compliance documentation if relevant
+
+    OUTPUT: A structured evaluation document:
+
+    [... truncated]
+
+────────────────────────────────────────────────────────────
+Step 3  [VERIFY]  —  AI vendor and model evaluation
+Score: rerank=4.00  rrf=0.0283  domain=['AI', 'business']  complexity=3
+
+PROMPT TEXT:
+    You are my advisor for evaluating an AI vendor or model from an accessibility perspective. I need to make an informed procurement decision.
+
+    You'll need to gather context about:
+    - The vendor or model I'm evaluating
+    - How I plan to use it in my product
+    - Integration scope (user-facing, internal tooling, infrastructure)
+    - My regulatory context (Section 508, ADA, EAA, specific WCAG level)
+    - My user population, including known disabled user groups
+    - My existing accessibility commitments to users or regulators
+
+    EVALUATION FRAMEWORK:
+
+    Once you have context, assess:
+
+    1. DOCUMENTATION & TRANSPARENCY
+    [... truncated]
+
+
+ALTERNATIVE: 2-STEP CHAIN  (EXECUTE → VERIFY)
+
+────────────────────────────────────────────────────────────
+Step 1  [EXECUTE]  —  Image Gen Vendor Build vs. Buy Evaluation Matrix
+Score: rerank=-2.77  rrf=0.0164  domain=['business', 'technical']  complexity=4
+
+PROMPT TEXT:
+    You are a technology strategy + procurement visualization designer.
+
+    TASK
+    Help the user create a "Vendor Evaluation Matrix" or "Build vs. Buy Analysis"—a single 16:9 image showing options scored across weighted criteria with a clear recommendation.
+
+    BEFORE CREATING ANYTHING, gather the following:
+
+    GROUP 1 — CONTEXT
+    - What capability or solution are you evaluating?
+    [... truncated]
+
+────────────────────────────────────────────────────────────
+Step 2  [VERIFY]  —  The Vendor Claim and Market Report Reality Check (News)
+Score: rerank=0.62  rrf=0.0251  domain=['AI', 'business']  complexity=2
+
+PROMPT TEXT:
+    You are my skeptical analyst for enterprise AI claims, market research, and vendor marketing. You've seen hundreds of hype cycles and know the patterns of how technologies get oversold, undersold, and eventually adopted.
+
+    [... truncated]
+
+STAGES WITH NO STRONG MATCH: plan, reflect
+
+================================================================================
+TEST 6/10
+REQUEST: decide whether to build or buy a new data pipeline, document the decision, then stress-test it
+FILTERS: {'domain': ['technical', 'business']}
+
+RESULT: No prompts met the relevance threshold.
+        Try a more specific query or lower --threshold.
+
+================================================================================
+TEST 7/10
+REQUEST: raise a Series A: model the financials, build the pitch, then pressure-test the narrative
+FILTERS: {'domain': ['finance', 'business']}
+
+RESULT: No prompts met the relevance threshold.
+        Try a more specific query or lower --threshold.
+
+================================================================================
+TEST 8/10
+REQUEST: launch a new product feature from requirements through to launch readiness
+FILTERS: {'domain': ['product', 'business']}
+
+PRIMARY: SINGLE PROMPT  (EXECUTE)
+
+────────────────────────────────────────────────────────────
+Prompt  [EXECUTE]  —  PRODUCT LAUNCH PRESENTATION
+Score: rerank=3.97  rrf=0.0164  domain=['business']  complexity=4
+
+PROMPT TEXT:
+    SYSTEM PROMPT: PRODUCT LAUNCH PRESENTATION
+
+    PREREQUISITES:
+    Corporate Style Guide JSON (from Corporate Style Extractor)
+
+    WORKFLOW:
+    Use html2pptx with Corporate Style Applicator enforcement
+
+    OBJECTIVE:
+    Build comprehensive go-to-market launch presentation that coordinates internal teams and external stakeholders around new product/feature release with clear success metrics and execution plan.
+
+    INPUT REQUIREMENTS:
+    • Product specifications with [Features, User experience, Technical requirements, Performance benchmarks]
+    [... truncated]
+
+
+ALTERNATIVE: SINGLE PROMPT  (EXECUTE)
+
+────────────────────────────────────────────────────────────
+Prompt  [EXECUTE]  —  Product Manager - PRD (Product Requirements Document)
+Score: rerank=0.87  rrf=0.0283  domain=['product', 'business']  complexity=3
+
+PROMPT TEXT:
+    I'm a product manager writing a PRD for a new feature or product. Audience is engineering, design, and leadership.
+
+    Problem Statement:
+    [What user problem are we solving, why does it matter]
+
+    Success Metrics:
+    [How we'll measure if this worked]
+
+    User Stories:
+    [Key use cases and user flows]
+
+    Requirements:
+    [Must-haves, should-haves, nice-to-haves]
+
+    Technical Considerations:
+    [... truncated]
+
+STAGES WITH NO STRONG MATCH: clarify, plan, verify, reflect
+
+================================================================================
+TEST 9/10
+REQUEST: audit our engineering team bottlenecks, plan fixes, implement changes, then verify impact
+FILTERS: {'domain': ['technical', 'business']}
+
+PRIMARY: SINGLE PROMPT  (PLAN)
+
+────────────────────────────────────────────────────────────
+Prompt  [PLAN]  —  Engineering - Technical Debt Assessment & Prioritization
+Score: rerank=-1.90  rrf=0.0295  domain=['technical', 'business']  complexity=3
+
+PROMPT TEXT:
+    You are a senior engineering manager conducting a quarterly technical debt review.
+
+    ### TASK
+    Analyze the codebase issues below and create a prioritized technical debt remediation plan.
+
+    ### INPUT: TECHNICAL DEBT INVENTORY
+    """
+    [ENGINEER PASTES: GitHub issues tagged "tech-debt", architecture concerns,
+    performance bottlenecks, security findings, testing gaps]
+    """
+
+    ### TEAM CONTEXT
+    Team Size: [Number]
+    Sprint Capacity: [Story points per sprint]
+    Upcoming Major Features: [List]
+    System Criticality: [Customer-facing/Internal/Infrastructure]
+
+    ### REQUIRED OUTPUT FORMAT
+
+    [... truncated]
+
+STAGES WITH NO STRONG MATCH: clarify, execute, verify, reflect
+
+================================================================================
+TEST 10/10
+REQUEST: define our company AI strategy: assess readiness, plan adoption, execute rollout, validate results
+FILTERS: {'domain': ['AI', 'business', 'strategy']}
+
+PRIMARY: 2-STEP CHAIN  (CLARIFY → PLAN)
+
+────────────────────────────────────────────────────────────
+Step 1  [CLARIFY]  —  Quick Version - 2026 Readiness Check
+Score: rerank=-0.96  rrf=0.0320  domain=['AI', 'business']  complexity=2
+
+PROMPT TEXT:
+    Rapid, honest assessment of my 2026 AI readiness based on three shifts: review topology inverts, work becomes testable, chasm opens between instrumented and vibes-based orgs.
+
+    MY CONTEXT:
+
+    Role: [your role]
+
+    Organization type: [industry, size, speed of adoption]
+
+    Current AI usage: [how you use AI now]
+
+    Biggest worry about 2026: [one sentence]
+
+    RULES:
+
+    - If any field is blank or vague, ask ONE clarifying question before answering.
+    - Give exactly ONE specific example from my context for each answer.
+    - Your job is not to be nice. Your job is to be accurate.
+    - Max 120 words total.
+
+    GIVE ME:
+
+    [... truncated]
+
+────────────────────────────────────────────────────────────
+Step 2  [PLAN]  —  Build an Ambient AI Review System People Actually Love
+Score: rerank=-1.29  rrf=0.0122  domain=['AI', 'business']  complexity=4
+
+PROMPT TEXT:
+    You are my implementation strategist.
+
+    BACKGROUND (read this—it's why the approach works):
+    I want to replicate an adoption pattern from OpenAI's Codex team:
+    - AI code review is "ambient" and "mandatory"—every PR gets reviewed automatically
+    - It works because they optimized for HIT-RATE, not coverage
+    - If reviews are noisy, people mute them and adoption dies
+    - The insight: don't ask people to use AI; make it present by default—but only if precision stays high enough that alerts feel valuable
+
+    GOAL: Design a rollout plan that creates a "safety net" feeling without spam.
+
+    [... truncated]
+
+
+ALTERNATIVE: SINGLE PROMPT  (PLAN)
+
+────────────────────────────────────────────────────────────
+Prompt  [PLAN]  —  Synthesis Prompt - Overall Exponential Readiness (Future Exponentials)
+Score: rerank=-1.99  rrf=0.0260  domain=['AI', 'career']  complexity=4
+
+PROMPT TEXT:
+    Your user has just conducted a five-part assessment measuring their readiness for exponential AI capability growth. Your task is to synthesize their results into an overall strategic positioning, give them an honest capability assessment, and to discover resources that would help them to skill up in these crucial areas of AI fluency.
+
+    You evaluated them on:
+    [... truncated]
+
+STAGES WITH NO STRONG MATCH: execute, verify, reflect
+
+================================================================================

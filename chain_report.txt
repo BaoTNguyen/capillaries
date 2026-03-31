@@ -1,0 +1,61 @@
+================================================================================
+MULTI-STAGE CHAIN EVALUATION REPORT
+Generated  : 2026-03-29 19:22
+Top picks  : 2 per stage
+Threshold  : rerank > -3.0 (stages below this are dropped)
+Queries    : 5
+
+================================================================================
+
+QUERY 1/5: take a SaaS product idea from concept to investor-ready financials
+
+  Chain: execute
+
+  [EXECUTE ]  SaaS Financial Model (Investor-Ready)
+              rerank=-1.22  rrf=0.0145
+
+    Context: You need a specialized financial model for a SaaS business with all the metrics and details investors expect—MRR buildup, bookings vs. revenue, cohort analysis, and SaaS-specific KPIs.
+
+    Prompt Chain:
+
+    Step 1 - MRR Buildup and Bookings Model:
+
+    [... truncated]
+
+              alt: [-4.71] Image Gen Founder — Pitch Deck Diagram
+
+  Dropped stages: clarify (best score -11.12 below threshold) | plan (best score -9.43 below threshold) | verify (best score -6.50 below threshold) | reflect (best score -11.46 below threshold)
+
+================================================================================
+
+QUERY 2/5: audit our AI vendor selection process and produce a recommendation
+
+  No stages met the score threshold — try a more specific query.
+================================================================================
+
+QUERY 3/5: build and stress-test a pricing strategy from scratch
+
+  No stages met the score threshold — try a more specific query.
+================================================================================
+
+QUERY 4/5: help a new employee ramp up and become productive quickly
+
+  No stages met the score threshold — try a more specific query.
+================================================================================
+
+QUERY 5/5: identify and fix the biggest bottlenecks in our engineering team
+
+  Chain: clarify
+
+  [CLARIFY ]  The Geopolitical Development Evaluator (News)
+              rerank=-2.62  rrf=0.0248
+
+    You are my geopolitical analyst specializing in technology supply chains, semiconductor manufacturing, and great power competition dynamics.
+
+    [... truncated]
+
+              alt: [-3.50] Architecture Ceiling Test
+
+  Dropped stages: plan (best score -3.16 below threshold) | execute (best score -9.20 below threshold) | verify (best score -9.97 below threshold) | reflect (best score -11.41 below threshold)
+
+================================================================================

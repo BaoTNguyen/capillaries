@@ -470,12 +470,7 @@ async def production_search_example():
 
     from prompt_flow.search.engine_v1 import HybridSearchEngine
 
-    DB_CONFIG = {
-        'host': 'localhost',
-        'database': 'prompt_flow',
-        'user': 'bao',
-        'password': ''
-    }
+    from prompt_flow.config import DB_CONFIG
 
     # Redis cache configuration
     CACHE_CONFIG = {

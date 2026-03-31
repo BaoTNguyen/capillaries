@@ -540,12 +540,7 @@ class HybridSearchEngine:
 async def main():
     """Example of how to use the custom search engine"""
 
-    DB_CONFIG = {
-        'host': 'localhost',
-        'database': 'prompt_flow',
-        'user': 'bao',
-        'password': ''
-    }
+    from prompt_flow.config import DB_CONFIG
 
     # Initialize search engine
     search_engine = HybridSearchEngine(DB_CONFIG)

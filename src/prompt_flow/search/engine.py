@@ -553,12 +553,7 @@ class PromptGraphAnalyzer:
 async def example_custom_search():
     """Example of using the updated custom search engine"""
 
-    DB_CONFIG = {
-        'host': 'localhost',
-        'database': 'prompt_flow',
-        'user': 'bao',
-        'password': ''
-    }
+    from prompt_flow.config import DB_CONFIG
 
     # Test different vector strategies
     strategies = ['multi_index', 'annoy', 'hybrid']
