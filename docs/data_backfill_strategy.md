@@ -328,7 +328,6 @@ Phase 1 backfill is **complete**. All 572 prompts classified via Ollama `qwen3.5
 | `input_schema` | 0% | Can't verify chain coherence (does step N output feed step N+1 input?) | **P1** |
 | `output_schema` | 0% | Same as input_schema — both needed together | **P1** |
 | `accomplishes` | 0% | Reduces semantic precision for chain scoring | P2 |
-| `accepts_prior_output` | 3.8% | Can't detect which prompts continue prior output | P2 |
 
 ### How to measure backfill impact on retrieval
 

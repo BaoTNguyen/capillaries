@@ -26,43 +26,17 @@ complexity:     1 | 2 | 3 | 4 | 5
                   4 = expert role + multi-phase output + substantial input data required
                   5 = multi-phase workflow or embedded step chains, comprehensive artifact output
 
-accepts_prior_output:  true | false
-                  true = prompt explicitly or implicitly expects a previous LLM output
-                         as its main input
-                  signals: "[PASTE PRIOR OUTPUT]", "You previously wrote",
-                           "Given the above", "Based on your analysis",
-                           "Now attack your previous answer", "your prior response"
-
-has_template_vars:  true | false
-                  true = prompt contains user-fillable ALL-CAPS bracket placeholders
-                  signals: [COMPANY], [YOUR X], [LIST], [NUMBER], [DESCRIBE], [ENTER],
-                           [AMOUNT], [PRODUCT]
-                  NOT: structural/example brackets like [1], [see above], [optional]
-                  Note: ~32% of the library uses this pattern
-
-is_chain_prompt:  true | false
-                  true = prompt internally embeds multiple numbered steps or phases
-                         to be run sequentially as a single artifact
-                  signals: "Step 1", "Step 2", "Phase 1", "Phase 2", "Prompt Chain:" header
-                  Note: treat these as atomic — do not chain them with other prompts
 ```
 
 ---
 
-## How these fields drive chain construction
+## How these fields drive search and retrieval
 
 | Field | Role |
 |---|---|
 | `intent` + `task_type` + `domain` | Layer 1 retrieval — narrows the candidate pool |
-| `primary_stage` | Sequencing — orders prompts in a chain (clarify → plan → execute → verify → reflect) |
-| `accepts_prior_output` | Primary chain compatibility signal — step N+1 must have this true |
-| `is_chain_prompt` | Routing — return as single prompt, never combine with others |
-| `has_template_vars` | Output packaging — flag prompts that require user input before running |
-| `complexity` | Chain length hint — avoid chaining two complexity-5 prompts |
-
-Note: `input_schema` / `output_schema` are **not classified** — free text dominates the library
-and `accepts_prior_output` captures the only distinction that matters for chain construction.
-The compatibility matrix is also deferred — greedy stage-ordered assembly is sufficient for v1.
+| `primary_stage` | Sequencing — orders prompts by workflow phase (clarify → plan → execute → verify → reflect) |
+| `complexity` | Difficulty signal — helps match prompt sophistication to task requirements |
 
 ---
 
@@ -78,7 +52,7 @@ Each object in the array must correspond to one prompt, in the same order given.
 RULES:
 - intent and task_type: arrays of 1–3 values each
 - domain: array of 1–2 values
-- primary_stage, complexity, accepts_prior_output, has_template_vars, is_chain_prompt: single values
+- primary_stage, complexity: single values
 - confidence: per-field dict with scores 0.0–1.0 reflecting how clearly the prompt signals each field
 - If a field is ambiguous, pick the closest match and lower its confidence score
 ```
@@ -102,17 +76,6 @@ COMPLEXITY SCALE:
 4 = Expert role + multi-phase output + substantial input data required
 5 = Multi-phase workflow or embedded step chains, comprehensive artifact output
 
-accepts_prior_output: true if the prompt explicitly or implicitly expects a previous LLM output as its main input
-  (signals: "[PASTE PRIOR OUTPUT]", "You previously wrote", "Given the above", "Based on your analysis",
-   "Now attack your previous answer", "your previous answer", "prior response")
-
-has_template_vars: true if the prompt contains user-fillable ALL-CAPS bracket placeholders
-  (signals: [COMPANY], [YOUR X], [LIST], [NUMBER], [DESCRIBE], [ENTER], [AMOUNT], [PRODUCT]
-   NOT: structural/example brackets like [1], [see above], [optional])
-
-is_chain_prompt: true if the prompt internally embeds multiple numbered steps or phases to be run sequentially
-  (signals: "Step 1", "Step 2", "Phase 1", "Phase 2", "Prompt Chain:" header, explicit multi-step structure)
-
 ---
 
 EXAMPLES:
@@ -126,9 +89,6 @@ Output:
   "domain": ["AI"],
   "primary_stage": "verify",
   "complexity": 2,
-  "accepts_prior_output": true,
-  "has_template_vars": true,
-  "is_chain_prompt": false,
   "confidence": {"intent": 0.92, "task_type": 0.95, "domain": 0.70, "primary_stage": 0.90, "complexity": 0.88}
 }
 
@@ -141,9 +101,6 @@ Output:
   "domain": ["business", "strategy"],
   "primary_stage": "execute",
   "complexity": 3,
-  "accepts_prior_output": false,
-  "has_template_vars": true,
-  "is_chain_prompt": false,
   "confidence": {"intent": 0.90, "task_type": 0.88, "domain": 0.95, "primary_stage": 0.85, "complexity": 0.85}
 }
 
@@ -156,9 +113,6 @@ Output:
   "domain": ["finance", "business"],
   "primary_stage": "execute",
   "complexity": 5,
-  "accepts_prior_output": false,
-  "has_template_vars": false,
-  "is_chain_prompt": true,
   "confidence": {"intent": 0.88, "task_type": 0.90, "domain": 0.95, "primary_stage": 0.85, "complexity": 0.92}
 }
 
@@ -217,6 +171,3 @@ for result in classifications:
 
 - **Image Gen prompts**: `primary_stage = execute`, `domain = ["AI"]` or relevant subject domain
 - **Meta-prompts** (~9 in library): `domain = ["AI"]`, note in `notes` field
-- **Embedded chain prompts** (~present in library): `is_chain_prompt = true`, `complexity = 5` — return as atomic single-prompt results, never combine with other prompts in a chain
-- **`accepts_prior_output`** is the primary chain compatibility signal — a chain step N+1 must have this true, or the chain breaks (user would need to manually copy output between steps)
-- **`has_template_vars`** is for output packaging only, not retrieval — the vector DB handles semantic matching regardless of whether a prompt has fillable slots

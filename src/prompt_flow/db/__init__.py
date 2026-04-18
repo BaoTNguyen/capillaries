@@ -1,1 +1,1 @@
-"""Database setup and Obsidian sync utilities."""
+"""Database schema creation and metadata analysis."""

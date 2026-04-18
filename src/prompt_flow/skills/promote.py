@@ -154,6 +154,174 @@ class SkillPromoter:
                     )
                 return [dict(r) for r in cur.fetchall()]
 
+    def create(
+        self,
+        name: str,
+        routing_description: str,
+        steps: list[dict] | None = None,
+        slug: str | None = None,
+        domain: list[str] | None = None,
+        intent: list[str] | None = None,
+        task_type: list[str] | None = None,
+        complexity_level: int | None = None,
+        input_contract: dict | None = None,
+        output_contract: dict | None = None,
+        created_by: str = "manual",
+    ) -> PromotedSkill:
+        """
+        Create a skill from scratch without a Chain object.
+
+        Steps are plain dicts: {prompt_id, stage, step_order, rationale}.
+        pinned_hash is fetched automatically for any prompt_id that exists
+        in public.prompts; left null for custom/external prompt references.
+
+        Args:
+            name:                Human-readable skill name.
+            routing_description: One-line description used for routing/recall.
+            steps:               Ordered list of step dicts. Empty skill if omitted.
+            slug:                Auto-derived from name if omitted.
+            domain/intent/task_type: Taxonomy arrays. Auto-derived from steps if omitted.
+            complexity_level:    1-5. Auto-derived (max of steps) if omitted.
+        """
+        slug = slug or _slugify(name)
+
+        steps = steps or []
+        steps_json, auto_taxonomy, auto_complexity = self._build_steps_from_dicts(steps)
+
+        with psycopg2.connect(**self._db_config) as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                version = self._next_version(cur, slug)
+                cur.execute(
+                    """
+                    INSERT INTO skills.skills (
+                        skill_id, name, slug, routing_description,
+                        steps, input_contract, output_contract,
+                        domain, intent, task_type, complexity_level,
+                        version, status, created_by
+                    ) VALUES (
+                        %s, %s, %s, %s,
+                        %s, %s, %s,
+                        %s, %s, %s, %s,
+                        %s, 'draft', %s
+                    )
+                    RETURNING skill_id, slug, version, status
+                    """,
+                    (
+                        str(uuid.uuid4()), name, slug, routing_description,
+                        json.dumps(steps_json),
+                        json.dumps(input_contract or {}),
+                        json.dumps(output_contract or {}),
+                        domain or auto_taxonomy["domain"],
+                        intent or auto_taxonomy["intent"],
+                        task_type or auto_taxonomy["task_type"],
+                        complexity_level or auto_complexity,
+                        version, created_by,
+                    ),
+                )
+                row = cur.fetchone()
+
+        return PromotedSkill(
+            skill_id=str(row["skill_id"]),
+            name=name,
+            slug=row["slug"],
+            version=row["version"],
+            status=row["status"],
+        )
+
+    def get(self, slug_or_id: str) -> dict | None:
+        """
+        Fetch a skill's full record by slug (latest version) or skill_id.
+        Returns None if not found.
+        """
+        import re as _re
+        _uuid_pattern = _re.compile(
+            r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", _re.I
+        )
+        is_uuid = bool(_uuid_pattern.match(slug_or_id))
+
+        with psycopg2.connect(**self._db_config) as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                if is_uuid:
+                    cur.execute(
+                        "SELECT * FROM skills.skills WHERE skill_id = %s",
+                        (slug_or_id,),
+                    )
+                else:
+                    cur.execute(
+                        "SELECT * FROM skills.skills WHERE slug = %s "
+                        "ORDER BY version DESC LIMIT 1",
+                        (slug_or_id,),
+                    )
+                row = cur.fetchone()
+                return dict(row) if row else None
+
+    def update_metadata(
+        self,
+        slug_or_id: str,
+        name: str | None = None,
+        routing_description: str | None = None,
+        domain: list[str] | None = None,
+        intent: list[str] | None = None,
+        task_type: list[str] | None = None,
+        complexity_level: int | None = None,
+        changelog: str | None = None,
+    ) -> None:
+        """
+        Update a skill's metadata fields in place.
+        Only provided (non-None) fields are changed.
+        """
+        updates: list[str] = []
+        params: list[Any] = []
+
+        for field_name, value in [
+            ("name", name),
+            ("routing_description", routing_description),
+            ("domain", domain),
+            ("intent", intent),
+            ("task_type", task_type),
+            ("complexity_level", complexity_level),
+            ("changelog", changelog),
+        ]:
+            if value is not None:
+                updates.append(f"{field_name} = %s")
+                params.append(value)
+
+        if not updates:
+            return
+
+        # Resolve to skill_id
+        skill = self.get(slug_or_id)
+        if not skill:
+            raise ValueError(f"Skill not found: {slug_or_id}")
+
+        params.append(str(skill["skill_id"]))
+        with psycopg2.connect(**self._db_config) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"UPDATE skills.skills SET {', '.join(updates)} WHERE skill_id = %s",
+                    params,
+                )
+
+    def set_steps(self, slug_or_id: str, steps: list[dict]) -> None:
+        """
+        Replace all steps for a skill.
+
+        Each step dict: {prompt_id, stage, step_order, rationale (optional)}.
+        pinned_hash is fetched automatically from public.prompts.
+        Step order is re-assigned from the list position if step_order is omitted.
+        """
+        steps_json, _, _ = self._build_steps_from_dicts(steps)
+        skill = self.get(slug_or_id)
+        if not skill:
+            raise ValueError(f"Skill not found: {slug_or_id}")
+
+        with psycopg2.connect(**self._db_config) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE skills.skills SET steps = %s WHERE skill_id = %s",
+                    (json.dumps(steps_json), str(skill["skill_id"])),
+                )
+
     def activate(self, skill_id: str) -> None:
         """Promote a draft skill to active."""
         self._set_status(skill_id, "active")
@@ -163,6 +331,37 @@ class SkillPromoter:
         self._set_status(skill_id, "deprecated")
 
     # ── Internals ─────────────────────────────────────────────────────────
+
+    def _build_steps_from_dicts(
+        self, steps: list[dict]
+    ) -> tuple[list[dict], dict, int | None]:
+        """
+        Build the JSONB steps list from plain dicts and derive taxonomy.
+        Fetches pinned_hash from DB for any prompt_id that exists there.
+        """
+        prompt_ids = [s["prompt_id"] for s in steps if "prompt_id" in s]
+        hashes = self._fetch_content_hashes(prompt_ids)
+
+        steps_json: list[dict] = []
+        domains: set[str] = set()
+        intents: set[str] = set()
+        task_types: set[str] = set()
+        complexities: list[int] = []
+
+        for i, step in enumerate(steps, 1):
+            pid = step.get("prompt_id", "")
+            steps_json.append({
+                "prompt_id":   pid,
+                "stage":       step.get("stage", "execute"),
+                "step_order":  step.get("step_order", i),
+                "rationale":   step.get("rationale"),
+                "pinned_hash": hashes.get(pid),
+            })
+
+        taxonomy = {"domain": sorted(domains), "intent": sorted(intents),
+                    "task_type": sorted(task_types)}
+        complexity = max(complexities) if complexities else None
+        return steps_json, taxonomy, complexity
 
     def _build_steps(self, chain: Any) -> tuple[list[dict], dict, int | None]:
         """
@@ -217,10 +416,13 @@ class SkillPromoter:
     def _next_version(self, cur, slug: str) -> int:
         """Return 1 for a new slug, or max(version)+1 for an existing one."""
         cur.execute(
-            "SELECT COALESCE(MAX(version), 0) FROM skills.skills WHERE slug = %s",
+            "SELECT COALESCE(MAX(version), 0) AS v FROM skills.skills WHERE slug = %s",
             (slug,),
         )
-        return cur.fetchone()[0] + 1
+        row = cur.fetchone()
+        # Works with both regular cursor (tuple) and RealDictCursor (dict)
+        val = row["v"] if isinstance(row, dict) else row[0]
+        return val + 1
 
     def _set_status(self, skill_id: str, status: str) -> None:
         with psycopg2.connect(**self._db_config) as conn:

@@ -18,7 +18,7 @@ OLLAMA_URL  = "http://localhost:11434/api/chat"
 OLLAMA_MODEL = "qwen3.5:latest"
 BATCH_SIZE  = 1   # one at a time for reliability with local model
 MAX_RETRIES = 2
-CONFIDENCE_THRESHOLD = 0.75
+CONFIDENCE_THRESHOLD = 0.80
 
 # ---------------------------------------------------------------------------
 # Taxonomy
@@ -53,7 +53,7 @@ Each object in the array must correspond to one prompt, in the same order given.
 RULES:
 - intent and task_type: arrays of 1–3 values each
 - domain: array of 1–2 values
-- primary_stage, complexity, accepts_prior_output, has_template_vars, is_chain_prompt: single values
+- primary_stage, complexity: single values
 - confidence: per-field dict with scores 0.0–1.0 reflecting how clearly the prompt signals each field
 - If a field is ambiguous, pick the closest match and lower its confidence score"""
 
@@ -72,17 +72,6 @@ COMPLEXITY SCALE:
 4 = Expert role + multi-phase output + substantial input data required
 5 = Multi-phase workflow or embedded step chains, comprehensive artifact output
 
-accepts_prior_output: true if the prompt explicitly or implicitly expects a previous LLM output as its main input
-  (signals: "[PASTE PRIOR OUTPUT]", "You previously wrote", "Given the above", "Based on your analysis",
-   "Now attack your previous answer", "your previous answer", "prior response")
-
-has_template_vars: true if the prompt contains user-fillable ALL-CAPS bracket placeholders
-  (signals: [COMPANY], [YOUR X], [LIST], [NUMBER], [DESCRIBE], [ENTER], [AMOUNT], [PRODUCT]
-   NOT: structural/example brackets like [1], [see above], [optional])
-
-is_chain_prompt: true if the prompt internally embeds multiple numbered steps or phases to be run sequentially
-  (signals: "Step 1", "Step 2", "Phase 1", "Phase 2", "Prompt Chain:", explicit multi-step structure)
-
 ---
 
 EXAMPLES:
@@ -96,9 +85,6 @@ Output:
   "domain": ["AI"],
   "primary_stage": "verify",
   "complexity": 2,
-  "accepts_prior_output": true,
-  "has_template_vars": true,
-  "is_chain_prompt": false,
   "confidence": {"intent": 0.92, "task_type": 0.95, "domain": 0.70, "primary_stage": 0.90, "complexity": 0.88}
 }
 
@@ -111,9 +97,6 @@ Output:
   "domain": ["business", "strategy"],
   "primary_stage": "execute",
   "complexity": 3,
-  "accepts_prior_output": false,
-  "has_template_vars": true,
-  "is_chain_prompt": false,
   "confidence": {"intent": 0.90, "task_type": 0.88, "domain": 0.95, "primary_stage": 0.85, "complexity": 0.85}
 }
 
@@ -126,9 +109,6 @@ Output:
   "domain": ["finance", "business"],
   "primary_stage": "execute",
   "complexity": 5,
-  "accepts_prior_output": false,
-  "has_template_vars": false,
-  "is_chain_prompt": true,
   "confidence": {"intent": 0.88, "task_type": 0.90, "domain": 0.95, "primary_stage": 0.85, "complexity": 0.92}
 }
 
@@ -272,7 +252,7 @@ class BatchClassifier:
         errors = []
         required = [
             'intent', 'task_type', 'domain', 'primary_stage', 'complexity',
-            'accepts_prior_output', 'has_template_vars', 'is_chain_prompt', 'confidence'
+            'confidence'
         ]
         for field in required:
             if field not in c:
@@ -293,10 +273,6 @@ class BatchClassifier:
         if 'complexity' in c:
             if not isinstance(c['complexity'], int) or not (1 <= c['complexity'] <= 5):
                 errors.append(f"complexity must be integer 1–5, got: {c['complexity']}")
-
-        for bf in ('accepts_prior_output', 'has_template_vars', 'is_chain_prompt'):
-            if bf in c and not isinstance(c[bf], bool):
-                errors.append(f"{bf} must be boolean")
 
         if 'confidence' in c and not isinstance(c['confidence'], dict):
             errors.append("confidence must be a per-field dict")
@@ -340,9 +316,6 @@ class BatchClassifier:
                     domain                = %s,
                     primary_stage         = %s,
                     complexity_level      = %s,
-                    accepts_prior_output  = %s,
-                    has_template_vars     = %s,
-                    is_chain_prompt       = %s,
                     metadata_confidence   = %s,
                     classification_version = %s,
                     last_classified       = CURRENT_TIMESTAMP,
@@ -354,9 +327,6 @@ class BatchClassifier:
                 c.get('domain', []),
                 c.get('primary_stage'),
                 c.get('complexity'),
-                c.get('accepts_prior_output', False),
-                c.get('has_template_vars', False),
-                c.get('is_chain_prompt', False),
                 json.dumps(confidence),
                 f'v1.0-{OLLAMA_MODEL.replace(":", "-")}',
                 status,
@@ -444,7 +414,7 @@ async def main():
     # Auto-sync classified prompts back to Obsidian frontmatter
     if stats['successful'] > 0:
         print("\nSyncing classifications to Obsidian frontmatter...")
-        from sync_to_obsidian import get_classified_prompts, sync_prompt_to_file, mark_synced
+        from prompt_flow.obsidian_sync.frontmatter import get_classified_prompts, sync_prompt_to_file, mark_synced
         prompts = get_classified_prompts()
         synced = []
         for p in prompts:

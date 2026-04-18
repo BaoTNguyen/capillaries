@@ -1,6 +1,5 @@
-#!/usr/bin/env python3
 """
-Sync classified metadata from PostgreSQL back to Obsidian markdown frontmatter.
+DB → Obsidian: sync classified metadata from PostgreSQL back to markdown frontmatter.
 The Obsidian Base (Prompt Database.base) reads frontmatter, so updates here
 surface automatically in the Base view.
 
@@ -11,9 +10,6 @@ Field mapping (DB → Obsidian frontmatter):
     status            → status          (string, Title Case)
     primary_stage     → Primary Stage   (string, Title Case)
     complexity_level  → Complexity      (int)
-    accepts_prior_output → Accepts Prior Output (bool)
-    has_template_vars → Has Template Vars (bool)
-    is_chain_prompt   → Is Chain Prompt (bool)
 """
 
 import psycopg2
@@ -42,9 +38,6 @@ FIELD_MAP = {
     'status':               ('status',               lambda v: v.title() if v else None),
     'primary_stage':        ('Primary Stage',        lambda v: v.title() if v else None),
     'complexity_level':     ('Complexity',           lambda v: v),
-    'accepts_prior_output': ('Accepts Prior Output', lambda v: v),
-    'has_template_vars':    ('Has Template Vars',    lambda v: v),
-    'is_chain_prompt':      ('Is Chain Prompt',      lambda v: v),
     'models_tested':        ('Models Tested',        lambda v: v if v else []),
     'last_evaluated':       ('Last Evaluated',       lambda v: str(v) if v else None),
     'notes':                ('Notes',                lambda v: v if v else None),
@@ -59,7 +52,6 @@ def get_classified_prompts() -> List[Dict[str, Any]]:
         SELECT prompt_id, file_path,
                intent, task_type, domain, status,
                primary_stage, complexity_level,
-               accepts_prior_output, has_template_vars, is_chain_prompt,
                models_tested, last_evaluated, notes
         FROM prompts
         WHERE backfill_status IN ('complete', 'needs_review')
@@ -69,7 +61,6 @@ def get_classified_prompts() -> List[Dict[str, Any]]:
         'prompt_id', 'file_path',
         'intent', 'task_type', 'domain', 'status',
         'primary_stage', 'complexity_level',
-        'accepts_prior_output', 'has_template_vars', 'is_chain_prompt',
         'models_tested', 'last_evaluated', 'notes'
     ]
     rows = [dict(zip(columns, row)) for row in cur.fetchall()]

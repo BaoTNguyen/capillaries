@@ -36,6 +36,7 @@ def _detect_vault_path() -> Path:
 
 OBSIDIAN_VAULT_PATH: Path = _detect_vault_path()
 PROMPTS_PATH: Path = OBSIDIAN_VAULT_PATH / "Areas/AI/Prompts"
+SKILLS_PATH: Path = OBSIDIAN_VAULT_PATH / "Areas/AI/Skills"
 BASE_DB_PATH: Path = OBSIDIAN_VAULT_PATH / "Bases/Prompt Database.base"
 
 # --- Database configuration ---

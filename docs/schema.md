@@ -39,9 +39,6 @@
 
 | Column | Type | Fill rate | Notes |
 |--------|------|-----------|-------|
-| `accepts_prior_output` | boolean | 3.8% | True if prompt expects output from a prior prompt as input |
-| `has_template_vars` | boolean | 47.7% | True if prompt contains `[PLACEHOLDER]` style variables |
-| `is_chain_prompt` | boolean | 12.4% | True if prompt is part of a multi-step sequence |
 | `input_schema` | text | 0% | Description of what the prompt expects as input |
 | `output_schema` | text | 0% | Description of what the prompt produces |
 | `context_variables` | varchar[] | 0% | Variables that flow through from prior context |
@@ -92,8 +89,6 @@
 | `idx_prompts_complexity` | btree | `complexity_level` | Range filter |
 | `idx_prompts_status` | btree | `status` | Equality filter |
 | `idx_prompts_backfill` | btree | `backfill_status` | Processing state filter |
-| `idx_prompts_is_chain` | btree | `is_chain_prompt` | Chain membership filter |
-| `idx_prompts_accepts_prior` | btree | `accepts_prior_output` | Chain linkage filter |
 | `idx_prompts_confidence` | GIN | `metadata_confidence` | JSONB field queries |
 
 ---
@@ -155,7 +150,6 @@ Reserved for future human correction of LLM classifications. FK to `prompts.prom
 | `secondary_stages` 0% filled | Can't retrieve prompts by alternate stages | Re-run classification with secondary_stages prompt |
 | `input_schema` / `output_schema` 0% filled | Can't match prompt outputs to next prompt's inputs — blocks proper chain planning | Add to classification prompt template |
 | `accomplishes` 0% filled | Reduces semantic precision for chain scoring | Add to classification prompt template |
-| `accepts_prior_output` only 3.8% filled | Chain linking broken — can't detect which prompts continue a prior output | Audit manually or add to classification |
 | `reflect` stage has only 5 prompts | Chains never complete with a reflection step | Add reflect-stage prompts to vault |
 | `models_tested` / `last_evaluated` near 0% | No quality signal per prompt | Populate as prompts are used |
 | 1 prompt with empty text (`Everything else`) | No embedding, won't appear in search | Delete or give it content |
