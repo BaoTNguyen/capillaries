@@ -103,11 +103,11 @@ class CustomSearchEngine:
 
         query = """
             SELECT prompt_id, prompt_text, intent, task_type, domain,
-                   primary_stage, secondary_stages, complexity_level,
-                   input_schema, output_schema, context_variables,
-                   accomplishes, parent_prompt, status
+                   primary_stage, complexity_level,
+                   expected_input, expected_output,
+                   parent_prompt, status
             FROM prompts
-            WHERE status = 'active' AND backfill_status = 'completed'
+            WHERE status = 'active' AND backfill_status IN ('complete', 'completed')
             ORDER BY last_updated DESC
         """
 
@@ -123,14 +123,11 @@ class CustomSearchEngine:
                 'task_type': row[3] or [],
                 'domain': row[4] or [],
                 'primary_stage': row[5],
-                'secondary_stages': row[6] or [],
-                'complexity_level': row[7] or 3,
-                'input_schema': row[8],
-                'output_schema': row[9],
-                'context_variables': row[10] or [],
-                'accomplishes': row[11],
-                'parent_prompt': row[12],
-                'status': row[13]
+                'complexity_level': row[6] or 3,
+                'expected_input': row[7],
+                'expected_output': row[8],
+                'parent_prompt': row[9],
+                'status': row[10],
             })
 
         cursor.close()
@@ -428,7 +425,7 @@ class CustomSearchEngine:
     def _calculate_metadata_completeness(self, metadata: Dict) -> float:
         """Calculate how complete the metadata is"""
         important_fields = ['intent', 'task_type', 'domain', 'primary_stage',
-                          'input_schema', 'output_schema', 'accomplishes']
+                          'expected_input', 'expected_output']
 
         filled_fields = 0
         for field in important_fields:

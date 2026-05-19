@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field
 
 from prompt_flow.config import DB_CONFIG
 from prompt_flow.search.api import PromptSearch
+from prompt_flow.agent.api import router as agent_router
 
 
 # --- App lifecycle -------------------------------------------------------
@@ -48,11 +49,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Prompt Search API",
-    description="Semantic search over your Obsidian prompt vault.",
-    version="1.0.0",
+    title="Prompt Flow",
+    description="Semantic prompt and skill retrieval for AI agents. Start with POST /agent/route to find the best prompt for your situation.",
+    version="2.0.0",
     lifespan=lifespan,
 )
+
+app.include_router(agent_router)
 
 
 def get_search() -> PromptSearch:
@@ -92,6 +95,13 @@ class SearchRequest(BaseModel):
 async def health():
     """Liveness check. Returns ready=true when models are loaded."""
     return {"status": "ok", "ready": _search is not None}
+
+
+@app.get("/agent/discover")
+async def discover():
+    """Self-describing endpoint for agent discovery."""
+    from prompt_flow.agent.catalog import get_discover_response
+    return get_discover_response()
 
 
 @app.post("/search")

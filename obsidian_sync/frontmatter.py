@@ -4,12 +4,17 @@ The Obsidian Base (Prompt Database.base) reads frontmatter, so updates here
 surface automatically in the Base view.
 
 Field mapping (DB → Obsidian frontmatter):
-    intent            → Intent          (list, Title Case values)
-    task_type         → Task Type       (list, Title Case values)
+    intent            → Intent          (list, Title Case for display)
+    task_type         → Task Type       (list, Title Case for display)
     domain            → Category        (list, preserve original casing)
     status            → status          (string, Title Case)
     primary_stage     → Primary Stage   (string, Title Case)
     complexity_level  → Complexity      (int)
+    expected_input    → Expected Input  (string)
+    expected_output   → Expected Output (string)
+
+DB stores taxonomy values in lowercase. This module Title-Cases them for
+Obsidian display. The ingest module lowercases them on the way back in.
 """
 
 import psycopg2
@@ -41,6 +46,8 @@ FIELD_MAP = {
     'models_tested':        ('Models Tested',        lambda v: v if v else []),
     'last_evaluated':       ('Last Evaluated',       lambda v: str(v) if v else None),
     'notes':                ('Notes',                lambda v: v if v else None),
+    'expected_input':       ('Expected Input',       lambda v: v if v else None),
+    'expected_output':      ('Expected Output',      lambda v: v if v else None),
 }
 
 
@@ -52,7 +59,8 @@ def get_classified_prompts() -> List[Dict[str, Any]]:
         SELECT prompt_id, file_path,
                intent, task_type, domain, status,
                primary_stage, complexity_level,
-               models_tested, last_evaluated, notes
+               models_tested, last_evaluated, notes,
+               expected_input, expected_output
         FROM prompts
         WHERE backfill_status IN ('complete', 'needs_review')
           AND last_classified IS NOT NULL
@@ -61,7 +69,8 @@ def get_classified_prompts() -> List[Dict[str, Any]]:
         'prompt_id', 'file_path',
         'intent', 'task_type', 'domain', 'status',
         'primary_stage', 'complexity_level',
-        'models_tested', 'last_evaluated', 'notes'
+        'models_tested', 'last_evaluated', 'notes',
+        'expected_input', 'expected_output',
     ]
     rows = [dict(zip(columns, row)) for row in cur.fetchall()]
     cur.close()

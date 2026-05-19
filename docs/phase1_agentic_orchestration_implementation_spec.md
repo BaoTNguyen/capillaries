@@ -305,7 +305,7 @@ These are the live values in the codebase. When tuning, change one at a time and
 | `MAX_CHARS` | `db/embed.py` | 4,000 | Prompt text truncation before embedding |
 | `EMBED_MODEL` | `db/embed.py` | `nomic-embed-text` | 768-dim via Ollama, asymmetric prefixes |
 | HNSW params | `db/setup.py` | `m=16, ef_construction=64` | Index build params (good for <10K docs) |
-| `WEAK_MATCH_THRESHOLD` | `scripts/eval_report.py` | -3.0 | Rerank logit below which a chain step is flagged ⚠ WEAK |
+| `WEAK_MATCH_THRESHOLD` | `search/eval.py` | -3.0 | Rerank logit below which a chain step is flagged ⚠ WEAK |
 
 ### 9.2) Layer-by-Layer Tuning Guide
 
@@ -345,13 +345,13 @@ When eval results show a problem, the diagnostic table in `docs/schema.md` maps 
 
 ```
 # 1. Run the eval (generates tests/artifacts/eval_<timestamp>.txt)
-python scripts/eval_report.py
+python -m prompt_flow.search.eval
 
 # 2. Run with a specific query to zoom in
-python scripts/eval_report.py --query "your specific query"
+python -m prompt_flow.search.eval --query "your specific query"
 
 # 3. Show more candidates per query
-python scripts/eval_report.py --top-k 8
+python -m prompt_flow.search.eval --top-k 8
 
 # 4. Run the regression suite to check for regressions after a change
 pytest tests/test_search.py -x -v

@@ -28,21 +28,26 @@ def parse_frontmatter_to_canonical(metadata: Dict[str, Any]) -> Dict[str, Any]:
         'Models Tested': 'models_tested',
         'Parent Prompt': 'parent_prompt',
         'Last Evaluated': 'last_evaluated',
+        'Expected Input': 'expected_input',
+        'Expected Output': 'expected_output',
         'notes': 'notes',
-        'Notes': 'notes'
+        'Notes': 'notes',
     }
 
     for original_key, canonical_key in field_mappings.items():
         if original_key in metadata:
             value = metadata[original_key]
 
-            if canonical_key in ['intent', 'task_type', 'domain', 'models_tested', 'context_variables', 'secondary_stages']:
+            if canonical_key in ['intent', 'task_type', 'domain', 'models_tested']:
                 if isinstance(value, str):
-                    canonical[canonical_key] = [v.strip() for v in value.split(',') if v.strip()]
+                    vals = [v.strip() for v in value.split(',') if v.strip()]
                 elif isinstance(value, list):
-                    canonical[canonical_key] = value
+                    vals = value
                 else:
-                    canonical[canonical_key] = [str(value)] if value else []
+                    vals = [str(value)] if value else []
+                if canonical_key in ('intent', 'task_type'):
+                    vals = [v.lower() for v in vals]
+                canonical[canonical_key] = vals
             elif canonical_key == 'status':
                 v = str(value).lower().strip()
                 canonical[canonical_key] = v if v in ('active', 'deferred', 'archived') else 'active'
@@ -100,11 +105,13 @@ def insert_prompts_batch(cursor, prompts: List[Dict[str, Any]]):
         prompt_id, file_path, prompt_text, content_hash, file_mtime,
         intent, task_type, domain, status,
         parent_prompt, original_link, models_tested, notes, last_evaluated,
+        expected_input, expected_output,
         backfill_status, last_updated, search_vector
     ) VALUES (
         %(prompt_id)s, %(file_path)s, %(prompt_text)s, %(content_hash)s, %(file_mtime)s,
         %(intent)s, %(task_type)s, %(domain)s, %(status)s,
         %(parent_prompt)s, %(original_link)s, %(models_tested)s, %(notes)s, %(last_evaluated)s,
+        %(expected_input)s, %(expected_output)s,
         'pending', CURRENT_TIMESTAMP,
         to_tsvector('english',
             %(prompt_text)s || ' ' ||
@@ -139,9 +146,22 @@ def insert_prompts_batch(cursor, prompts: List[Dict[str, Any]]):
             'original_link': prompt.get('original_link'),
             'models_tested': prompt.get('models_tested', []),
             'notes': prompt.get('notes'),
-            'last_evaluated': prompt.get('last_evaluated')
+            'last_evaluated': prompt.get('last_evaluated'),
+            'expected_input': prompt.get('expected_input'),
+            'expected_output': prompt.get('expected_output'),
         }
         batch_data.append(data)
 
     cursor.executemany(insert_sql, batch_data)
     print(f"Inserted/updated {len(batch_data)} prompts")
+
+    vault_ids = [d['prompt_id'] for d in batch_data]
+    cursor.execute(
+        "DELETE FROM prompts WHERE prompt_id != ALL(%s) RETURNING prompt_id",
+        (vault_ids,),
+    )
+    deleted = [row[0] for row in cursor.fetchall()]
+    if deleted:
+        print(f"Deleted {len(deleted)} orphaned prompts: {deleted}")
+    else:
+        print("No orphaned prompts to delete")

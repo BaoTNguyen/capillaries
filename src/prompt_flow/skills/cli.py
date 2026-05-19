@@ -5,30 +5,30 @@ Promote eval chains to skills, or build and edit skills manually.
 
 Usage:
     # Promote from search
-    python scripts/promote_skill.py --query "write a go-to-market strategy"
+    python -m prompt_flow.skills.cli --query "write a go-to-market strategy"
 
     # Create a skill from scratch (no search required)
-    python scripts/promote_skill.py --create
+    python -m prompt_flow.skills.cli --create
 
     # View a skill's full details
-    python scripts/promote_skill.py --show llm-build-tune-analyzer
+    python -m prompt_flow.skills.cli --show llm-build-tune-analyzer
 
     # Edit a skill's metadata or steps interactively
-    python scripts/promote_skill.py --edit llm-build-tune-analyzer
+    python -m prompt_flow.skills.cli --edit llm-build-tune-analyzer
 
     # Add a step to an existing skill
-    python scripts/promote_skill.py --add-step llm-build-tune-analyzer
+    python -m prompt_flow.skills.cli --add-step llm-build-tune-analyzer
 
     # Remove a step from a skill
-    python scripts/promote_skill.py --remove-step llm-build-tune-analyzer
+    python -m prompt_flow.skills.cli --remove-step llm-build-tune-analyzer
 
     # List skills
-    python scripts/promote_skill.py --list
-    python scripts/promote_skill.py --list --status draft
+    python -m prompt_flow.skills.cli --list
+    python -m prompt_flow.skills.cli --list --status draft
 
     # Activate or deprecate
-    python scripts/promote_skill.py --activate <skill_id>
-    python scripts/promote_skill.py --deprecate <skill_id>
+    python -m prompt_flow.skills.cli --activate <skill_id>
+    python -m prompt_flow.skills.cli --deprecate <skill_id>
 """
 
 from __future__ import annotations
@@ -36,13 +36,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 
-from prompt_flow.search.api import PromptSearch
+from prompt_flow.search.api import PromptSearch, STAGES, WEAK_STAGE_THRESHOLD
 from prompt_flow.skills.promote import SkillPromoter, _slugify
-
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent))
-from eval_report import STAGES, WEAK_MATCH_THRESHOLD, _generate_candidates, _fmt_text
 
 VALID_STAGES = ["clarify", "plan", "execute", "verify", "reflect"]
 
@@ -205,7 +200,7 @@ def run_create() -> None:
     print(f"  slug     : {skill.slug}  v{skill.version}")
     print(f"  status   : {skill.status}")
     print(f"\nActivate when validated:")
-    print(f"  python scripts/promote_skill.py --activate {skill.skill_id}")
+    print(f"  python -m prompt_flow.skills.cli --activate {skill.skill_id}")
 
 
 def run_edit(slug_or_id: str) -> None:
@@ -335,52 +330,89 @@ def run_remove_step(slug_or_id: str) -> None:
         print(f"  {s['step_order']}. [{s['stage']}]  {s['prompt_id']}")
 
 
-# ── Search-based promotion (existing flow) ────────────────────────────────
-
-async def _get_chains(query: str, filters: dict, top_k: int):
-    ps = PromptSearch()
-    unfiltered = await ps.search(query, filters=filters, top_k=max(top_k, 5))
-    singles = unfiltered.results
-    stage_results: dict[str, list] = {}
-    for stage in STAGES:
-        resp = await ps.search(query, filters={**filters, "primary_stage": stage}, top_k=3)
-        if resp.results:
-            stage_results[stage] = resp.results
-    return _generate_candidates(singles, stage_results)
-
+# ── Search-based promotion ────────────────────────────────────────────────
 
 async def run_promote(query: str, filters: dict, top_k: int) -> None:
     print(f"\nSearching: \"{query}\"")
     print("Loading models...\n")
-    candidates = await _get_chains(query, filters, top_k)
-    shown = candidates[:top_k]
-    if not shown:
-        print("No results found.")
+    ps = PromptSearch()
+    resp = await ps.search(query, filters=filters, top_k=top_k)
+
+    print(f"Recommendation: {resp.recommendation.upper()}")
+    print(f"Candidates: {resp.total_candidates}\n")
+
+    # Show top single prompts
+    promotable: list[tuple[str, dict]] = []  # (label, step_dict) for promotion
+
+    if resp.results:
+        print(f"── Single Prompts {'─'*42}")
+        for rank, result in enumerate(resp.results[:top_k], 1):
+            stage = result.metadata.get("primary_stage", "execute")
+            weak = result.rerank_score < WEAK_STAGE_THRESHOLD
+            flag = "  ⚠" if weak else ""
+            print(f"  #{rank}  [{stage.upper()}]  {result.prompt_id}  "
+                  f"rerank={result.rerank_score:.2f}{flag}")
+            promotable.append((
+                f"Single: {result.prompt_id}",
+                {"prompt_id": result.prompt_id, "stage": stage,
+                 "step_order": 1, "rationale": None},
+            ))
+
+    # Show skill match
+    if resp.skill_match:
+        print(f"\n── Existing Skill Match {'─'*37}")
+        m = resp.skill_match
+        print(f"  {m.name}  (slug={m.slug}  v{m.version}  score={m.match_score:.4f})")
+        for step in m.steps:
+            print(f"    {step['step_order']}. [{step['stage'].upper()}]  {step['prompt_id']}")
+        print("  (Already exists — no promotion needed)")
+
+    # Show custom skill suggestion
+    if resp.suggested_steps:
+        print(f"\n── Custom Skill Suggestion {'─'*34}")
+        stages = " → ".join(s.stage.upper() for s in resp.suggested_steps)
+        print(f"  {len(resp.suggested_steps)}-step  ({stages})")
+        suggestion_steps = []
+        for i, step in enumerate(resp.suggested_steps, 1):
+            weak = step.rerank_score < WEAK_STAGE_THRESHOLD
+            flag = "  ⚠" if weak else ""
+            print(f"    {i}. [{step.stage.upper()}]  {step.prompt_id}  "
+                  f"rerank={step.rerank_score:.2f}{flag}")
+            suggestion_steps.append({
+                "prompt_id": step.prompt_id, "stage": step.stage,
+                "step_order": i, "rationale": None,
+            })
+        promotable.append((
+            f"Custom skill ({len(resp.suggested_steps)} steps)",
+            suggestion_steps,
+        ))
+
+    if not promotable:
+        print("\nNo results to promote.")
         return
 
-    print(f"Top {len(shown)} chains:\n{'='*60}")
-    for rank, chain in enumerate(shown, 1):
-        print(f"\n  #{rank}  {chain.label}   (avg: {chain.score:.2f}  min: {chain.min_score:.2f})")
-        for _, (stage, result) in enumerate(chain.steps, 1):
-            weak = result.rerank_score < WEAK_MATCH_THRESHOLD
-            flag = "  ⚠" if weak else ""
-            print(f"       [{stage.upper()}]  {result.prompt_id}  rerank={result.rerank_score:.2f}{flag}")
-
     print(f"\n{'='*60}")
-    choice = input(f"\nPromote which chain? (1-{len(shown)}, or q to quit): ").strip()
+    print("\nOptions:")
+    for i, (label, _) in enumerate(promotable, 1):
+        print(f"  {i}. {label}")
+
+    choice = input(f"\nPromote which? (1-{len(promotable)}, or q to quit): ").strip()
     if choice.lower() == "q" or not choice:
         print("Cancelled.")
         return
 
     try:
         idx = int(choice) - 1
-        assert 0 <= idx < len(shown)
+        assert 0 <= idx < len(promotable)
     except (ValueError, AssertionError):
         print("Invalid choice.")
         return
 
-    selected = shown[idx]
-    print(f"\nSelected: {selected.label}")
+    _, selected = promotable[idx]
+    # Normalize to list of steps
+    steps = selected if isinstance(selected, list) else [selected]
+
+    print(f"\nPromoting {len(steps)} step(s)")
     print()
 
     name = _prompt_field("Skill name", required=True)
@@ -390,16 +422,17 @@ async def run_promote(query: str, filters: dict, top_k: int) -> None:
     routing = _prompt_field("Routing description", current=query, required=True)
 
     promoter = SkillPromoter()
-    skill = promoter.promote(
-        chain=selected, name=name, slug=slug,
+    skill = promoter.create(
+        name=name, slug=slug,
         routing_description=routing,
+        steps=steps,
     )
     print(f"\nSkill saved.")
     print(f"  skill_id : {skill.skill_id}")
     print(f"  slug     : {skill.slug}  v{skill.version}")
     print(f"  status   : {skill.status}")
     print(f"\nActivate when validated:")
-    print(f"  python scripts/promote_skill.py --activate {skill.skill_id}")
+    print(f"  python -m prompt_flow.skills.cli --activate {skill.skill_id}")
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────

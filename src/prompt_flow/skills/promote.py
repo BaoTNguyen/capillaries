@@ -6,7 +6,7 @@ Usage:
 
     promoter = SkillPromoter()
     skill = promoter.promote(
-        chain=chain,              # Chain object from eval_report
+        chain=chain,              # Chain object from search.eval
         name="GTM Strategy Builder",
         routing_description="Builds a go-to-market strategy document for a new product or market segment",
     )
@@ -60,7 +60,7 @@ class SkillPromoter:
 
     def promote(
         self,
-        chain: Any,                        # Chain from eval_report._generate_candidates
+        chain: Any,                        # Chain from search.eval._generate_candidates
         name: str,
         routing_description: str,
         slug: str | None = None,
@@ -72,7 +72,7 @@ class SkillPromoter:
         Persist a Chain as a new skill (status: draft).
 
         Args:
-            chain:               Chain object from eval_report.
+            chain:               Chain object from search.eval.
             name:                Human-readable skill name.
             routing_description: One-line description used for routing/recall.
             slug:                URL-safe key (auto-derived from name if omitted).

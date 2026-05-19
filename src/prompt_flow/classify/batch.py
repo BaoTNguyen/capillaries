@@ -411,19 +411,6 @@ async def main():
     stats = await classifier.process_all_prompts()
     print(f"\nFinal results: {stats}")
 
-    # Auto-sync classified prompts back to Obsidian frontmatter
-    if stats['successful'] > 0:
-        print("\nSyncing classifications to Obsidian frontmatter...")
-        from prompt_flow.obsidian_sync.frontmatter import get_classified_prompts, sync_prompt_to_file, mark_synced
-        prompts = get_classified_prompts()
-        synced = []
-        for p in prompts:
-            if sync_prompt_to_file(p):
-                synced.append(p['prompt_id'])
-        if synced:
-            mark_synced(synced)
-        print(f"Synced {len(synced)} files to Obsidian")
-
 
 if __name__ == "__main__":
     asyncio.run(main())

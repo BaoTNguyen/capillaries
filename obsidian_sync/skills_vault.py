@@ -34,10 +34,10 @@ File format:
   ...
 
 Usage:
-  python -m prompt_flow.obsidian_sync.skills_vault export
-  python -m prompt_flow.obsidian_sync.skills_vault export --slug llm-build-tune-analyzer
-  python -m prompt_flow.obsidian_sync.skills_vault import
-  python -m prompt_flow.obsidian_sync.skills_vault import --file llm-build-tune-analyzer.md
+  python -m obsidian_sync.skills_vault export
+  python -m obsidian_sync.skills_vault export --slug llm-build-tune-analyzer
+  python -m obsidian_sync.skills_vault import
+  python -m obsidian_sync.skills_vault import --file llm-build-tune-analyzer.md
 """
 
 from __future__ import annotations

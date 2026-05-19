@@ -1,5 +1,5 @@
 """
-Hybrid retriever: pgvector dense search + pg_trgm sparse search, fused with RRF.
+Hybrid retriever: pgvector dense search + BM25 sparse search, fused with RRF.
 
 Usage:
     from prompt_flow.search.retriever import Retriever
@@ -29,7 +29,7 @@ from prompt_flow.config import DB_CONFIG
 
 # --- Constants -----------------------------------------------------------
 
-OLLAMA_EMBED_URL = "http://localhost:11434/api/embeddings"
+EMBED_URL = "http://localhost:11434/v1/embeddings"
 EMBED_MODEL = "nomic-embed-text"
 QUERY_PREFIX = "search_query: "
 MAX_CHARS = 4_000
@@ -62,13 +62,13 @@ async def embed_query(text: str) -> list[float]:
     """Embed a search query using the nomic asymmetric query prefix."""
     async with httpx.AsyncClient() as client:
         resp = await client.post(
-            OLLAMA_EMBED_URL,
-            json={"model": EMBED_MODEL, "prompt": QUERY_PREFIX + text[:MAX_CHARS]},
+            EMBED_URL,
+            json={"input": QUERY_PREFIX + text[:MAX_CHARS], "model": EMBED_MODEL},
             timeout=30.0,
         )
         if resp.status_code != 200:
-            raise RuntimeError(f"Ollama embed error {resp.status_code}: {resp.text[:200]}")
-        return resp.json()["embedding"]
+            raise RuntimeError(f"Embed error {resp.status_code}: {resp.text[:200]}")
+        return resp.json()["data"][0]["embedding"]
 
 
 # --- SQL helpers ---------------------------------------------------------
@@ -107,6 +107,10 @@ def _build_filter_clause(filters: dict[str, Any]) -> tuple[str, list]:
         clauses.append("complexity_level <= %s")
         params.append(filters["complexity_max"])
 
+    if filters.get("source"):
+        clauses.append("source = %s")
+        params.append(filters["source"])
+
     return " AND ".join(clauses), params
 
 
@@ -118,7 +122,7 @@ class Retriever:
 
     Combines:
     - Dense retrieval  : pgvector HNSW cosine similarity on stored embeddings
-    - Sparse retrieval : pg_trgm trigram similarity on prompt_text
+    - Sparse retrieval : BM25-style full-text search on search_tsv (title/summary/body weighted)
     - Fusion           : Reciprocal Rank Fusion (RRF, k=60)
     """
 
@@ -154,6 +158,21 @@ class Retriever:
         cur.execute(sql, [vec_str] + filter_params + [vec_str] + [n])
         return [dict(zip([d[0] for d in cur.description], row)) for row in cur.fetchall()]
 
+    @staticmethod
+    def _to_or_tsquery(cur, query: str) -> str:
+        """Convert a query string to an OR-joined tsquery via PostgreSQL."""
+        cur.execute(
+            "SELECT array_to_string("
+            "  array_agg(token), ' | '"
+            ") FROM ts_parse('default', %s) "
+            "WHERE tokid != 12",  # exclude whitespace tokens
+            [query],
+        )
+        raw = cur.fetchone()[0]
+        if not raw:
+            return "''"
+        return raw
+
     def _sparse_search(
         self,
         cur,
@@ -162,20 +181,22 @@ class Retriever:
         filter_params: list,
         n: int,
     ) -> list[dict]:
-        """Return top-n results by pg_trgm trigram similarity."""
+        """Return top-n results by BM25-style full-text search on search_tsv."""
+        or_terms = self._to_or_tsquery(cur, query)
         sql = f"""
             SELECT
                 prompt_id,
                 prompt_text,
                 intent, task_type, domain, primary_stage,
                 complexity_level, status, models_tested, notes,
-                similarity(prompt_text, %s) AS sparse_sim
+                ts_rank_cd(search_tsv, to_tsquery('english', %s), 1|4|32) AS sparse_sim
             FROM prompts
-            WHERE {filter_clause}
+            WHERE search_tsv @@ to_tsquery('english', %s)
+              AND {filter_clause}
             ORDER BY sparse_sim DESC
             LIMIT %s
         """
-        cur.execute(sql, [query] + filter_params + [n])
+        cur.execute(sql, [or_terms, or_terms] + filter_params + [n])
         return [dict(zip([d[0] for d in cur.description], row)) for row in cur.fetchall()]
 
     @staticmethod
@@ -283,3 +304,46 @@ class Retriever:
 
         results = self._rrf_merge(dense_rows, sparse_rows)
         return results[:top_k]
+
+    def fetch_all(self, filters: dict[str, Any] | None = None) -> list[SearchResult]:
+        """Load all prompts matching filters (no embedding, no ranking)."""
+        filters = filters or {}
+        filter_clause, filter_params = _build_filter_clause(filters)
+
+        conn = self._connect()
+        try:
+            cur = conn.cursor()
+            sql = f"""
+                SELECT prompt_id, prompt_text,
+                       intent, task_type, domain, primary_stage,
+                       complexity_level, status, models_tested, notes
+                FROM prompts
+                WHERE {filter_clause}
+            """
+            cur.execute(sql, filter_params)
+            rows = [dict(zip([d[0] for d in cur.description], row)) for row in cur.fetchall()]
+        finally:
+            conn.close()
+
+        return [
+            SearchResult(
+                prompt_id=r["prompt_id"],
+                prompt_text=r["prompt_text"],
+                rrf_score=0.0,
+                dense_rank=None,
+                sparse_rank=None,
+                dense_sim=None,
+                sparse_sim=None,
+                metadata={
+                    "intent": r.get("intent") or [],
+                    "task_type": r.get("task_type") or [],
+                    "domain": r.get("domain") or [],
+                    "primary_stage": r.get("primary_stage"),
+                    "complexity_level": r.get("complexity_level"),
+                    "status": r.get("status"),
+                    "models_tested": r.get("models_tested") or [],
+                    "notes": r.get("notes"),
+                },
+            )
+            for r in rows
+        ]

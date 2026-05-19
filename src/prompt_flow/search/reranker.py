@@ -34,13 +34,10 @@ from prompt_flow.search.retriever import SearchResult
 
 # --- Constants -----------------------------------------------------------
 
-MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+MODEL_NAME = "mixedbread-ai/mxbai-rerank-base-v2"
 
-# Truncate prompt text fed to cross-encoder to keep latency predictable.
-# Cross-encoders tokenize query+doc together; MiniLM max is 512 tokens.
-# ~1200 chars leaves room for the query and special tokens.
-MAX_DOC_CHARS = 1_200
-MAX_QUERY_CHARS = 200
+MAX_DOC_CHARS = 8_000
+MAX_QUERY_CHARS = 500
 
 
 # --- Reranked result contract --------------------------------------------
@@ -87,14 +84,14 @@ class Reranker:
     Args:
         model_name: HuggingFace model ID. Defaults to ms-marco-MiniLM-L-6-v2.
         device:     'cuda', 'cpu', or None (auto-detect GPU if available).
-        batch_size: Pairs per forward pass. 32 is efficient on a 3090.
+        batch_size: Pairs per forward pass. 16 is safe for 1.5B on a 3090.
     """
 
     def __init__(
         self,
         model_name: str = MODEL_NAME,
         device: str | None = None,
-        batch_size: int = 32,
+        batch_size: int = 16,
     ) -> None:
         if device is None:
             device = "cuda" if torch.cuda.is_available() else "cpu"

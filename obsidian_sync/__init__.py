@@ -6,13 +6,13 @@ Submodules:
     skills_vault — DB ↔ Obsidian (export/import skills as .md files)
 """
 
-from prompt_flow.obsidian_sync.ingest import (
+from obsidian_sync.ingest import (
     load_prompts_from_obsidian,
     insert_prompts_batch,
     parse_frontmatter_to_canonical,
     generate_content_hash,
 )
-from prompt_flow.obsidian_sync.frontmatter import (
+from obsidian_sync.frontmatter import (
     get_classified_prompts,
     sync_prompt_to_file,
     mark_synced,

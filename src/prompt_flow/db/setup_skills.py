@@ -97,6 +97,118 @@ def create_skill_runs_table(cursor) -> None:
     """)
 
 
+def create_skill_sessions_table(cursor) -> None:
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS skills.skill_sessions (
+            session_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            skill_id        UUID NOT NULL REFERENCES skills.skills(skill_id),
+            trace_id        VARCHAR NOT NULL,
+            current_step    INTEGER NOT NULL DEFAULT 0,
+            status          VARCHAR NOT NULL DEFAULT 'active'
+                            CHECK (status IN ('active', 'completed', 'aborted', 'expired')),
+
+            -- Context accumulator: compressed summary updated after each step
+            context_summary TEXT DEFAULT '',
+
+            -- Per-step outputs (append-only JSONB array)
+            step_outputs    JSONB DEFAULT '[]',
+
+            -- Metadata
+            created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_activity   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            expires_at      TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '24 hours'),
+
+            -- Variables provided by the agent across all steps
+            agent_context   JSONB DEFAULT '{}'
+        );
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_skill_sessions_active
+        ON skills.skill_sessions (session_id)
+        WHERE status = 'active';
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_skill_sessions_expire
+        ON skills.skill_sessions (expires_at)
+        WHERE status = 'active';
+    """)
+
+
+def create_agent_feedback_table(cursor) -> None:
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS skills.agent_feedback (
+            feedback_id     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            trace_id        VARCHAR NOT NULL,
+            session_id      UUID REFERENCES skills.skill_sessions(session_id),
+
+            -- What was recommended
+            mode            VARCHAR NOT NULL,  -- 'single', 'skill', 'chain'
+            prompt_id       VARCHAR,           -- for single-prompt recommendations
+            skill_id        UUID,              -- for skill recommendations
+
+            -- Agent's assessment
+            outcome         VARCHAR NOT NULL CHECK (outcome IN ('success', 'partial', 'failure', 'skipped')),
+            quality_score   FLOAT CHECK (quality_score BETWEEN 0 AND 1),
+            failure_step    INTEGER,
+            failure_reason  VARCHAR,
+            notes           TEXT,
+
+            -- Prompt modifications (JSONB array)
+            prompt_modifications JSONB DEFAULT '[]',
+
+            -- Per-step feedback (JSONB array)
+            per_step_feedback    JSONB DEFAULT '[]',
+
+            -- Context at time of feedback
+            situation_text  TEXT,              -- original situation from the route request
+            inferred_domain VARCHAR[],
+            inferred_stage  VARCHAR,
+
+            created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_agent_feedback_prompt
+        ON skills.agent_feedback (prompt_id, created_at DESC)
+        WHERE prompt_id IS NOT NULL;
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_agent_feedback_skill
+        ON skills.agent_feedback (skill_id, created_at DESC)
+        WHERE skill_id IS NOT NULL;
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_agent_feedback_outcome
+        ON skills.agent_feedback (outcome);
+    """)
+
+
+def create_materialized_views(cursor) -> None:
+    cursor.execute("""
+        CREATE MATERIALIZED VIEW IF NOT EXISTS prompt_quality_prior AS
+        SELECT
+            prompt_id,
+            COUNT(*) AS feedback_count,
+            AVG(CASE
+                WHEN outcome = 'success' THEN 1.0
+                WHEN outcome = 'partial' THEN 0.5
+                WHEN outcome = 'failure' THEN 0.0
+                ELSE NULL
+            END) AS success_rate,
+            AVG(quality_score) FILTER (WHERE quality_score IS NOT NULL) AS avg_quality,
+            (COUNT(*) * AVG(CASE WHEN outcome = 'success' THEN 1.0 WHEN outcome = 'partial' THEN 0.5 ELSE 0.0 END)
+             + 5 * 0.5) / (COUNT(*) + 5) AS bayesian_quality
+        FROM skills.agent_feedback
+        WHERE prompt_id IS NOT NULL
+          AND outcome != 'skipped'
+        GROUP BY prompt_id;
+    """)
+    cursor.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_pqp_prompt
+        ON prompt_quality_prior (prompt_id);
+    """)
+
+
 def create_indexes(cursor) -> None:
     indexes = [
         # Active skill lookup by slug — the most common query pattern
@@ -137,6 +249,15 @@ def main() -> None:
 
         print("  Creating skill_runs table...")
         create_skill_runs_table(cursor)
+
+        print("  Creating skill_sessions table...")
+        create_skill_sessions_table(cursor)
+
+        print("  Creating agent_feedback table...")
+        create_agent_feedback_table(cursor)
+
+        print("  Creating materialized views...")
+        create_materialized_views(cursor)
 
         print("  Creating indexes...")
         create_indexes(cursor)

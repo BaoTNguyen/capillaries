@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Database schema creation and metadata analysis for Prompt Flow.
+Prompts table schema creation and metadata analysis.
 
-Vault ingestion (loading .md files, parsing frontmatter, batch insert)
-lives in prompt_flow.obsidian_sync.ingest.
+This module only defines the database schema. Data ingestion from
+the Obsidian vault is a separate concern in the obsidian_sync package.
 """
 
 import json
@@ -11,7 +11,6 @@ import psycopg2
 from typing import List, Dict, Any
 
 from prompt_flow.config.paths import PROMPTS_PATH, DB_CONFIG
-from prompt_flow.obsidian_sync.ingest import load_prompts_from_obsidian, insert_prompts_batch
 
 def create_database_schema(cursor):
     """Create the complete database schema"""
@@ -27,22 +26,19 @@ def create_database_schema(cursor):
         file_path TEXT NOT NULL,
         prompt_text TEXT NOT NULL,
 
-        -- Core classification fields (your taxonomies)
-        intent VARCHAR[] DEFAULT '{}',  -- Multiple values allowed
-        task_type VARCHAR[] DEFAULT '{}',  -- Multiple values allowed
-        domain VARCHAR[] DEFAULT '{}',  -- Multiple values allowed
+        -- Core classification fields (taxonomy values are always lowercase)
+        intent VARCHAR[] DEFAULT '{}',
+        task_type VARCHAR[] DEFAULT '{}',
+        domain VARCHAR[] DEFAULT '{}',
         status VARCHAR DEFAULT 'active' CHECK (status IN ('active', 'deferred', 'archived')),
 
         -- Workflow fields
         primary_stage VARCHAR CHECK (primary_stage IN ('clarify', 'plan', 'execute', 'verify', 'reflect')),
-        secondary_stages VARCHAR[] DEFAULT '{}',
         complexity_level INTEGER CHECK (complexity_level BETWEEN 1 AND 5),
 
-        -- Retained for display/reference
-        input_schema TEXT,
-        output_schema TEXT,
-        context_variables VARCHAR[] DEFAULT '{}',
-        accomplishes TEXT,
+        -- Prompt I/O description (Obsidian: Expected Input / Expected Output)
+        expected_input TEXT,
+        expected_output TEXT,
 
         -- Relationship fields
         parent_prompt VARCHAR REFERENCES prompts(prompt_id),
@@ -64,9 +60,12 @@ def create_database_schema(cursor):
         last_classified TIMESTAMP,
         backfill_status VARCHAR DEFAULT 'pending' CHECK (backfill_status IN ('pending', 'processing', 'complete', 'needs_review', 'failed')),
 
-        -- Vector search
+        -- Data source
+        source VARCHAR DEFAULT 'private',
+
+        -- Vector search (nomic-embed-text via Ollama, 768 dimensions)
         embedding_version VARCHAR,
-        embedding VECTOR(1536),  -- OpenAI Ada-002 dimension
+        embedding VECTOR(768),
 
         -- Full-text search (populated on insert/update via application code)
         search_vector TSVECTOR
@@ -105,6 +104,24 @@ def create_database_schema(cursor):
     );
     """
     cursor.execute(create_batch_log_table)
+
+    # Skill files table for non-prompt files in skills (code, config, templates)
+    cursor.execute("""
+    CREATE SCHEMA IF NOT EXISTS skills;
+    """)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS skills.skill_files (
+        id SERIAL PRIMARY KEY,
+        skill_id UUID REFERENCES skills.skills(skill_id) ON DELETE CASCADE,
+        file_path VARCHAR NOT NULL,
+        file_type VARCHAR NOT NULL CHECK (file_type IN ('code', 'config', 'template')),
+        language VARCHAR,
+        description TEXT,
+        content TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(skill_id, file_path)
+    );
+    """)
 
     # Create indexes for performance
     indexes = [
@@ -176,11 +193,10 @@ def mark_low_confidence_prompts(cursor):
     print(f"Have original_link: {stats[6]} ({stats[6]/stats[0]*100:.1f}%)")
 
 def main():
-    """Main setup function"""
+    """Create prompts schema and analyze metadata confidence."""
     print("Setting up Prompt Flow database...")
 
     try:
-        # Connect to database
         conn = psycopg2.connect(**DB_CONFIG)
         cursor = conn.cursor()
 
@@ -188,23 +204,11 @@ def main():
         create_database_schema(cursor)
         conn.commit()
 
-        print("Loading prompts from Obsidian vault...")
-        prompts = load_prompts_from_obsidian(PROMPTS_PATH)
-
-        if not prompts:
-            print("No prompts found. Please check the path configuration.")
-            return
-
-        print("Inserting prompts into database...")
-        insert_prompts_batch(cursor, prompts)
-        conn.commit()
-
         print("Analyzing metadata confidence...")
         mark_low_confidence_prompts(cursor)
         conn.commit()
 
-        print("Database setup complete!")
-        print(f"Ready for batch LLM classification of prompts marked 'pending'")
+        print("Prompts schema ready.")
 
     except psycopg2.Error as e:
         print(f"Database error: {e}")
