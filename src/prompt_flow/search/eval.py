@@ -85,9 +85,7 @@ def _render_single(lines: list, rank: int, result, threshold: float) -> None:
     """Render one ranked single prompt."""
     weak = result.rerank_score < threshold
     flag = "  ⚠ WEAK" if weak else ""
-    stage = result.metadata.get("primary_stage", "?")
-
-    lines.append(f"  #{rank}  [{stage.upper()}]  {result.prompt_id}{flag}")
+    lines.append(f"  #{rank}  {result.prompt_id}{flag}")
     lines.append(
         f"      rerank={result.rerank_score:.2f}  rrf={result.rrf_score:.4f}  "
         f"domain={result.metadata.get('domain', [])}  "

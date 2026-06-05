@@ -36,7 +36,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 
-from prompt_flow.search.api import PromptSearch, STAGES, WEAK_STAGE_THRESHOLD
+from prompt_flow.search.api import PromptSearch
 from prompt_flow.skills.promote import SkillPromoter, _slugify
 
 VALID_STAGES = ["clarify", "plan", "execute", "verify", "reflect"]
@@ -347,14 +347,11 @@ async def run_promote(query: str, filters: dict, top_k: int) -> None:
     if resp.results:
         print(f"── Single Prompts {'─'*42}")
         for rank, result in enumerate(resp.results[:top_k], 1):
-            stage = result.metadata.get("primary_stage", "execute")
-            weak = result.rerank_score < WEAK_STAGE_THRESHOLD
-            flag = "  ⚠" if weak else ""
-            print(f"  #{rank}  [{stage.upper()}]  {result.prompt_id}  "
-                  f"rerank={result.rerank_score:.2f}{flag}")
+            print(f"  #{rank}  {result.prompt_id}  "
+                  f"rerank={result.rerank_score:.2f}")
             promotable.append((
                 f"Single: {result.prompt_id}",
-                {"prompt_id": result.prompt_id, "stage": stage,
+                {"prompt_id": result.prompt_id, "stage": "execute",
                  "step_order": 1, "rationale": None},
             ))
 
@@ -367,25 +364,6 @@ async def run_promote(query: str, filters: dict, top_k: int) -> None:
             print(f"    {step['step_order']}. [{step['stage'].upper()}]  {step['prompt_id']}")
         print("  (Already exists — no promotion needed)")
 
-    # Show custom skill suggestion
-    if resp.suggested_steps:
-        print(f"\n── Custom Skill Suggestion {'─'*34}")
-        stages = " → ".join(s.stage.upper() for s in resp.suggested_steps)
-        print(f"  {len(resp.suggested_steps)}-step  ({stages})")
-        suggestion_steps = []
-        for i, step in enumerate(resp.suggested_steps, 1):
-            weak = step.rerank_score < WEAK_STAGE_THRESHOLD
-            flag = "  ⚠" if weak else ""
-            print(f"    {i}. [{step.stage.upper()}]  {step.prompt_id}  "
-                  f"rerank={step.rerank_score:.2f}{flag}")
-            suggestion_steps.append({
-                "prompt_id": step.prompt_id, "stage": step.stage,
-                "step_order": i, "rationale": None,
-            })
-        promotable.append((
-            f"Custom skill ({len(resp.suggested_steps)} steps)",
-            suggestion_steps,
-        ))
 
     if not promotable:
         print("\nNo results to promote.")

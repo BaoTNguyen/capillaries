@@ -22,7 +22,8 @@ def create_database_schema(cursor):
     # Main prompts table
     create_prompts_table = """
     CREATE TABLE IF NOT EXISTS prompts (
-        prompt_id VARCHAR PRIMARY KEY,
+        prompt_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        title VARCHAR NOT NULL UNIQUE,
         file_path TEXT NOT NULL,
         prompt_text TEXT NOT NULL,
 
@@ -32,16 +33,7 @@ def create_database_schema(cursor):
         domain VARCHAR[] DEFAULT '{}',
         status VARCHAR DEFAULT 'active' CHECK (status IN ('active', 'deferred', 'archived')),
 
-        -- Workflow fields
-        primary_stage VARCHAR CHECK (primary_stage IN ('clarify', 'plan', 'execute', 'verify', 'reflect')),
         complexity_level INTEGER CHECK (complexity_level BETWEEN 1 AND 5),
-
-        -- Prompt I/O description (Obsidian: Expected Input / Expected Output)
-        expected_input TEXT,
-        expected_output TEXT,
-
-        -- Relationship fields
-        parent_prompt VARCHAR REFERENCES prompts(prompt_id),
 
         -- Original metadata
         original_link TEXT,
@@ -63,12 +55,15 @@ def create_database_schema(cursor):
         -- Data source
         source VARCHAR DEFAULT 'private',
 
-        -- Vector search (nomic-embed-text via Ollama, 768 dimensions)
+        -- Vector search (snowflake-arctic-embed-m-v2.0, 768 dimensions)
         embedding_version VARCHAR,
         embedding VECTOR(768),
 
-        -- Full-text search (populated on insert/update via application code)
-        search_vector TSVECTOR
+        -- Full-text search (A-weighted title + body with acronym expansion)
+        search_tsv TSVECTOR,
+
+        -- Output modality
+        modality VARCHAR DEFAULT 'text'
     );
     """
     cursor.execute(create_prompts_table)
@@ -77,7 +72,7 @@ def create_database_schema(cursor):
     create_feedback_table = """
     CREATE TABLE IF NOT EXISTS classification_feedback (
         id SERIAL PRIMARY KEY,
-        prompt_id VARCHAR REFERENCES prompts(prompt_id),
+        title VARCHAR REFERENCES prompts(title),
         field_name VARCHAR NOT NULL,
         old_value TEXT,
         new_value TEXT,
@@ -94,7 +89,7 @@ def create_database_schema(cursor):
     CREATE TABLE IF NOT EXISTS batch_processing_log (
         id SERIAL PRIMARY KEY,
         batch_id VARCHAR NOT NULL,
-        prompt_id VARCHAR REFERENCES prompts(prompt_id),
+        title VARCHAR REFERENCES prompts(title),
         processing_stage VARCHAR NOT NULL,
         status VARCHAR CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
         error_message TEXT,
@@ -105,22 +100,8 @@ def create_database_schema(cursor):
     """
     cursor.execute(create_batch_log_table)
 
-    # Skill files table for non-prompt files in skills (code, config, templates)
     cursor.execute("""
     CREATE SCHEMA IF NOT EXISTS skills;
-    """)
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS skills.skill_files (
-        id SERIAL PRIMARY KEY,
-        skill_id UUID REFERENCES skills.skills(skill_id) ON DELETE CASCADE,
-        file_path VARCHAR NOT NULL,
-        file_type VARCHAR NOT NULL CHECK (file_type IN ('code', 'config', 'template')),
-        language VARCHAR,
-        description TEXT,
-        content TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT NOW(),
-        UNIQUE(skill_id, file_path)
-    );
     """)
 
     # Create indexes for performance
@@ -128,10 +109,9 @@ def create_database_schema(cursor):
         "CREATE INDEX IF NOT EXISTS idx_prompts_intent ON prompts USING GIN (intent);",
         "CREATE INDEX IF NOT EXISTS idx_prompts_task_type ON prompts USING GIN (task_type);",
         "CREATE INDEX IF NOT EXISTS idx_prompts_domain ON prompts USING GIN (domain);",
-        "CREATE INDEX IF NOT EXISTS idx_prompts_stage ON prompts (primary_stage);",
         "CREATE INDEX IF NOT EXISTS idx_prompts_complexity ON prompts (complexity_level);",
         "CREATE INDEX IF NOT EXISTS idx_prompts_status ON prompts (status);",
-        "CREATE INDEX IF NOT EXISTS idx_prompts_search ON prompts USING GIN (search_vector);",
+        "CREATE INDEX IF NOT EXISTS idx_prompts_search_tsv ON prompts USING GIN (search_tsv);",
         "CREATE INDEX IF NOT EXISTS idx_prompts_embedding ON prompts USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);",
         "CREATE INDEX IF NOT EXISTS idx_prompts_confidence ON prompts USING GIN (metadata_confidence);",
         "CREATE INDEX IF NOT EXISTS idx_prompts_backfill ON prompts (backfill_status);",

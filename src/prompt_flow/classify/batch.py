@@ -37,7 +37,6 @@ VALID_VALUES: Dict[str, set] = {
         'AI', 'business', 'career', 'finance', 'learning', 'personal',
         'product', 'strategy', 'writing', 'technical'
     },
-    'primary_stage': {'clarify', 'plan', 'execute', 'verify', 'reflect'},
 }
 
 # ---------------------------------------------------------------------------
@@ -53,16 +52,16 @@ Each object in the array must correspond to one prompt, in the same order given.
 RULES:
 - intent and task_type: arrays of 1–3 values each
 - domain: array of 1–2 values
-- primary_stage, complexity: single values
+- complexity: single value
 - confidence: per-field dict with scores 0.0–1.0 reflecting how clearly the prompt signals each field
-- If a field is ambiguous, pick the closest match and lower its confidence score"""
+- If a field is ambiguous, pick the closest match and lower its confidence score
+- Do NOT include fields outside these four categories"""
 
 USER_PROMPT_TEMPLATE = """\
 ALLOWED VALUES:
 intent:        adapt | automate | build | communicate | decide | explore | improve | learn | prepare | reflect | validate
 task_type:     analyze | compare | debug | evaluate | model | optimize | design | generate | synthesize | explain
 domain:        AI | business | career | finance | learning | personal | product | strategy | writing | technical
-primary_stage: clarify | plan | execute | verify | reflect
 complexity:    1 | 2 | 3 | 4 | 5
 
 COMPLEXITY SCALE:
@@ -83,9 +82,8 @@ Output:
   "intent": ["improve", "validate"],
   "task_type": ["evaluate", "analyze"],
   "domain": ["AI"],
-  "primary_stage": "verify",
   "complexity": 2,
-  "confidence": {"intent": 0.92, "task_type": 0.95, "domain": 0.70, "primary_stage": 0.90, "complexity": 0.88}
+  "confidence": {"intent": 0.92, "task_type": 0.95, "domain": 0.70, "complexity": 0.88}
 }
 
 Prompt title: "Management Consultant - Executive Summary"
@@ -95,9 +93,8 @@ Output:
   "intent": ["communicate", "build"],
   "task_type": ["synthesize", "generate"],
   "domain": ["business", "strategy"],
-  "primary_stage": "execute",
   "complexity": 3,
-  "confidence": {"intent": 0.90, "task_type": 0.88, "domain": 0.95, "primary_stage": 0.85, "complexity": 0.85}
+  "confidence": {"intent": 0.90, "task_type": 0.88, "domain": 0.95, "complexity": 0.85}
 }
 
 Prompt title: "Department Budget vs. Actual Tracker"
@@ -107,9 +104,8 @@ Output:
   "intent": ["build", "model"],
   "task_type": ["design", "generate"],
   "domain": ["finance", "business"],
-  "primary_stage": "execute",
   "complexity": 5,
-  "confidence": {"intent": 0.88, "task_type": 0.90, "domain": 0.95, "primary_stage": 0.85, "complexity": 0.92}
+  "confidence": {"intent": 0.88, "task_type": 0.90, "domain": 0.95, "complexity": 0.92}
 }
 
 ---
@@ -137,7 +133,7 @@ class BatchClassifier:
     def _build_prompt_blocks(self, prompts: List[Dict]) -> str:
         blocks = []
         for i, p in enumerate(prompts, 1):
-            title = p.get('title', p['prompt_id'])
+            title = p['title']
             text = p['prompt_text'][:2000]
             blocks.append(f"PROMPT {i}\nTitle: {title}\n---\n{text}")
         return "\n\n".join(blocks)
@@ -170,9 +166,6 @@ class BatchClassifier:
         for field in ('intent', 'task_type', 'domain'):
             if field in c and isinstance(c[field], list):
                 c[field] = [v for v in c[field] if v in VALID_VALUES[field]]
-
-        if 'primary_stage' in c and c['primary_stage'] not in VALID_VALUES['primary_stage']:
-            c['primary_stage'] = None  # will fail validation cleanly
 
         return c
 
@@ -226,7 +219,7 @@ class BatchClassifier:
                     )
 
                 for i, result in enumerate(results):
-                    result['prompt_id'] = prompts[i]['prompt_id']
+                    result['title'] = prompts[i]['title']
 
                 return results
 
@@ -251,7 +244,7 @@ class BatchClassifier:
     def validate_classification(self, c: Dict) -> Tuple[bool, List[str]]:
         errors = []
         required = [
-            'intent', 'task_type', 'domain', 'primary_stage', 'complexity',
+            'intent', 'task_type', 'domain', 'complexity',
             'confidence'
         ]
         for field in required:
@@ -266,9 +259,6 @@ class BatchClassifier:
                     invalid = [v for v in c[field] if v not in VALID_VALUES[field]]
                     if invalid:
                         errors.append(f"Invalid {field} values: {invalid}")
-
-        if 'primary_stage' in c and c['primary_stage'] not in VALID_VALUES['primary_stage']:
-            errors.append(f"Invalid primary_stage: {c['primary_stage']}")
 
         if 'complexity' in c:
             if not isinstance(c['complexity'], int) or not (1 <= c['complexity'] <= 5):
@@ -287,7 +277,7 @@ class BatchClassifier:
         conn = psycopg2.connect(**self.db_config)
         cur = conn.cursor()
         cur.execute("""
-            SELECT prompt_id, prompt_text, file_path
+            SELECT title, prompt_text, file_path
             FROM prompts
             WHERE backfill_status = 'pending'
             ORDER BY last_updated DESC
@@ -296,9 +286,8 @@ class BatchClassifier:
         cur.close(); conn.close()
         return [
             {
-                'prompt_id': r[0],
+                'title': r[0],
                 'prompt_text': r[1],
-                'title': r[2].rsplit('/', 1)[-1].replace('.md', '') if r[2] else r[0]
             }
             for r in rows
         ]
@@ -314,29 +303,27 @@ class BatchClassifier:
                     intent                = %s,
                     task_type             = %s,
                     domain                = %s,
-                    primary_stage         = %s,
                     complexity_level      = %s,
                     metadata_confidence   = %s,
                     classification_version = %s,
                     last_classified       = CURRENT_TIMESTAMP,
                     backfill_status       = %s
-                WHERE prompt_id = %s
+                WHERE title = %s
             """, (
                 c.get('intent', []),
                 c.get('task_type', []),
                 c.get('domain', []),
-                c.get('primary_stage'),
                 c.get('complexity'),
                 json.dumps(confidence),
                 f'v1.0-{OLLAMA_MODEL.replace(":", "-")}',
                 status,
-                c['prompt_id']
+                c['title']
             ))
             conn.commit()
             cur.close(); conn.close()
             return True
         except Exception as e:
-            logger.error(f"DB save error for {c['prompt_id']}: {e}")
+            logger.error(f"DB save error for {c['title']}: {e}")
             return False
 
     # ------------------------------------------------------------------
@@ -361,7 +348,7 @@ class BatchClassifier:
             results = await self.classify_batch(batch)
 
             for j, result in enumerate(results):
-                prompt_id = batch[j]['prompt_id']
+                title = batch[j]['title']
                 if result is None:
                     stats['failed'] += 1
                     continue
@@ -369,7 +356,7 @@ class BatchClassifier:
                 result = self._repair_classification(result)
                 is_valid, errors = self.validate_classification(result)
                 if not is_valid:
-                    logger.warning(f"  ✗ {prompt_id} — validation errors: {errors}")
+                    logger.warning(f"  ✗ {title} — validation errors: {errors}")
                     stats['failed'] += 1
                     continue
 
@@ -379,9 +366,8 @@ class BatchClassifier:
                         stats['needs_review'] += 1
                     stats['successful'] += 1
                     logger.info(
-                        f"  ✓ {prompt_id} [{bstatus}] "
+                        f"  ✓ {title} [{bstatus}] "
                         f"intent={result.get('intent')} "
-                        f"stage={result.get('primary_stage')} "
                         f"complexity={result.get('complexity')}"
                     )
                 else:

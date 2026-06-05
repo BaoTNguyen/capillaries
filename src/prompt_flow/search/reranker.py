@@ -23,6 +23,7 @@ Usage:
 
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass, field
 from typing import Any
@@ -39,12 +40,17 @@ MODEL_NAME = "mixedbread-ai/mxbai-rerank-base-v2"
 MAX_DOC_CHARS = 8_000
 MAX_QUERY_CHARS = 500
 
+LENGTH_THRESHOLD = 2_200
+LENGTH_PENALTY_STRENGTH = 0.02
+LENGTH_PENALTY_CURVE = 0.5
+
 
 # --- Reranked result contract --------------------------------------------
 
 @dataclass
 class RankedResult:
-    prompt_id: str
+    prompt_id: str                # UUID
+    title: str                    # human-readable name
     prompt_text: str
     rerank_score: float           # cross-encoder logit (higher = more relevant)
     rrf_score: float              # original RRF score from retriever
@@ -57,6 +63,7 @@ class RankedResult:
     def to_dict(self) -> dict:
         return {
             "prompt_id": self.prompt_id,
+            "title": self.title,
             "prompt_text": self.prompt_text,
             "scores": {
                 "rerank": round(self.rerank_score, 4),
@@ -94,7 +101,7 @@ class Reranker:
         batch_size: int = 16,
     ) -> None:
         if device is None:
-            device = "cuda" if torch.cuda.is_available() else "cpu"
+            device = os.getenv("RERANKER_DEVICE", "cpu")
 
         print(f"Loading cross-encoder {model_name} on {device}...")
         self.model = CrossEncoder(model_name, device=device)
@@ -125,26 +132,32 @@ class Reranker:
         q = query[:MAX_QUERY_CHARS]
         pairs = [(q, c.prompt_text[:MAX_DOC_CHARS]) for c in candidates]
 
-        scores: list[float] = self.model.predict(
+        raw_scores: list[float] = self.model.predict(
             pairs,
             batch_size=self.batch_size,
             show_progress_bar=False,
         ).tolist()
 
-        ranked = [
-            RankedResult(
-                prompt_id=c.prompt_id,
-                prompt_text=c.prompt_text,
-                rerank_score=score,
-                rrf_score=c.rrf_score,
-                dense_rank=c.dense_rank,
-                sparse_rank=c.sparse_rank,
-                dense_sim=c.dense_sim,
-                sparse_sim=c.sparse_sim,
-                metadata=c.metadata,
-            )
-            for c, score in zip(candidates, scores)
-        ]
+        ranked = []
+        for c, raw in zip(candidates, raw_scores):
+            excess = max(0.0, (len(c.prompt_text) - LENGTH_THRESHOLD) / LENGTH_THRESHOLD)
+            penalty = LENGTH_PENALTY_STRENGTH * (excess ** LENGTH_PENALTY_CURVE)
+            adjusted = raw - penalty
 
-        ranked.sort(key=lambda r: r.rerank_score, reverse=True)
+            ranked.append(
+                RankedResult(
+                    prompt_id=c.prompt_id,
+                    title=c.title,
+                    prompt_text=c.prompt_text,
+                    rerank_score=adjusted,
+                    rrf_score=c.rrf_score,
+                    dense_rank=c.dense_rank,
+                    sparse_rank=c.sparse_rank,
+                    dense_sim=c.dense_sim,
+                    sparse_sim=c.sparse_sim,
+                    metadata=c.metadata,
+                )
+            )
+
+        ranked.sort(key=lambda r: (r.rerank_score, r.rrf_score), reverse=True)
         return ranked[:top_k]

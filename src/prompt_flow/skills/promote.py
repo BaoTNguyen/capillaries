@@ -64,8 +64,6 @@ class SkillPromoter:
         name: str,
         routing_description: str,
         slug: str | None = None,
-        input_contract: dict | None = None,
-        output_contract: dict | None = None,
         created_by: str = "manual",
     ) -> PromotedSkill:
         """
@@ -76,16 +74,12 @@ class SkillPromoter:
             name:                Human-readable skill name.
             routing_description: One-line description used for routing/recall.
             slug:                URL-safe key (auto-derived from name if omitted).
-            input_contract:      What the skill expects (JSONB). Defaults to {}.
-            output_contract:     What the skill produces (JSONB). Defaults to {}.
             created_by:          'manual' or 'orchestrator'.
 
         Returns:
             PromotedSkill with skill_id, slug, and version.
         """
         slug = slug or _slugify(name)
-        input_contract = input_contract or {}
-        output_contract = output_contract or {}
 
         steps_json, taxonomy, complexity = self._build_steps(chain)
 
@@ -98,12 +92,12 @@ class SkillPromoter:
                     """
                     INSERT INTO skills.skills (
                         skill_id, name, slug, routing_description,
-                        steps, input_contract, output_contract,
+                        steps,
                         domain, intent, task_type, complexity_level,
                         version, status, created_by
                     ) VALUES (
                         %s, %s, %s, %s,
-                        %s, %s, %s,
+                        %s,
                         %s, %s, %s, %s,
                         %s, 'draft', %s
                     )
@@ -115,8 +109,6 @@ class SkillPromoter:
                         slug,
                         routing_description,
                         json.dumps(steps_json),
-                        json.dumps(input_contract),
-                        json.dumps(output_contract),
                         taxonomy["domain"],
                         taxonomy["intent"],
                         taxonomy["task_type"],
@@ -164,8 +156,6 @@ class SkillPromoter:
         intent: list[str] | None = None,
         task_type: list[str] | None = None,
         complexity_level: int | None = None,
-        input_contract: dict | None = None,
-        output_contract: dict | None = None,
         created_by: str = "manual",
     ) -> PromotedSkill:
         """
@@ -195,12 +185,12 @@ class SkillPromoter:
                     """
                     INSERT INTO skills.skills (
                         skill_id, name, slug, routing_description,
-                        steps, input_contract, output_contract,
+                        steps,
                         domain, intent, task_type, complexity_level,
                         version, status, created_by
                     ) VALUES (
                         %s, %s, %s, %s,
-                        %s, %s, %s,
+                        %s,
                         %s, %s, %s, %s,
                         %s, 'draft', %s
                     )
@@ -209,8 +199,6 @@ class SkillPromoter:
                     (
                         str(uuid.uuid4()), name, slug, routing_description,
                         json.dumps(steps_json),
-                        json.dumps(input_contract or {}),
-                        json.dumps(output_contract or {}),
                         domain or auto_taxonomy["domain"],
                         intent or auto_taxonomy["intent"],
                         task_type or auto_taxonomy["task_type"],
@@ -408,7 +396,7 @@ class SkillPromoter:
         with psycopg2.connect(**self._db_config) as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT prompt_id, content_hash FROM prompts WHERE prompt_id = ANY(%s)",
+                    "SELECT title, content_hash FROM prompts WHERE title = ANY(%s)",
                     (prompt_ids,),
                 )
                 return {row[0]: row[1] for row in cur.fetchall()}

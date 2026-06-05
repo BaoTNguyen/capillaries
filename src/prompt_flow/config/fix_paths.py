@@ -6,10 +6,10 @@ from prompt_flow.config.paths import DB_CONFIG
 
 conn = psycopg2.connect(**DB_CONFIG)
 cur = conn.cursor()
-cur.execute("SELECT prompt_id, file_path FROM prompts")
+cur.execute("SELECT title, file_path FROM prompts")
 
 fixed = 0
-for pid, fp in cur.fetchall():
+for title, fp in cur.fetchall():
     if Path(fp).exists():
         continue
 
@@ -21,12 +21,12 @@ for pid, fp in cur.fetchall():
     candidate = d / (cleaned + '.md')
 
     if candidate.exists():
-        cur.execute("UPDATE prompts SET file_path = %s WHERE prompt_id = %s",
-                    (str(candidate), pid))
+        cur.execute("UPDATE prompts SET file_path = %s WHERE title = %s",
+                    (str(candidate), title))
         fixed += 1
-        print(f"  FIXED: {pid}")
+        print(f"  FIXED: {title}")
     else:
-        print(f"  MISS:  {pid}")
+        print(f"  MISS:  {title}")
         print(f"         tried: {candidate.name}")
 
 conn.commit()

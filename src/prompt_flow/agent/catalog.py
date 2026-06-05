@@ -26,8 +26,6 @@ class CatalogHandler:
                     return self._domains(cur)
                 elif view == "skills":
                     return self._skills(cur, domain_filter)
-                elif view == "stages":
-                    return self._stages(cur, domain_filter)
                 else:
                     return self._overview(cur)
 
@@ -86,29 +84,6 @@ class CatalogHandler:
                 for row in rows
             ]
         }
-
-    def _stages(self, cur, domain_filter: str | None = None) -> dict:
-        query = """
-            SELECT primary_stage, COUNT(*) as count
-            FROM prompts
-            WHERE status = 'active'
-        """
-        params = []
-        if domain_filter:
-            query += " AND %s = ANY(domain)"
-            params.append(domain_filter)
-
-        query += " GROUP BY primary_stage"
-
-        cur.execute(query, params)
-        rows = cur.fetchall()
-
-        stages = {"clarify": 0, "plan": 0, "execute": 0, "verify": 0, "reflect": 0}
-        for row in rows:
-            if row["primary_stage"]:
-                stages[row["primary_stage"]] = row["count"]
-
-        return {"stages": stages}
 
 
 def get_discover_response() -> dict:

@@ -161,7 +161,7 @@ class SkillExecutor:
                         progress=None,
                     )
 
-                cur.execute("SELECT prompt_text FROM prompts WHERE prompt_id = %s", (step_data["prompt_id"],))
+                cur.execute("SELECT prompt_text FROM prompts WHERE title = %s", (step_data["prompt_id"],))
                 prompt_row = cur.fetchone()
                 prompt_text = prompt_row["prompt_text"] if prompt_row else ""
 

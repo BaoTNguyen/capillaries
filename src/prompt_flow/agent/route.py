@@ -23,7 +23,6 @@ from prompt_flow.skills.recall import SkillRecall
 
 
 SINGLE_THRESHOLD = 0.3
-WEAK_STAGE_THRESHOLD = 0.01
 
 
 @dataclass
@@ -113,50 +112,51 @@ class AgentRouter:
         self._search = PromptSearch()
         self._skill_recall = SkillRecall(db_config=self._db_config)
 
-    async def route(self, situation: str, stage: str | None = None, domain: list[str] | None = None, intent: list[str] | None = None, complexity: int | None = None, prefer: str = "auto", context: dict | None = None, session_id: str | None = None) -> RouteResponse:
+    async def route(self, situation: str, domain: list[str] | None = None, intent: list[str] | None = None, complexity: int | None = None, prefer: str = "auto", context: dict | None = None, session_id: str | None = None, source: str = "private", modality: str = "text") -> RouteResponse:
         """
         Find the best prompt or skill for the given situation.
+
+        domain/intent hints are accepted but NOT used as hard retrieval filters —
+        embeddings and the cross-encoder reranker handle relevance better than
+        array overlap on taxonomy labels. Hints are still passed to skill recall
+        for soft taxonomy boosting.
         """
         trace_id = f"pf_tr_{uuid.uuid4().hex[:12]}"
 
-        filters = {}
+        # Soft hints for skill recall taxonomy boost — not hard retrieval filters
+        hints = {}
         if domain:
-            filters["domain"] = domain
+            hints["domain"] = domain
         if intent:
-            filters["intent"] = intent
-        if stage:
-            filters["primary_stage"] = stage
+            hints["intent"] = intent
 
-        inference = infer_from_situation(situation, explicit_domain=domain, explicit_intent=intent, explicit_stage=stage, explicit_complexity=complexity)
-
-        if not domain:
-            filters["domain"] = inference.domain
-        if not intent:
-            filters["intent"] = inference.intent
-        if not stage:
-            filters["primary_stage"] = inference.stage
+        inference = infer_from_situation(situation, explicit_domain=domain, explicit_intent=intent, explicit_complexity=complexity)
 
         if complexity is None:
             complexity = inference.complexity
 
         prefer_mode = _determine_prefer_mode(prefer, complexity)
 
+        search_filters: dict = {"source": source}
+        if modality:
+            search_filters["modality"] = modality
+
         if prefer_mode == "skill" or (prefer_mode == "auto" and complexity >= 3):
-            skill_match = self._skill_recall.search(situation, filters)
-            if skill_match and skill_match.match_score >= 0.05:
+            skill_match = self._skill_recall.search(situation, hints)
+            if skill_match and skill_match.match_score >= 0.50:
                 return self._build_skill_response(skill_match, situation, inference, trace_id, context)
 
         if prefer_mode == "single":
-            single = await self._search_single_prompt(situation, filters, context)
-            if single and single["confidence"] >= SINGLE_THRESHOLD:
+            single = await self._search_single_prompt(situation, search_filters, context)
+            if single and single.confidence >= SINGLE_THRESHOLD:
                 return single
 
-        skill_match = self._skill_recall.search(situation, filters)
-        if skill_match and skill_match.match_score >= 0.05:
+        skill_match = self._skill_recall.search(situation, hints)
+        if skill_match and skill_match.match_score >= 0.50:
             return self._build_skill_response(skill_match, situation, inference, trace_id, context)
 
-        single = await self._search_single_prompt(situation, filters, context)
-        if single:
+        single = await self._search_single_prompt(situation, search_filters, context)
+        if single and single.confidence > 0.0:
             return single
 
         return RouteResponse(
@@ -184,13 +184,13 @@ class AgentRouter:
 
         recommendation = {
             "prompt_id": top.prompt_id,
+            "title": top.title,
             "prompt_text": prompt_text,
             "variables": unfilled,
             "metadata": {
                 "intent": top.metadata.get("intent", []),
                 "task_type": top.metadata.get("task_type", []),
                 "domain": top.metadata.get("domain", []),
-                "primary_stage": top.metadata.get("primary_stage"),
                 "complexity_level": top.metadata.get("complexity_level"),
             },
         }
@@ -199,6 +199,7 @@ class AgentRouter:
         for alt in results.results[1:4]:
             alternatives.append({
                 "prompt_id": alt.prompt_id,
+                "title": alt.title,
                 "summary": alt.prompt_text[:200] + "..." if len(alt.prompt_text) > 200 else alt.prompt_text,
                 "score": alt.rerank_score,
                 "mode": "single",

@@ -40,20 +40,15 @@ def create_skills_table(cursor) -> None:
             -- during periodic review, not as a gate on skill execution.
             steps       JSONB NOT NULL DEFAULT '[]',
 
-            -- What the skill expects as input and produces as output.
-            input_contract  JSONB NOT NULL DEFAULT '{}',
-            output_contract JSONB NOT NULL DEFAULT '{}',
-
             -- Classification (mirrors prompt taxonomy for routing)
             domain          VARCHAR[] DEFAULT '{}',
             intent          VARCHAR[] DEFAULT '{}',
             task_type       VARCHAR[] DEFAULT '{}',
             complexity_level INTEGER CHECK (complexity_level BETWEEN 1 AND 5),
 
-            -- Versioning: never update a skill — create a new version and link back.
+            -- Versioning
             version         INTEGER NOT NULL DEFAULT 1,
-            parent_skill_id UUID REFERENCES skills.skills(skill_id),
-            changelog       TEXT,  -- what changed in this version
+            changelog       TEXT,
 
             -- Quality (updated by aggregating skill_runs)
             success_rate    FLOAT,
@@ -66,6 +61,9 @@ def create_skills_table(cursor) -> None:
 
             created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             created_by  VARCHAR DEFAULT 'manual',  -- 'manual' | 'orchestrator'
+
+            -- Semantic search on routing_description (snowflake-arctic-embed-m-v2.0, 768-dim)
+            routing_embedding VECTOR(768),
 
             UNIQUE (slug, version)
         );
@@ -225,6 +223,11 @@ def create_indexes(cursor) -> None:
         # Full-text search on routing descriptions
         """CREATE INDEX IF NOT EXISTS idx_skills_routing_fts
            ON skills.skills USING GIN (to_tsvector('english', routing_description));""",
+
+        # Semantic search on routing_description embedding
+        """CREATE INDEX IF NOT EXISTS idx_skills_routing_embedding
+           ON skills.skills USING hnsw (routing_embedding vector_cosine_ops)
+           WITH (m = 16, ef_construction = 64);""",
 
         # Run history per skill
         """CREATE INDEX IF NOT EXISTS idx_skill_runs_skill

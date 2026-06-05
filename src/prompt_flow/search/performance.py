@@ -230,18 +230,15 @@ class PrecomputationEngine:
         for prompt in prompts:
             domain_key = tuple(sorted(prompt.get('domain', [])))
             task_key = tuple(sorted(prompt.get('task_type', [])))
-            stage = prompt.get('primary_stage')
 
             pattern_key = (domain_key, task_key)
 
             if pattern_key not in patterns:
                 patterns[pattern_key] = {
-                    'stages': [],
                     'prompts': [],
                     'complexity_distribution': []
                 }
 
-            patterns[pattern_key]['stages'].append(stage)
             patterns[pattern_key]['prompts'].append(prompt['prompt_id'])
             patterns[pattern_key]['complexity_distribution'].append(prompt.get('complexity_level', 3))
 

@@ -25,7 +25,6 @@ SKILLS_DIR = PUBLIC_DIR / "skills"
 VALID_INTENTS = {"adapt", "automate", "build", "communicate", "decide", "explore", "improve", "learn", "prepare", "reflect", "validate"}
 VALID_TASK_TYPES = {"analyze", "compare", "debug", "evaluate", "model", "optimize", "design", "generate", "synthesize", "explain"}
 VALID_DOMAINS = {"AI", "business", "career", "finance", "learning", "personal", "product", "strategy", "writing", "technical"}
-VALID_STAGES = {"clarify", "plan", "execute", "verify", "reflect"}
 
 
 def parse_prompt_file(path: Path) -> dict | None:
@@ -57,10 +56,6 @@ def parse_prompt_file(path: Path) -> dict | None:
         domain = [domain]
     domain = [d for d in domain if d.lower() in {v.lower() for v in VALID_DOMAINS}]
 
-    stage = meta.get("primary_stage", "")
-    if isinstance(stage, str):
-        stage = stage.lower() if stage.lower() in VALID_STAGES else None
-
     complexity = meta.get("complexity_level")
     if isinstance(complexity, int) and 1 <= complexity <= 5:
         pass
@@ -74,7 +69,6 @@ def parse_prompt_file(path: Path) -> dict | None:
         "intent": intent,
         "task_type": task_type,
         "domain": domain,
-        "primary_stage": stage,
         "complexity_level": complexity,
         "source": "public",
         "file_path": str(path),
@@ -256,21 +250,20 @@ def insert_db(prompts, skills):
     for p in prompts:
         cur.execute("""
             INSERT INTO prompts (prompt_id, file_path, prompt_text, intent, task_type, domain,
-                                 primary_stage, complexity_level, source, content_hash, status)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'public', %s, 'active')
+                                 complexity_level, source, content_hash, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'public', %s, 'active')
             ON CONFLICT (prompt_id) DO UPDATE SET
                 prompt_text = EXCLUDED.prompt_text,
                 intent = EXCLUDED.intent,
                 task_type = EXCLUDED.task_type,
                 domain = EXCLUDED.domain,
-                primary_stage = EXCLUDED.primary_stage,
                 complexity_level = EXCLUDED.complexity_level,
                 source = 'public',
                 content_hash = EXCLUDED.content_hash
         """, (
             p["id"], p["file_path"], p["prompt_text"],
             p["intent"], p["task_type"], p["domain"],
-            p["primary_stage"], p["complexity_level"], p["content_hash"],
+            p["complexity_level"], p["content_hash"],
         ))
 
     print(f"Inserted {len(prompts)} prompts into DB")
@@ -279,8 +272,6 @@ def insert_db(prompts, skills):
         import uuid
         skill_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"skill:{skill['slug']}"))
 
-        cur.execute("DELETE FROM skills.skill_files WHERE skill_id = %s", (skill_id,))
-        cur.execute("DELETE FROM skills.skill_steps WHERE skill_id = %s", (skill_id,))
         cur.execute("DELETE FROM skills.skills WHERE skill_id = %s", (skill_id,))
 
         cur.execute("""
@@ -293,33 +284,32 @@ def insert_db(prompts, skills):
             skill["complexity_level"],
         ))
 
+        steps_json = []
         step_order = 0
         for f in skill["files"]:
             if f["type"] == "prompt":
                 prompt_id = f["path"].replace(".md", "").replace("-prompt", "")
-                cur.execute("SELECT prompt_id FROM prompts WHERE prompt_id = %s", (prompt_id,))
+                cur.execute("SELECT title FROM prompts WHERE title = %s", (prompt_id,))
                 if not cur.fetchone():
                     cur.execute("""
-                        INSERT INTO prompts (prompt_id, file_path, prompt_text, source, content_hash, status)
+                        INSERT INTO prompts (title, file_path, prompt_text, source, content_hash, status)
                         VALUES (%s, %s, %s, 'public', %s, 'active')
-                        ON CONFLICT (prompt_id) DO NOTHING
+                        ON CONFLICT (title) DO NOTHING
                     """, (prompt_id, f["path"], f["content"], hashlib.sha256(f["content"].encode()).hexdigest()[:16]))
 
                 step_order += 1
-                cur.execute("""
-                    INSERT INTO skills.skill_steps (skill_id, prompt_id, step_order, stage)
-                    VALUES (%s, %s, %s, 'execute')
-                    ON CONFLICT DO NOTHING
-                """, (skill_id, prompt_id, step_order))
-            else:
-                cur.execute("""
-                    INSERT INTO skills.skill_files (skill_id, file_path, file_type, language, description, content)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (skill_id, file_path) DO UPDATE SET content = EXCLUDED.content
-                """, (
-                    skill_id, f["path"], f["type"], f.get("language"),
-                    f.get("description", ""), f["content"],
-                ))
+                steps_json.append({
+                    "prompt_id": prompt_id,
+                    "stage": "execute",
+                    "step_order": step_order,
+                })
+
+        if steps_json:
+            import json
+            cur.execute(
+                "UPDATE skills.skills SET steps = %s WHERE skill_id = %s",
+                (json.dumps(steps_json), skill_id),
+            )
 
     conn.commit()
     print(f"Inserted {len(skills)} skills into DB")

@@ -49,3 +49,9 @@ DB_CONFIG = {
     "user":     os.getenv("DB_USER", ""),
     "password": os.getenv("DB_PASSWORD", ""),
 }
+
+# --- Embedding server ---
+# Supports any OpenAI-compatible /v1/embeddings endpoint.
+# Default: scripts/serve_embeddings.py serving snowflake-arctic-embed-m-v2.0
+EMBED_URL = os.getenv("EMBED_URL", "http://127.0.0.1:8003/v1/embeddings")
+EMBED_MODEL = os.getenv("EMBED_MODEL", "snowflake-arctic-embed-m-v2.0")

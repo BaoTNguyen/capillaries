@@ -1,9 +1,9 @@
 """
 Skill recall: match an incoming query to an existing validated skill.
 
-Searches skills.skills using full-text search on routing_description,
-optionally boosted by taxonomy overlap. Returns the best match above a
-confidence threshold, or None if no skill fits well enough.
+Combines full-text search on routing_description with semantic (embedding)
+similarity for hybrid matching. Returns the best match above a confidence
+threshold, or None if no skill fits well enough.
 
 When recall succeeds, PromptSearch returns the skill's pre-validated steps
 instead of running the full retrieval + rerank pipeline.
@@ -27,15 +27,20 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+import httpx
 import psycopg2
 import psycopg2.extras
 
-from prompt_flow.config import DB_CONFIG
+from prompt_flow.config import DB_CONFIG, EMBED_URL, EMBED_MODEL
 
-# Minimum ts_rank score to accept a skill match.
-# ts_rank values are small (typically 0.01–0.6); 0.05 filters noise
-# while still catching genuine matches.
-RECALL_THRESHOLD = 0.05
+QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
+MAX_CHARS = 4_000
+
+RECALL_THRESHOLD = 0.50
+
+# Weights for combining FTS and semantic scores
+FTS_WEIGHT = 0.4
+SEMANTIC_WEIGHT = 0.6
 
 
 @dataclass
@@ -97,32 +102,36 @@ class SkillRecall:
         threshold: float = RECALL_THRESHOLD,
     ) -> SkillMatch | None:
         """
-        Find the best active skill for a query.
+        Find the best active skill for a query using hybrid FTS + semantic search.
 
         Args:
             query:     Natural language query from the caller.
             filters:   Optional domain/intent/task_type hints to boost matching.
-            threshold: Minimum ts_rank score to return a match.
+            threshold: Minimum combined score to return a match.
 
         Returns:
             SkillMatch with resolved prompt content, or None.
         """
         filters = filters or {}
-        row = self._fts_search(query, filters)
-        if row is None or row["match_score"] < threshold:
+
+        fts_row = self._fts_search(query, filters)
+        sem_row = self._semantic_search(query)
+
+        best = self._merge_results(fts_row, sem_row)
+        if best is None or best["match_score"] < threshold:
             return None
 
-        steps = self._resolve_steps(row["steps"])
+        steps = self._resolve_steps(best["steps"])
         return SkillMatch(
-            skill_id=str(row["skill_id"]),
-            name=row["name"],
-            slug=row["slug"],
-            version=row["version"],
-            routing_description=row["routing_description"],
-            match_score=row["match_score"],
-            domain=list(row["domain"] or []),
-            intent=list(row["intent"] or []),
-            task_type=list(row["task_type"] or []),
+            skill_id=str(best["skill_id"]),
+            name=best["name"],
+            slug=best["slug"],
+            version=best["version"],
+            routing_description=best["routing_description"],
+            match_score=best["match_score"],
+            domain=list(best["domain"] or []),
+            intent=list(best["intent"] or []),
+            task_type=list(best["task_type"] or []),
             steps=steps,
         )
 
@@ -204,6 +213,83 @@ class SkillRecall:
                 row = cur.fetchone()
                 return dict(row) if row else None
 
+    def _semantic_search(self, query: str) -> dict | None:
+        """
+        Embed the query and find the nearest skill by cosine similarity
+        on skills.skills.routing_embedding.
+        """
+        try:
+            query_vec = self._embed_query(query)
+        except Exception:
+            return None
+
+        if query_vec is None:
+            return None
+
+        sql = """
+            SELECT
+                skill_id, name, slug, version, routing_description,
+                steps, domain, intent, task_type,
+                1 - (routing_embedding <=> %s::vector) AS semantic_sim
+            FROM skills.skills
+            WHERE status = 'active'
+              AND routing_embedding IS NOT NULL
+            ORDER BY routing_embedding <=> %s::vector
+            LIMIT 1
+        """
+        vec_str = "[" + ",".join(map(str, query_vec)) + "]"
+        with psycopg2.connect(**self._db_config) as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(sql, [vec_str, vec_str])
+                row = cur.fetchone()
+                return dict(row) if row else None
+
+    def _embed_query(self, text: str) -> list[float] | None:
+        """Synchronously embed a query via the embedding server."""
+        resp = httpx.post(
+            EMBED_URL,
+            json={"input": QUERY_PREFIX + text[:MAX_CHARS], "model": EMBED_MODEL},
+            timeout=15.0,
+        )
+        if resp.status_code != 200:
+            return None
+        return resp.json()["data"][0]["embedding"]
+
+    @staticmethod
+    def _merge_results(fts_row: dict | None, sem_row: dict | None) -> dict | None:
+        """
+        Combine FTS and semantic results into a single best match.
+
+        If both found the same skill, blend scores.
+        If they found different skills, pick the one with the higher weighted score.
+        """
+        if fts_row is None and sem_row is None:
+            return None
+
+        if fts_row is None:
+            sem_row["match_score"] = sem_row["semantic_sim"] * SEMANTIC_WEIGHT
+            return sem_row
+
+        if sem_row is None:
+            return fts_row
+
+        fts_id = str(fts_row["skill_id"])
+        sem_id = str(sem_row["skill_id"])
+        fts_score = fts_row["match_score"]
+        sem_score = sem_row["semantic_sim"]
+
+        if fts_id == sem_id:
+            fts_row["match_score"] = fts_score * FTS_WEIGHT + sem_score * SEMANTIC_WEIGHT
+            return fts_row
+
+        fts_weighted = fts_score * FTS_WEIGHT
+        sem_weighted = sem_score * SEMANTIC_WEIGHT
+        if fts_weighted >= sem_weighted:
+            fts_row["match_score"] = fts_weighted
+            return fts_row
+        sem_row["match_score"] = sem_weighted
+        return sem_row
+
     def _taxonomy_boost_sql(self, filters: dict[str, Any]) -> str:
         """
         Return a SQL fragment that adds a small score bonus when the skill's
@@ -244,14 +330,14 @@ class SkillRecall:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 cur.execute(
                     """
-                    SELECT prompt_id, prompt_text, domain, intent, task_type,
-                           primary_stage, complexity_level, content_hash
+                    SELECT title, prompt_text, domain, intent, task_type,
+                           complexity_level, content_hash
                     FROM prompts
-                    WHERE prompt_id = ANY(%s)
+                    WHERE title = ANY(%s)
                     """,
                     (prompt_ids,),
                 )
-                prompt_data = {row["prompt_id"]: dict(row) for row in cur.fetchall()}
+                prompt_data = {row["title"]: dict(row) for row in cur.fetchall()}
 
         resolved = []
         for step in sorted(steps, key=lambda s: s["step_order"]):
@@ -267,7 +353,6 @@ class SkillRecall:
                     "domain":          p.get("domain") or [],
                     "intent":          p.get("intent") or [],
                     "task_type":       p.get("task_type") or [],
-                    "primary_stage":   p.get("primary_stage"),
                     "complexity_level": p.get("complexity_level"),
                     "content_hash":    p.get("content_hash"),
                 },

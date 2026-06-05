@@ -2,15 +2,13 @@
 PromptSearch — the single library endpoint for agent callers.
 
 Wraps hybrid retrieval (pgvector HNSW + pg_trgm, RRF) and cross-encoder
-reranking behind a three-tier recommendation:
+reranking behind a two-tier recommendation:
 
   1. Single prompt  — top reranked result is strong enough on its own
   2. Existing skill — a validated skill from skills.skills matches the query
-  3. Custom skill   — no skill exists; suggest one assembled from best
-                      per-stage singles (only stages above the weak threshold)
 
 Callers see a SearchResponse with a `recommendation` field indicating
-which tier was selected: 'single_prompt', 'skill', or 'custom_skill'.
+which tier was selected: 'single_prompt' or 'skill'.
 
 Usage (async):
     from prompt_flow.search.api import PromptSearch
@@ -20,7 +18,7 @@ Usage (async):
     results = await ps.search("write a go-to-market strategy")
     results = await ps.search(
         "analyze customer churn",
-        filters={"domain": ["business"], "primary_stage": "execute"},
+        filters={"domain": ["business"]},
         top_k=5,
     )
 
@@ -37,7 +35,6 @@ Filters (all optional):
     domain          list[str]   e.g. ["business", "strategy"]
     intent          list[str]   e.g. ["build", "improve"]
     task_type       list[str]   e.g. ["generate", "analyze"]
-    primary_stage   str         one of: clarify, plan, execute, verify, reflect
     complexity_min  int         1–5
     complexity_max  int         1–5
     status          str         default "active"
@@ -55,49 +52,19 @@ from prompt_flow.skills.recall import SkillRecall, SkillMatch
 
 RETRIEVAL_CANDIDATES = 20
 
-STAGES = ["clarify", "plan", "execute", "verify", "reflect"]
-
-# If the top single prompt scores at or above this, recommend it directly.
-# BGE v2-m3 outputs 0-1 probabilities: 0.3+ indicates a confident match.
 SINGLE_THRESHOLD = 0.3
-
-# Below this rerank score, a per-stage prompt is too weak to include
-# in a custom skill suggestion.
-WEAK_STAGE_THRESHOLD = 0.01
-
-
-@dataclass
-class SuggestedStep:
-    """One step in a custom skill suggestion."""
-    stage: str
-    prompt_id: str
-    prompt_text: str
-    rerank_score: float
-    metadata: dict[str, Any] = field(default_factory=dict)
-
-    def to_dict(self) -> dict:
-        return {
-            "stage": self.stage,
-            "prompt_id": self.prompt_id,
-            "prompt_text": self.prompt_text,
-            "rerank_score": round(self.rerank_score, 4),
-            "metadata": self.metadata,
-        }
 
 
 @dataclass
 class SearchResponse:
     query: str
-    recommendation: str             # 'single_prompt' | 'skill' | 'custom_skill'
+    recommendation: str             # 'single_prompt' | 'skill'
     results: list[RankedResult]     # top single prompts (always populated)
     total_candidates: int
     filters_applied: dict[str, Any] = field(default_factory=dict)
 
     # Populated when recommendation == 'skill'
     skill_match: SkillMatch | None = None
-
-    # Populated when recommendation == 'custom_skill'
-    suggested_steps: list[SuggestedStep] | None = None
 
     def to_dict(self) -> dict:
         d: dict[str, Any] = {
@@ -109,8 +76,6 @@ class SearchResponse:
         }
         if self.recommendation == "skill" and self.skill_match:
             d["skill"] = self.skill_match.to_dict()
-        if self.recommendation == "custom_skill" and self.suggested_steps:
-            d["suggested_skill"] = [s.to_dict() for s in self.suggested_steps]
         return d
 
 
@@ -148,7 +113,6 @@ class PromptSearch:
         Decision order:
           1. If the top single prompt scores >= SINGLE_THRESHOLD → return it
           2. Else check for a matching validated skill → return skill
-          3. Else assemble a custom skill suggestion from best per-stage singles
 
         Args:
             query:   Natural language description of what you need.
@@ -198,15 +162,12 @@ class PromptSearch:
                     skill_match=match,
                 )
 
-        # ── Tier 3: suggest a custom skill from per-stage bests ──────────
-        suggested = await self._build_suggestion(query, filters)
         return SearchResponse(
             query=query,
-            recommendation="custom_skill",
+            recommendation="single_prompt",
             results=results,
             total_candidates=total,
             filters_applied=filters,
-            suggested_steps=suggested if suggested else None,
         )
 
     async def search_json(
@@ -218,48 +179,6 @@ class PromptSearch:
         """Same as search() but returns a plain dict for JSON serialization."""
         response = await self.search(query, filters=filters, top_k=top_k)
         return response.to_dict()
-
-    # ── Internals ─────────────────────────────────────────────────────────
-
-    async def _build_suggestion(
-        self,
-        query: str,
-        filters: dict[str, Any],
-    ) -> list[SuggestedStep]:
-        """
-        Build a custom skill suggestion from the best prompt per stage.
-        Only includes stages where the best match is above WEAK_STAGE_THRESHOLD.
-        """
-        steps: list[SuggestedStep] = []
-
-        for stage in STAGES:
-            stage_filters = {**filters, "primary_stage": stage}
-            if self._rerank_only:
-                stage_candidates = self.retriever.fetch_all(filters=stage_filters)
-            else:
-                stage_candidates = await self.retriever.search(
-                    query,
-                    filters=stage_filters,
-                    top_k=self._retrieval_candidates,
-                )
-            if not stage_candidates:
-                continue
-
-            reranked = self.reranker.rerank(query, stage_candidates, top_k=1)
-            if not reranked:
-                continue
-
-            best = reranked[0]
-            if best.rerank_score >= WEAK_STAGE_THRESHOLD:
-                steps.append(SuggestedStep(
-                    stage=stage,
-                    prompt_id=best.prompt_id,
-                    prompt_text=best.prompt_text,
-                    rerank_score=best.rerank_score,
-                    metadata=best.metadata,
-                ))
-
-        return steps
 
     def _log_skill_run(self, match: SkillMatch) -> None:
         """Log a skill recall without blocking the response."""

@@ -2,7 +2,7 @@
 Prompt search HTTP service.
 
 Runs as a persistent local service. All agents on the same machine share
-one model load (cross-encoder on GPU, Ollama embeddings).
+one model load (cross-encoder on GPU, embedding server).
 
 Start:
     uvicorn prompt_flow.server:app --host 127.0.0.1 --port 8000 --reload
@@ -73,10 +73,10 @@ class SearchRequest(BaseModel):
         description=(
             "Optional metadata filters. Supported keys: "
             "domain (list[str]), intent (list[str]), task_type (list[str]), "
-            "primary_stage (str), complexity_min (int), complexity_max (int), "
+            "complexity_min (int), complexity_max (int), "
             "status (str, default 'active')"
         ),
-        examples=[{"domain": ["business"], "primary_stage": "execute"}],
+        examples=[{"domain": ["business"]}],
     )
     top_k: int = Field(default=10, ge=1, le=50, description="Number of results to return")
 
@@ -120,8 +120,8 @@ async def search(req: SearchRequest):
     return JSONResponse(content=payload)
 
 
-@app.get("/prompts/{prompt_id:path}")
-async def get_prompt(prompt_id: str):
+@app.get("/prompts/{title:path}")
+async def get_prompt(title: str):
     """
     Fetch a single prompt by ID.
 
@@ -133,21 +133,21 @@ async def get_prompt(prompt_id: str):
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
             """
-            SELECT prompt_id, prompt_text, intent, task_type, domain,
-                   primary_stage, secondary_stages, complexity_level,
+            SELECT title, prompt_text, intent, task_type, domain,
+                   complexity_level,
                    status, models_tested, notes, original_link,
                    last_evaluated, last_updated, embedding_version
             FROM prompts
-            WHERE prompt_id = %s
+            WHERE title = %s
             """,
-            [prompt_id],
+            [title],
         )
         row = cur.fetchone()
     finally:
         conn.close()
 
     if row is None:
-        raise HTTPException(status_code=404, detail=f"Prompt '{prompt_id}' not found")
+        raise HTTPException(status_code=404, detail=f"Prompt '{title}' not found")
 
     # Serialize datetime/date fields to ISO strings for JSON
     data = {}

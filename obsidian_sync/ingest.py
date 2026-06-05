@@ -8,6 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 
+from prompt_flow.search.retriever import expand_acronyms
+
 
 def generate_content_hash(content: str) -> str:
     """Generate hash for content change detection."""
@@ -26,10 +28,7 @@ def parse_frontmatter_to_canonical(metadata: Dict[str, Any]) -> Dict[str, Any]:
         'status': 'status',
         'Status': 'status',
         'Models Tested': 'models_tested',
-        'Parent Prompt': 'parent_prompt',
         'Last Evaluated': 'last_evaluated',
-        'Expected Input': 'expected_input',
-        'Expected Output': 'expected_output',
         'notes': 'notes',
         'Notes': 'notes',
     }
@@ -75,17 +74,24 @@ def load_prompts_from_obsidian(prompts_path: Path) -> List[Dict[str, Any]]:
             with open(md_file, 'r', encoding='utf-8') as f:
                 post = frontmatter.load(f)
 
-            prompt_id = md_file.stem
+            title = md_file.stem
             canonical_metadata = parse_frontmatter_to_canonical(post.metadata)
 
             prompt_data = {
-                'prompt_id': prompt_id,
+                'title': title,
                 'file_path': str(md_file),
                 'prompt_text': post.content,
                 'content_hash': generate_content_hash(post.content),
                 'file_mtime': datetime.fromtimestamp(md_file.stat().st_mtime),
                 **canonical_metadata
             }
+
+            if title.startswith("Image Gen"):
+                prompt_data["modality"] = "image"
+            elif "video" in title.lower() or "remotion" in title.lower():
+                prompt_data["modality"] = "video"
+            else:
+                prompt_data["modality"] = "text"
 
             prompts.append(prompt_data)
 
@@ -102,24 +108,25 @@ def insert_prompts_batch(cursor, prompts: List[Dict[str, Any]]):
 
     insert_sql = """
     INSERT INTO prompts (
-        prompt_id, file_path, prompt_text, content_hash, file_mtime,
+        title, file_path, prompt_text, content_hash, file_mtime,
         intent, task_type, domain, status,
-        parent_prompt, original_link, models_tested, notes, last_evaluated,
-        expected_input, expected_output,
-        backfill_status, last_updated, search_vector
+        original_link, models_tested, notes, last_evaluated,
+        modality,
+        backfill_status, last_updated, search_tsv
     ) VALUES (
-        %(prompt_id)s, %(file_path)s, %(prompt_text)s, %(content_hash)s, %(file_mtime)s,
+        %(title)s, %(file_path)s, %(prompt_text)s, %(content_hash)s, %(file_mtime)s,
         %(intent)s, %(task_type)s, %(domain)s, %(status)s,
-        %(parent_prompt)s, %(original_link)s, %(models_tested)s, %(notes)s, %(last_evaluated)s,
-        %(expected_input)s, %(expected_output)s,
+        %(original_link)s, %(models_tested)s, %(notes)s, %(last_evaluated)s,
+        %(modality)s,
         'pending', CURRENT_TIMESTAMP,
+        setweight(to_tsvector('english', %(expanded_title)s), 'A') ||
         to_tsvector('english',
-            %(prompt_text)s || ' ' ||
+            %(expanded_text)s || ' ' ||
             COALESCE(array_to_string(%(intent)s::varchar[], ' '), '') || ' ' ||
             COALESCE(array_to_string(%(task_type)s::varchar[], ' '), '') || ' ' ||
             COALESCE(array_to_string(%(domain)s::varchar[], ' '), '')
         )
-    ) ON CONFLICT (prompt_id) DO UPDATE SET
+    ) ON CONFLICT (title) DO UPDATE SET
         prompt_text = EXCLUDED.prompt_text,
         content_hash = EXCLUDED.content_hash,
         file_mtime = EXCLUDED.file_mtime,
@@ -133,7 +140,7 @@ def insert_prompts_batch(cursor, prompts: List[Dict[str, Any]]):
     batch_data = []
     for prompt in prompts:
         data = {
-            'prompt_id': prompt['prompt_id'],
+            'title': prompt['title'],
             'file_path': prompt['file_path'],
             'prompt_text': prompt['prompt_text'],
             'content_hash': prompt['content_hash'],
@@ -142,23 +149,23 @@ def insert_prompts_batch(cursor, prompts: List[Dict[str, Any]]):
             'task_type': prompt.get('task_type', []),
             'domain': prompt.get('domain', []),
             'status': prompt.get('status', 'active'),
-            'parent_prompt': prompt.get('parent_prompt'),
             'original_link': prompt.get('original_link'),
             'models_tested': prompt.get('models_tested', []),
             'notes': prompt.get('notes'),
             'last_evaluated': prompt.get('last_evaluated'),
-            'expected_input': prompt.get('expected_input'),
-            'expected_output': prompt.get('expected_output'),
+            'modality': prompt.get('modality', 'text'),
+            'expanded_title': expand_acronyms(prompt['title']),
+            'expanded_text': expand_acronyms(prompt['prompt_text']),
         }
         batch_data.append(data)
 
     cursor.executemany(insert_sql, batch_data)
     print(f"Inserted/updated {len(batch_data)} prompts")
 
-    vault_ids = [d['prompt_id'] for d in batch_data]
+    vault_titles = [d['title'] for d in batch_data]
     cursor.execute(
-        "DELETE FROM prompts WHERE prompt_id != ALL(%s) RETURNING prompt_id",
-        (vault_ids,),
+        "DELETE FROM prompts WHERE title != ALL(%s) RETURNING title",
+        (vault_titles,),
     )
     deleted = [row[0] for row in cursor.fetchall()]
     if deleted:

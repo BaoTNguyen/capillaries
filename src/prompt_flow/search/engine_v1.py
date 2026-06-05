@@ -114,12 +114,6 @@ class PromptGraphAnalyzer:
         for prompt in prompts:
             self.graph.add_node(prompt['prompt_id'], **prompt)
 
-        # Add explicit parent-child relationships
-        for prompt in prompts:
-            if prompt.get('parent_prompt'):
-                self.graph.add_edge(prompt['parent_prompt'], prompt['prompt_id'],
-                                  relationship='parent_child', weight=1.0)
-
         # Add similarity-based edges
         self._add_similarity_edges(prompts, similarity_threshold)
 
@@ -157,49 +151,12 @@ class PromptGraphAnalyzer:
                     )
 
     def _add_workflow_edges(self, prompts: List[Dict]):
-        """Add workflow transition edges based on stages"""
-        stage_order = {'clarify': 1, 'plan': 2, 'execute': 3, 'verify': 4, 'reflect': 5}
-
-        # Group prompts by domain and task_type
-        workflow_groups = defaultdict(list)
-        for prompt in prompts:
-            if prompt.get('primary_stage'):
-                key = (tuple(sorted(prompt.get('domain', []))),
-                       tuple(sorted(prompt.get('task_type', []))))
-                workflow_groups[key].append(prompt)
-
-        # Add workflow transition edges within groups
-        for group_prompts in workflow_groups.values():
-            # Sort by stage order
-            group_prompts.sort(key=lambda p: stage_order.get(p.get('primary_stage', ''), 999))
-
-            for i in range(len(group_prompts) - 1):
-                current = group_prompts[i]
-                next_prompt = group_prompts[i + 1]
-
-                # Calculate workflow compatibility
-                compatibility = self._calculate_workflow_compatibility(current, next_prompt)
-
-                if compatibility > 0.5:
-                    self.graph.add_edge(
-                        current['prompt_id'], next_prompt['prompt_id'],
-                        relationship='workflow_transition',
-                        weight=compatibility
-                    )
+        """Add workflow transition edges based on metadata similarity"""
+        pass
 
     def _calculate_workflow_compatibility(self, prompt1: Dict, prompt2: Dict) -> float:
         """Calculate how well two prompts work together in a workflow"""
         score = 0.0
-
-        # Stage progression bonus
-        stage_order = {'clarify': 1, 'plan': 2, 'execute': 3, 'verify': 4, 'reflect': 5}
-        stage1 = stage_order.get(prompt1.get('primary_stage', ''), 0)
-        stage2 = stage_order.get(prompt2.get('primary_stage', ''), 0)
-
-        if stage2 == stage1 + 1:  # Sequential stages
-            score += 0.4
-        elif stage2 > stage1:  # Later stage
-            score += 0.2
 
         # Domain overlap
         domain1 = set(prompt1.get('domain', []))
@@ -217,32 +174,10 @@ class PromptGraphAnalyzer:
 
     def find_workflow_paths(self, start_prompt_id: str, target_stages: List[str],
                            max_length: int = 5) -> List[List[str]]:
-        """Find optimal workflow paths from start prompt to target stages"""
+        """Find optimal workflow paths from start prompt to target stages.
+        Stages are now managed by skills, not individual prompts.
+        """
         paths = []
-
-        def dfs_path_finder(current_id: str, path: List[str], remaining_stages: List[str]):
-            if len(path) > max_length or not remaining_stages:
-                if not remaining_stages:  # Found complete path
-                    paths.append(path.copy())
-                return
-
-            current_node = self.graph.nodes[current_id]
-            current_stage = current_node.get('primary_stage')
-
-            # If current stage matches next required stage, remove it
-            if current_stage in remaining_stages:
-                new_remaining = remaining_stages.copy()
-                new_remaining.remove(current_stage)
-                dfs_path_finder(current_id, path, new_remaining)
-
-            # Explore neighbors
-            for neighbor in self.graph.successors(current_id):
-                if neighbor not in path:  # Avoid cycles
-                    edge_data = self.graph[current_id][neighbor]
-                    if edge_data['relationship'] in ['workflow_transition', 'semantic_similar']:
-                        dfs_path_finder(neighbor, path + [neighbor], remaining_stages)
-
-        dfs_path_finder(start_prompt_id, [start_prompt_id], target_stages)
 
         # Score and sort paths
         scored_paths = []
@@ -308,7 +243,7 @@ class HybridSearchEngine:
         # Load all prompts
         cursor.execute("""
             SELECT prompt_id, prompt_text, intent, task_type, domain,
-                   primary_stage, complexity_level, status
+                   complexity_level, status
             FROM prompts WHERE status = 'active'
         """)
 
@@ -320,9 +255,8 @@ class HybridSearchEngine:
                 'intent': row[2] or [],
                 'task_type': row[3] or [],
                 'domain': row[4] or [],
-                'primary_stage': row[5],
-                'complexity_level': row[6],
-                'status': row[7]
+                'complexity_level': row[5],
+                'status': row[6]
             })
 
         cursor.close()
@@ -484,11 +418,6 @@ class HybridSearchEngine:
         # Complexity filter
         if params.get('max_complexity'):
             if metadata.get('complexity_level', 5) > params['max_complexity']:
-                return False
-
-        # Stage filter
-        if params.get('stages'):
-            if metadata.get('primary_stage') not in params['stages']:
                 return False
 
         return True

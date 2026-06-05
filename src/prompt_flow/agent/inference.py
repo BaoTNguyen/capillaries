@@ -12,8 +12,6 @@ from dataclasses import dataclass
 from typing import Any
 
 DOMAINS = ["AI", "business", "career", "finance", "learning", "personal", "product", "strategy", "technical", "writing"]
-STAGES = ["clarify", "plan", "execute", "verify", "reflect"]
-
 INTENT_KEYWORDS = {
     "build": ["build", "create", "implement", "develop", "make", "construct", "design", "setup", "architect"],
     "debug": ["debug", "fix", "troubleshoot", "error", "bug", "crash", "issue", "problem", "wrong", "fails", "broken"],
@@ -40,14 +38,6 @@ DOMAIN_KEYWORDS = {
     "writing": ["write", "writing", "content", "copy", "blog", "article", "documentation", "documentation", "story", "narrative"],
 }
 
-STAGE_KEYWORDS = {
-    "clarify": ["understand", "clarify", "what is", "explain", "define", "what does", "how does", "what's the", "figure out", "not sure", "confused", "unclear"],
-    "plan": ["plan", "strategy", "approach", "how to", "decide", "choose", "roadmap", "design", "architecture", "outline"],
-    "execute": ["build", "implement", "write", "create", "code", "fix", "deploy", "run", "do it", "make it work", "get it done"],
-    "verify": ["test", "verify", "check", "validate", "review", "confirm", "ensure", "works", "correct", "expected", "result"],
-    "reflect": ["learn", "improve", "reflect", "lessons", "what went", "retro", "analyze", "document", "report"],
-}
-
 COMPLEXITY_INDICATORS = {
     1: ["simple", "quick", "easy", "small", "one", "single", "straightforward", "basic"],
     2: ["moderate", "couple", "few", "some", "standard"],
@@ -61,11 +51,10 @@ COMPLEXITY_INDICATORS = {
 class InferenceResult:
     domain: list[str]
     intent: list[str]
-    stage: str | None
     complexity: int
 
 
-def infer_from_situation(situation: str, explicit_domain: list[str] | None = None, explicit_intent: list[str] | None = None, explicit_stage: str | None = None, explicit_complexity: int | None = None) -> InferenceResult:
+def infer_from_situation(situation: str, explicit_domain: list[str] | None = None, explicit_intent: list[str] | None = None, explicit_complexity: int | None = None) -> InferenceResult:
     """
     Infer structured fields from the situation text.
 
@@ -83,17 +72,12 @@ def infer_from_situation(situation: str, explicit_domain: list[str] | None = Non
     else:
         intent = _infer_intent(text)
 
-    if explicit_stage:
-        stage = explicit_stage
-    else:
-        stage = _infer_stage(text)
-
     if explicit_complexity:
         complexity = explicit_complexity
     else:
         complexity = _infer_complexity(text)
 
-    return InferenceResult(domain=domain, intent=intent, stage=stage, complexity=complexity)
+    return InferenceResult(domain=domain, intent=intent, complexity=complexity)
 
 
 def _infer_domain(text: str) -> list[str]:
@@ -128,15 +112,6 @@ def _infer_intent(text: str) -> list[str]:
 
     sorted_intents = sorted(scores.keys(), key=lambda i: scores[i], reverse=True)
     return sorted_intents[:2]
-
-
-def _infer_stage(text: str) -> str | None:
-    """Infer workflow stage from text."""
-    for stage, keywords in STAGE_KEYWORDS.items():
-        for kw in keywords:
-            if kw in text:
-                return stage
-    return None
 
 
 def _infer_complexity(text: str) -> int:

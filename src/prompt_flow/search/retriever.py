@@ -10,7 +10,7 @@ Usage:
     # With metadata filters
     results = await retriever.search(
         "analyze customer churn",
-        filters={"domain": ["business"], "primary_stage": "analyze"},
+        filters={"domain": ["business"]},
         top_k=10,
     )
 """
@@ -18,6 +18,7 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -25,28 +26,29 @@ import httpx
 import psycopg2
 import psycopg2.extras
 
-from prompt_flow.config import DB_CONFIG
+from prompt_flow.config import DB_CONFIG, EMBED_URL, EMBED_MODEL
 
 # --- Constants -----------------------------------------------------------
 
-EMBED_URL = "http://localhost:11434/v1/embeddings"
-EMBED_MODEL = "nomic-embed-text"
-QUERY_PREFIX = "search_query: "
+QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
 MAX_CHARS = 4_000
 
 # Number of candidates to pull from each retrieval path before fusion
 DENSE_CANDIDATES = 50
 SPARSE_CANDIDATES = 50
 
-# RRF rank constant — k=60 is the standard default
-RRF_K = 60
+RRF_K = 50
+
+DENSE_WEIGHT = 0.5
+SPARSE_WEIGHT = 0.5
 
 
 # --- Data contracts ------------------------------------------------------
 
 @dataclass
 class SearchResult:
-    prompt_id: str
+    prompt_id: str            # UUID (primary key)
+    title: str                # human-readable name (Obsidian filename)
     prompt_text: str
     rrf_score: float
     dense_rank: int | None        # rank in dense results (1-based), None if not retrieved
@@ -56,14 +58,116 @@ class SearchResult:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+# --- Query expansion -----------------------------------------------------
+
+ACRONYMS: dict[str, str] = {
+    "GTM": "go-to-market",
+    "B2B": "business-to-business",
+    "B2C": "business-to-consumer",
+    "D2C": "direct-to-consumer",
+    "DTC": "direct-to-consumer",
+    "SaaS": "software as a service",
+    "PaaS": "platform as a service",
+    "IaaS": "infrastructure as a service",
+    "PLG": "product-led growth",
+    "SLG": "sales-led growth",
+    "CLG": "community-led growth",
+    "ICP": "ideal customer profile",
+    "TAM": "total addressable market",
+    "SAM": "serviceable addressable market",
+    "SOM": "serviceable obtainable market",
+    "ARR": "annual recurring revenue",
+    "MRR": "monthly recurring revenue",
+    "NRR": "net revenue retention",
+    "GRR": "gross revenue retention",
+    "CAC": "customer acquisition cost",
+    "LTV": "lifetime value",
+    "CLTV": "customer lifetime value",
+    "ACV": "annual contract value",
+    "TCV": "total contract value",
+    "AOV": "average order value",
+    "ARPU": "average revenue per user",
+    "ARPA": "average revenue per account",
+    "CPA": "cost per acquisition",
+    "CPL": "cost per lead",
+    "CPC": "cost per click",
+    "CPM": "cost per mille",
+    "CTR": "click-through rate",
+    "CVR": "conversion rate",
+    "MQL": "marketing qualified lead",
+    "SQL": "sales qualified lead",
+    "PQL": "product qualified lead",
+    "OKR": "objectives and key results",
+    "KPI": "key performance indicator",
+    "NPS": "net promoter score",
+    "CSAT": "customer satisfaction",
+    "CES": "customer effort score",
+    "PMF": "product-market fit",
+    "MVP": "minimum viable product",
+    "POC": "proof of concept",
+    "PRD": "product requirements document",
+    "BRD": "business requirements document",
+    "SOW": "statement of work",
+    "SLA": "service level agreement",
+    "ROI": "return on investment",
+    "ROAS": "return on ad spend",
+    "P&L": "profit and loss",
+    "EBITDA": "earnings before interest taxes depreciation and amortization",
+    "COGS": "cost of goods sold",
+    "OPEX": "operating expenditure",
+    "CAPEX": "capital expenditure",
+    "QBR": "quarterly business review",
+    "ABM": "account-based marketing",
+    "SEO": "search engine optimization",
+    "SEM": "search engine marketing",
+    "CRM": "customer relationship management",
+    "ERP": "enterprise resource planning",
+    "ETL": "extract transform load",
+    "API": "application programming interface",
+    "SDK": "software development kit",
+    "CI/CD": "continuous integration and continuous delivery",
+    "ML": "machine learning",
+    "LLM": "large language model",
+    "RAG": "retrieval augmented generation",
+    "GenAI": "generative artificial intelligence",
+    "AI/ML": "artificial intelligence and machine learning",
+    "NLP": "natural language processing",
+    "RPA": "robotic process automation",
+    "IOT": "internet of things",
+    "IoT": "internet of things",
+    "HIPAA": "health insurance portability and accountability act",
+    "SOC": "system and organization controls",
+    "GDPR": "general data protection regulation",
+    "SSO": "single sign-on",
+    "RBAC": "role-based access control",
+    "MFA": "multi-factor authentication",
+    "VPC": "virtual private cloud",
+    "CDN": "content delivery network",
+    "DNS": "domain name system",
+}
+
+_ACRONYM_PATTERN = re.compile(
+    r'\b(' + '|'.join(re.escape(k) for k in sorted(ACRONYMS, key=len, reverse=True)) + r')\b'
+)
+
+
+def expand_acronyms(text: str) -> str:
+    """Expand known acronyms in-place: 'GTM strategy' → 'GTM (go-to-market) strategy'."""
+    def _replace(m: re.Match) -> str:
+        acr = m.group(0)
+        return f"{acr} ({ACRONYMS[acr]})"
+    return _ACRONYM_PATTERN.sub(_replace, text)
+
+
 # --- Embedding -----------------------------------------------------------
 
 async def embed_query(text: str) -> list[float]:
-    """Embed a search query using the nomic asymmetric query prefix."""
+    """Embed a search query with the retrieval instruction prefix."""
+    expanded = expand_acronyms(text)
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             EMBED_URL,
-            json={"input": QUERY_PREFIX + text[:MAX_CHARS], "model": EMBED_MODEL},
+            json={"input": QUERY_PREFIX + expanded[:MAX_CHARS], "model": EMBED_MODEL},
             timeout=30.0,
         )
         if resp.status_code != 200:
@@ -81,7 +185,6 @@ def _build_filter_clause(filters: dict[str, Any]) -> tuple[str, list]:
         domain         list[str]  — any-of match on domain array column
         intent         list[str]  — any-of match
         task_type      list[str]  — any-of match
-        primary_stage  str        — exact match
         complexity_min int        — complexity_level >= value
         complexity_max int        — complexity_level <= value
         status         str        — default 'active'
@@ -95,10 +198,6 @@ def _build_filter_clause(filters: dict[str, Any]) -> tuple[str, list]:
             clauses.append(f"{col} && %s::varchar[]")
             params.append(vals)
 
-    if filters.get("primary_stage"):
-        clauses.append("primary_stage = %s")
-        params.append(filters["primary_stage"])
-
     if filters.get("complexity_min") is not None:
         clauses.append("complexity_level >= %s")
         params.append(filters["complexity_min"])
@@ -110,6 +209,10 @@ def _build_filter_clause(filters: dict[str, Any]) -> tuple[str, list]:
     if filters.get("source"):
         clauses.append("source = %s")
         params.append(filters["source"])
+
+    if filters.get("modality"):
+        clauses.append("modality = %s")
+        params.append(filters["modality"])
 
     return " AND ".join(clauses), params
 
@@ -144,9 +247,9 @@ class Retriever:
         vec_str = "[" + ",".join(map(str, query_vec)) + "]"
         sql = f"""
             SELECT
-                prompt_id,
+                prompt_id::text, title,
                 prompt_text,
-                intent, task_type, domain, primary_stage,
+                intent, task_type, domain,
                 complexity_level, status, models_tested, notes,
                 1 - (embedding <=> %s::vector) AS dense_sim
             FROM prompts
@@ -185,9 +288,9 @@ class Retriever:
         or_terms = self._to_or_tsquery(cur, query)
         sql = f"""
             SELECT
-                prompt_id,
+                prompt_id::text, title,
                 prompt_text,
-                intent, task_type, domain, primary_stage,
+                intent, task_type, domain,
                 complexity_level, status, models_tested, notes,
                 ts_rank_cd(search_tsv, to_tsquery('english', %s), 1|4|32) AS sparse_sim
             FROM prompts
@@ -206,33 +309,34 @@ class Retriever:
         k: int = RRF_K,
     ) -> list[SearchResult]:
         """
-        Merge two ranked lists using Reciprocal Rank Fusion.
+        Merge two ranked lists using weighted Reciprocal Rank Fusion.
 
-        RRF score = 1/(k + rank_dense) + 1/(k + rank_sparse)
+        RRF score = w_dense/(k + rank_dense) + w_sparse/(k + rank_sparse)
         Documents appearing in only one list still contribute their term.
         """
-        # Build rank maps (1-based)
         dense_rank = {r["prompt_id"]: i + 1 for i, r in enumerate(dense_rows)}
         sparse_rank = {r["prompt_id"]: i + 1 for i, r in enumerate(sparse_rows)}
 
-        # Index rows by prompt_id for metadata lookup
         all_rows: dict[str, dict] = {}
         for r in dense_rows:
             all_rows[r["prompt_id"]] = r
         for r in sparse_rows:
             all_rows.setdefault(r["prompt_id"], r)
 
-        # Score every unique document
         all_ids = set(dense_rank) | set(sparse_rank)
         scored: list[SearchResult] = []
         for pid in all_ids:
             dr = dense_rank.get(pid)
             sr = sparse_rank.get(pid)
-            rrf = (1 / (k + dr) if dr else 0.0) + (1 / (k + sr) if sr else 0.0)
+            rrf = (
+                (DENSE_WEIGHT / (k + dr) if dr else 0.0)
+                + (SPARSE_WEIGHT / (k + sr) if sr else 0.0)
+            )
             row = all_rows[pid]
             scored.append(
                 SearchResult(
                     prompt_id=pid,
+                    title=row["title"],
                     prompt_text=row["prompt_text"],
                     rrf_score=rrf,
                     dense_rank=dr,
@@ -243,7 +347,6 @@ class Retriever:
                         "intent": row.get("intent") or [],
                         "task_type": row.get("task_type") or [],
                         "domain": row.get("domain") or [],
-                        "primary_stage": row.get("primary_stage"),
                         "complexity_level": row.get("complexity_level"),
                         "status": row.get("status"),
                         "models_tested": row.get("models_tested") or [],
@@ -297,7 +400,7 @@ class Retriever:
             sparse_rows = await asyncio.get_event_loop().run_in_executor(
                 None,
                 self._sparse_search,
-                cur, query, filter_clause, filter_params, sparse_candidates,
+                cur, expand_acronyms(query), filter_clause, filter_params, sparse_candidates,
             )
         finally:
             conn.close()
@@ -314,8 +417,8 @@ class Retriever:
         try:
             cur = conn.cursor()
             sql = f"""
-                SELECT prompt_id, prompt_text,
-                       intent, task_type, domain, primary_stage,
+                SELECT prompt_id::text, title, prompt_text,
+                       intent, task_type, domain,
                        complexity_level, status, models_tested, notes
                 FROM prompts
                 WHERE {filter_clause}
@@ -328,6 +431,7 @@ class Retriever:
         return [
             SearchResult(
                 prompt_id=r["prompt_id"],
+                title=r["title"],
                 prompt_text=r["prompt_text"],
                 rrf_score=0.0,
                 dense_rank=None,
@@ -338,7 +442,7 @@ class Retriever:
                     "intent": r.get("intent") or [],
                     "task_type": r.get("task_type") or [],
                     "domain": r.get("domain") or [],
-                    "primary_stage": r.get("primary_stage"),
+
                     "complexity_level": r.get("complexity_level"),
                     "status": r.get("status"),
                     "models_tested": r.get("models_tested") or [],

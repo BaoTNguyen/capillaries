@@ -103,9 +103,7 @@ class CustomSearchEngine:
 
         query = """
             SELECT prompt_id, prompt_text, intent, task_type, domain,
-                   primary_stage, complexity_level,
-                   expected_input, expected_output,
-                   parent_prompt, status
+                   complexity_level, status
             FROM prompts
             WHERE status = 'active' AND backfill_status IN ('complete', 'completed')
             ORDER BY last_updated DESC
@@ -122,12 +120,8 @@ class CustomSearchEngine:
                 'intent': row[2] or [],
                 'task_type': row[3] or [],
                 'domain': row[4] or [],
-                'primary_stage': row[5],
-                'complexity_level': row[6] or 3,
-                'expected_input': row[7],
-                'expected_output': row[8],
-                'parent_prompt': row[9],
-                'status': row[10],
+                'complexity_level': row[5] or 3,
+                'status': row[6],
             })
 
         cursor.close()
@@ -414,18 +408,11 @@ class CustomSearchEngine:
             if metadata.get('complexity_level', 1) < params['min_complexity']:
                 return False
 
-        # Stage filter
-        if params.get('stages'):
-            prompt_stage = metadata.get('primary_stage')
-            if prompt_stage not in params['stages']:
-                return False
-
         return True
 
     def _calculate_metadata_completeness(self, metadata: Dict) -> float:
         """Calculate how complete the metadata is"""
-        important_fields = ['intent', 'task_type', 'domain', 'primary_stage',
-                          'expected_input', 'expected_output']
+        important_fields = ['intent', 'task_type', 'domain']
 
         filled_fields = 0
         for field in important_fields:
@@ -470,65 +457,18 @@ class PromptGraphAnalyzer:
         for prompt in prompts:
             self.graph.add_node(prompt['prompt_id'], **prompt)
 
-        # Add parent-child relationships
-        for prompt in prompts:
-            if prompt.get('parent_prompt'):
-                self.graph.add_edge(prompt['parent_prompt'], prompt['prompt_id'],
-                                  relationship='parent_child', weight=1.0)
-
         # Add workflow stage transitions and other relationships
         self._add_workflow_edges(prompts)
 
         logger.info(f"Built graph with {self.graph.number_of_nodes()} nodes, {self.graph.number_of_edges()} edges")
 
     def _add_workflow_edges(self, prompts: List[Dict]):
-        """Add workflow transition edges based on stages and metadata similarity"""
-        stage_order = {'clarify': 1, 'plan': 2, 'execute': 3, 'verify': 4, 'reflect': 5}
-
-        # Group prompts by domain and task_type combinations
-        workflow_groups = defaultdict(list)
-        for prompt in prompts:
-            if prompt.get('primary_stage'):
-                domain_key = tuple(sorted(prompt.get('domain', [])))
-                task_key = tuple(sorted(prompt.get('task_type', [])))
-                key = (domain_key, task_key)
-                workflow_groups[key].append(prompt)
-
-        # Add workflow edges within groups
-        for group_prompts in workflow_groups.values():
-            if len(group_prompts) < 2:
-                continue
-
-            # Sort by stage order
-            group_prompts.sort(key=lambda p: stage_order.get(p.get('primary_stage', ''), 999))
-
-            for i in range(len(group_prompts) - 1):
-                current = group_prompts[i]
-                next_prompt = group_prompts[i + 1]
-
-                # Calculate workflow compatibility
-                compatibility = self._calculate_workflow_compatibility(current, next_prompt)
-
-                if compatibility > 0.4:  # Lower threshold for more connections
-                    self.graph.add_edge(
-                        current['prompt_id'], next_prompt['prompt_id'],
-                        relationship='workflow_transition',
-                        weight=compatibility
-                    )
+        """Add workflow transition edges based on metadata similarity"""
+        pass
 
     def _calculate_workflow_compatibility(self, prompt1: Dict, prompt2: Dict) -> float:
         """Calculate workflow compatibility between two prompts"""
         score = 0.0
-
-        # Stage progression
-        stage_order = {'clarify': 1, 'plan': 2, 'execute': 3, 'verify': 4, 'reflect': 5}
-        stage1 = stage_order.get(prompt1.get('primary_stage', ''), 0)
-        stage2 = stage_order.get(prompt2.get('primary_stage', ''), 0)
-
-        if stage2 == stage1 + 1:  # Sequential stages
-            score += 0.4
-        elif stage2 > stage1:  # Later stage
-            score += 0.2
 
         # Domain overlap
         domain1 = set(prompt1.get('domain', []))
