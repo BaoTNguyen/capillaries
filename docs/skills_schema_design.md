@@ -5,7 +5,7 @@ Status: Draft
 
 ## Overview
 
-Skills are persistent, versioned chain compositions built from individual prompts in `public.prompts`. They live in a separate PostgreSQL schema (`skills`) within the same `prompt_flow` database, preserving foreign key integrity with the prompts table while maintaining logical separation.
+Skills are persistent, versioned chain compositions built from individual prompts in `public.prompts`. They live in a separate PostgreSQL schema (`skills`) within the same `capillaries` database, preserving foreign key integrity with the prompts table while maintaining logical separation.
 
 The orchestrator has two modes:
 1. **Build** — dynamically compose a chain for a novel request (Phase 1 spec)

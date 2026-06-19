@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 
-from prompt_flow.search.retriever import expand_acronyms
+from capillaries.search.retriever import expand_acronyms
 
 
 def generate_content_hash(content: str) -> str:
@@ -27,7 +27,6 @@ def parse_frontmatter_to_canonical(metadata: Dict[str, Any]) -> Dict[str, Any]:
         'Category': 'domain',
         'status': 'status',
         'Status': 'status',
-        'Models Tested': 'models_tested',
         'Last Evaluated': 'last_evaluated',
         'notes': 'notes',
         'Notes': 'notes',
@@ -37,7 +36,7 @@ def parse_frontmatter_to_canonical(metadata: Dict[str, Any]) -> Dict[str, Any]:
         if original_key in metadata:
             value = metadata[original_key]
 
-            if canonical_key in ['intent', 'task_type', 'domain', 'models_tested']:
+            if canonical_key in ['intent', 'task_type', 'domain']:
                 if isinstance(value, str):
                     vals = [v.strip() for v in value.split(',') if v.strip()]
                 elif isinstance(value, list):
@@ -49,7 +48,7 @@ def parse_frontmatter_to_canonical(metadata: Dict[str, Any]) -> Dict[str, Any]:
                 canonical[canonical_key] = vals
             elif canonical_key == 'status':
                 v = str(value).lower().strip()
-                canonical[canonical_key] = v if v in ('active', 'deferred', 'archived') else 'active'
+                canonical[canonical_key] = v if v in ('draft', 'active', 'inactive') else 'active'
             else:
                 canonical[canonical_key] = value
 
@@ -110,13 +109,13 @@ def insert_prompts_batch(cursor, prompts: List[Dict[str, Any]]):
     INSERT INTO prompts (
         title, file_path, prompt_text, content_hash, file_mtime,
         intent, task_type, domain, status,
-        original_link, models_tested, notes, last_evaluated,
+        original_link, notes, last_evaluated,
         modality,
         backfill_status, last_updated, search_tsv
     ) VALUES (
         %(title)s, %(file_path)s, %(prompt_text)s, %(content_hash)s, %(file_mtime)s,
         %(intent)s, %(task_type)s, %(domain)s, %(status)s,
-        %(original_link)s, %(models_tested)s, %(notes)s, %(last_evaluated)s,
+        %(original_link)s, %(notes)s, %(last_evaluated)s,
         %(modality)s,
         'pending', CURRENT_TIMESTAMP,
         setweight(to_tsvector('english', %(expanded_title)s), 'A') ||
@@ -150,7 +149,6 @@ def insert_prompts_batch(cursor, prompts: List[Dict[str, Any]]):
             'domain': prompt.get('domain', []),
             'status': prompt.get('status', 'active'),
             'original_link': prompt.get('original_link'),
-            'models_tested': prompt.get('models_tested', []),
             'notes': prompt.get('notes'),
             'last_evaluated': prompt.get('last_evaluated'),
             'modality': prompt.get('modality', 'text'),

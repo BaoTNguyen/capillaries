@@ -24,15 +24,15 @@ Author: Systems architecture review
 
 Expose four MCP tools rather than mirroring every REST endpoint. Agents mid-task need to (a) find the right prompt for a situation, (b) get a full skill workflow, (c) resolve a template into ready text, and (d) report back. Fewer tools means higher self-selection accuracy: LLM tool-use performance degrades measurably above 8-10 tools, and each extra tool dilutes the description space.
 
-The key tradeoff: collapsing search + routing into a single `prompt_flow_find` tool (instead of separate `search` and `route` tools) trades off fine-grained control for discoverability. An agent that has never seen this system can use one tool for everything. Power users can pass structured hints to get the same precision.
+The key tradeoff: collapsing search + routing into a single `capillaries_find` tool (instead of separate `search` and `route` tools) trades off fine-grained control for discoverability. An agent that has never seen this system can use one tool for everything. Power users can pass structured hints to get the same precision.
 
 ### Schema
 
-#### Tool 1: `prompt_flow_find`
+#### Tool 1: `capillaries_find`
 
 ```json
 {
-  "name": "prompt_flow_find",
+  "name": "capillaries_find",
   "description": "Find the best prompt or multi-step skill for your current situation. Describe what you're trying to do, what's going wrong, or what you need help with. Returns ready-to-use prompt text, not just metadata. Use this whenever you need a structured approach to a task: debugging, code review, planning, analysis, writing, strategy, optimization. Works with natural language - just describe your situation.",
   "inputSchema": {
     "type": "object",
@@ -156,7 +156,7 @@ The key tradeoff: collapsing search + routing into a single `prompt_flow_find` t
 ```
 Agent is mid-task debugging a Python import cycle. It calls:
 
-prompt_flow_find({
+capillaries_find({
   "situation": "I have a circular import between two Python modules. Module A imports from B at module level, and B imports from A inside a function. Getting ImportError at startup.",
   "stage": "execute",
   "domain": ["technical"]
@@ -190,18 +190,18 @@ Response:
 }
 ```
 
-#### Tool 2: `prompt_flow_execute_step`
+#### Tool 2: `capillaries_execute_step`
 
 ```json
 {
-  "name": "prompt_flow_execute_step",
-  "description": "Execute the next step of a multi-step skill workflow. Call this after prompt_flow_find returns a skill (mode=skill). Pass the session_id and the output from the previous step. The system tracks where you are in the workflow and returns the next prompt with context from previous steps injected. If you're starting a skill, pass step_order=1 with no previous_output.",
+  "name": "capillaries_execute_step",
+  "description": "Execute the next step of a multi-step skill workflow. Call this after capillaries_find returns a skill (mode=skill). Pass the session_id and the output from the previous step. The system tracks where you are in the workflow and returns the next prompt with context from previous steps injected. If you're starting a skill, pass step_order=1 with no previous_output.",
   "inputSchema": {
     "type": "object",
     "properties": {
       "session_id": {
         "type": "string",
-        "description": "Session ID returned by prompt_flow_find when a skill was matched."
+        "description": "Session ID returned by capillaries_find when a skill was matched."
       },
       "step_order": {
         "type": "integer",
@@ -265,18 +265,18 @@ Response:
 }
 ```
 
-#### Tool 3: `prompt_flow_feedback`
+#### Tool 3: `capillaries_feedback`
 
 ```json
 {
-  "name": "prompt_flow_feedback",
-  "description": "Report whether a prompt or skill worked. Call this after using a prompt from prompt_flow_find. Minimum viable signal: just pass the trace_id and outcome. Rich signal: include which step failed and what went wrong. This data improves future recommendations.",
+  "name": "capillaries_feedback",
+  "description": "Report whether a prompt or skill worked. Call this after using a prompt from capillaries_find. Minimum viable signal: just pass the trace_id and outcome. Rich signal: include which step failed and what went wrong. This data improves future recommendations.",
   "inputSchema": {
     "type": "object",
     "properties": {
       "trace_id": {
         "type": "string",
-        "description": "The trace_id returned by prompt_flow_find."
+        "description": "The trace_id returned by capillaries_find."
       },
       "outcome": {
         "type": "string",
@@ -310,11 +310,11 @@ Response:
 }
 ```
 
-#### Tool 4: `prompt_flow_catalog`
+#### Tool 4: `capillaries_catalog`
 
 ```json
 {
-  "name": "prompt_flow_catalog",
+  "name": "capillaries_catalog",
   "description": "Browse what prompt categories, skills, and domains are available. Use this to understand what the system can help with before searching. Returns a summary of available capabilities, not individual prompts. Good for: 'what domains do you cover?', 'how many skills exist for technical work?', 'what workflow stages are available?'",
   "inputSchema": {
     "type": "object",
@@ -381,7 +381,7 @@ Response:
 MCP server configuration (Python, using the `mcp` SDK):
 
 ```python
-# src/prompt_flow/mcp_server.py
+# src/capillaries/mcp_server.py
 
 from mcp.server.fastmcp import FastMCP
 
@@ -391,7 +391,7 @@ mcp = FastMCP(
 )
 
 @mcp.tool()
-async def prompt_flow_find(
+async def capillaries_find(
     situation: str,
     stage: str | None = None,
     domain: list[str] | None = None,
@@ -403,7 +403,7 @@ async def prompt_flow_find(
     ...
 
 @mcp.tool()
-async def prompt_flow_execute_step(
+async def capillaries_execute_step(
     session_id: str,
     step_order: int,
     previous_output: str | None = None,
@@ -415,7 +415,7 @@ async def prompt_flow_execute_step(
     ...
 
 @mcp.tool()
-async def prompt_flow_feedback(
+async def capillaries_feedback(
     trace_id: str,
     outcome: str,
     quality_score: float | None = None,
@@ -427,7 +427,7 @@ async def prompt_flow_feedback(
     ...
 
 @mcp.tool()
-async def prompt_flow_catalog(
+async def capillaries_catalog(
     view: str = "overview",
     domain_filter: str | None = None,
 ) -> dict:
@@ -438,9 +438,9 @@ async def prompt_flow_catalog(
 
 ### Failure Mode
 
-**Most likely failure:** An agent calls `prompt_flow_find` with a vague situation like "help me" and gets back a low-confidence generic prompt that wastes a tool call. **Mitigation:** The response includes `confidence` and `alternatives`. When confidence is below 0.3, the response includes a `clarification_hint` field suggesting what additional context would improve results. The MCP tool description explicitly coaches the agent to be specific. Additionally, the system never returns nothing: even at low confidence it returns the best available match with a clear signal that it is a weak match.
+**Most likely failure:** An agent calls `capillaries_find` with a vague situation like "help me" and gets back a low-confidence generic prompt that wastes a tool call. **Mitigation:** The response includes `confidence` and `alternatives`. When confidence is below 0.3, the response includes a `clarification_hint` field suggesting what additional context would improve results. The MCP tool description explicitly coaches the agent to be specific. Additionally, the system never returns nothing: even at low confidence it returns the best available match with a clear signal that it is a weak match.
 
-**Second failure mode:** The MCP server process crashes or is unavailable. **Mitigation:** Each tool is designed to be non-blocking for the calling agent's primary task. If `prompt_flow_find` fails, the agent continues without a prompt rather than blocking. The MCP protocol's standard error responses handle this gracefully. The health check at startup (`/health`) prevents the MCP server from advertising tools before models are loaded.
+**Second failure mode:** The MCP server process crashes or is unavailable. **Mitigation:** Each tool is designed to be non-blocking for the calling agent's primary task. If `capillaries_find` fails, the agent continues without a prompt rather than blocking. The MCP protocol's standard error responses handle this gracefully. The health check at startup (`/health`) prevents the MCP server from advertising tools before models are loaded.
 
 ---
 
@@ -664,9 +664,9 @@ async def find_prompt(situation: str, **kwargs) -> dict:
 # Example: LangChain tool wrapper
 from langchain.tools import StructuredTool
 
-prompt_flow_tool = StructuredTool.from_function(
+capillaries_tool = StructuredTool.from_function(
     func=find_prompt,
-    name="prompt_flow_find",
+    name="capillaries_find",
     description="Find the best prompt or skill for a task. Pass a natural language situation description.",
     args_schema=PromptFlowFindInput,  # Pydantic model matching the request schema
 )
@@ -885,7 +885,7 @@ Agent                                Server
 
 ```python
 # Agent-side skill execution loop (pseudocode)
-result = await prompt_flow_find(situation="build a GTM strategy for AI product")
+result = await capillaries_find(situation="build a GTM strategy for AI product")
 
 if result["mode"] == "skill":
     session_id = result["skill"]["session_id"]
@@ -894,7 +894,7 @@ if result["mode"] == "skill":
     step1_output = await agent.execute(step1_prompt)
 
     for step_num in range(2, result["skill"]["total_steps"] + 1):
-        step = await prompt_flow_execute_step(
+        step = await capillaries_execute_step(
             session_id=session_id,
             step_order=step_num,
             previous_output=step1_output,
@@ -904,7 +904,7 @@ if result["mode"] == "skill":
         step_output = await agent.execute(step["current_step"]["prompt_text_resolved"])
         step1_output = step_output  # carry forward for next step
 
-    await prompt_flow_feedback(trace_id=result["trace_id"], outcome="success")
+    await capillaries_feedback(trace_id=result["trace_id"], outcome="success")
 ```
 
 ### Failure Mode
@@ -1120,13 +1120,13 @@ The `bayesian_quality` score can be used as a reranking signal: prompts with str
 
 ```python
 # Minimum viable feedback (agent sends this automatically after every tool use)
-await prompt_flow_feedback(
+await capillaries_feedback(
     trace_id="pf_tr_20260518_a3f7d8e3",
     outcome="success"
 )
 
 # Rich feedback after a skill execution
-await prompt_flow_feedback(
+await capillaries_feedback(
     trace_id="pf_tr_20260518_a3f7d8e3",
     outcome="partial",
     quality_score=0.6,
@@ -1147,7 +1147,7 @@ await prompt_flow_feedback(
 
 **Most likely failure:** Agents never send feedback because the tool call is optional and adds latency. Over time, the feedback tables remain empty and the learning loop never materializes.
 
-**Mitigation:** Two mechanisms. (1) The MCP tool `prompt_flow_find` includes a `trace_id` in every response, and the tool description for `prompt_flow_feedback` is worded to encourage feedback ("improves future recommendations"). (2) For skill executions, the server auto-logs a run in `skills.skill_runs` when a session completes (the final `/agent/step` call with is_final_step=true). This captures at minimum: skill_id, duration, number of completed vs. skipped steps. Even without explicit feedback calls, completion patterns provide signal.
+**Mitigation:** Two mechanisms. (1) The MCP tool `capillaries_find` includes a `trace_id` in every response, and the tool description for `capillaries_feedback` is worded to encourage feedback ("improves future recommendations"). (2) For skill executions, the server auto-logs a run in `skills.skill_runs` when a session completes (the final `/agent/step` call with is_final_step=true). This captures at minimum: skill_id, duration, number of completed vs. skipped steps. Even without explicit feedback calls, completion patterns provide signal.
 
 Additionally, the system can detect implicit negative feedback: if the same situation text is routed twice within a short window (the agent tried the prompt and came back), that is a soft failure signal.
 
@@ -1168,14 +1168,14 @@ The tradeoff is between integration depth and setup friction. MCP gives the deep
 ```json
 {
   "mcpServers": {
-    "prompt-flow": {
+    "capillaries": {
       "command": "python",
-      "args": ["-m", "prompt_flow.mcp_server"],
-      "cwd": "/path/to/prompt-system",
+      "args": ["-m", "capillaries.mcp_server"],
+      "cwd": "/path/to/capillaries",
       "env": {
         "OBSIDIAN_VAULT_PATH": "/home/user/Documents/Obsidian/Main Vault",
         "DB_HOST": "/var/run/postgresql",
-        "DB_NAME": "prompt_flow"
+        "DB_NAME": "capillaries"
       }
     }
   }
@@ -1187,7 +1187,7 @@ Alternatively, if the server is already running (recommended for shared use):
 ```json
 {
   "mcpServers": {
-    "prompt-flow": {
+    "capillaries": {
       "type": "sse",
       "url": "http://localhost:1100/mcp/sse"
     }
@@ -1203,21 +1203,21 @@ Alternatively, if the server is already running (recommended for shared use):
 This project has access to a prompt and skill retrieval system via MCP tools.
 
 When you encounter a task that would benefit from a structured approach - debugging,
-architecture review, planning, analysis, code generation - use `prompt_flow_find`
+architecture review, planning, analysis, code generation - use `capillaries_find`
 to get a proven prompt template for the situation. Describe your current situation
 naturally.
 
 For multi-step tasks (building a strategy, conducting a review, designing a system),
 the system may return a skill - a validated multi-step workflow. Execute it step by
-step using `prompt_flow_execute_step`.
+step using `capillaries_execute_step`.
 
-After using a prompt or skill, report the outcome via `prompt_flow_feedback`.
+After using a prompt or skill, report the outcome via `capillaries_feedback`.
 
 Available tools:
-- `prompt_flow_find` - Find the best prompt or skill for your situation
-- `prompt_flow_execute_step` - Execute next step in a multi-step skill
-- `prompt_flow_feedback` - Report whether a prompt/skill worked
-- `prompt_flow_catalog` - Browse available capabilities
+- `capillaries_find` - Find the best prompt or skill for your situation
+- `capillaries_execute_step` - Execute next step in a multi-step skill
+- `capillaries_feedback` - Report whether a prompt/skill worked
+- `capillaries_catalog` - Browse available capabilities
 ```
 
 **Cursor** (`.cursor/mcp.json` in project root):
@@ -1225,10 +1225,10 @@ Available tools:
 ```json
 {
   "mcpServers": {
-    "prompt-flow": {
+    "capillaries": {
       "command": "python",
-      "args": ["-m", "prompt_flow.mcp_server"],
-      "cwd": "/path/to/prompt-system",
+      "args": ["-m", "capillaries.mcp_server"],
+      "cwd": "/path/to/capillaries",
       "env": {
         "OBSIDIAN_VAULT_PATH": "/home/user/Documents/Obsidian/Main Vault"
       }
@@ -1267,8 +1267,8 @@ agent = planner.create_openapi_agent(spec, llm, allow_dangerous_requests=True)
 ```python
 from crewai_tools import APITool
 
-prompt_flow_find = APITool(
-    name="prompt_flow_find",
+capillaries_find = APITool(
+    name="capillaries_find",
     description="Find the best prompt or skill for a task",
     base_url="http://localhost:1100",
     endpoint="/agent/route",
@@ -1339,7 +1339,7 @@ A single endpoint that any HTTP-capable agent can hit to learn what the system o
   "mcp": {
     "supported": true,
     "sse_endpoint": "/mcp/sse",
-    "tools": ["prompt_flow_find", "prompt_flow_execute_step", "prompt_flow_feedback", "prompt_flow_catalog"]
+    "tools": ["capillaries_find", "capillaries_execute_step", "capillaries_feedback", "capillaries_catalog"]
   }
 }
 ```
@@ -1367,7 +1367,7 @@ print(result["recommendation"]["prompt_text"])
 
 ### Failure Mode
 
-**Most likely failure:** Claude Code agents discover the MCP tools but never autonomously use them because the CLAUDE.md instructions are not specific enough about when to invoke `prompt_flow_find`. The tools sit idle.
+**Most likely failure:** Claude Code agents discover the MCP tools but never autonomously use them because the CLAUDE.md instructions are not specific enough about when to invoke `capillaries_find`. The tools sit idle.
 
 **Mitigation:** The CLAUDE.md snippet above uses action-oriented language ("When you encounter...") rather than passive description. The tool descriptions themselves are written to match common agent internal reasoning patterns: when an agent thinks "I need a structured approach to this debugging task," the phrase "structured approach" in the tool description triggers tool selection. Testing with a set of 10 representative agent scenarios (provided in the bootstrap checklist) validates that the descriptions achieve >80% self-selection accuracy.
 
@@ -1568,10 +1568,10 @@ Implementation steps ordered by dependency, with the smallest useful milestone m
 
 ### Phase 2: MCP Server (2-3 days)
 
-- [ ] Create `src/prompt_flow/mcp_server.py` with FastMCP
-- [ ] Implement `prompt_flow_find` tool (wraps `/agent/route`)
-- [ ] Implement `prompt_flow_catalog` tool (wraps `/agent/catalog`)
-- [ ] Implement `prompt_flow_feedback` tool (wraps `/agent/feedback`)
+- [ ] Create `src/capillaries/mcp_server.py` with FastMCP
+- [ ] Implement `capillaries_find` tool (wraps `/agent/route`)
+- [ ] Implement `capillaries_catalog` tool (wraps `/agent/catalog`)
+- [ ] Implement `capillaries_feedback` tool (wraps `/agent/feedback`)
 - [ ] Test with Claude Code: add MCP config, verify tools appear, run 5 test scenarios
 - [ ] Write CLAUDE.md integration snippet
 - [ ] Write Cursor MCP config
@@ -1582,7 +1582,7 @@ Implementation steps ordered by dependency, with the smallest useful milestone m
 - [ ] Wire feedback writes to `skills.agent_feedback` table
 - [ ] Wire skill feedback to `skills.skill_runs` (reuse existing `SkillRecall.log_run()`)
 - [ ] Implement periodic aggregation job (update `success_rate`, refresh materialized view)
-- [ ] Add `prompt_flow_feedback` to MCP server
+- [ ] Add `capillaries_feedback` to MCP server
 - [ ] Test: submit 20 feedback entries, verify aggregation updates quality scores
 
 ### Phase 4: Skill Execution Protocol (3-5 days)
@@ -1594,7 +1594,7 @@ Implementation steps ordered by dependency, with the smallest useful milestone m
   - Template resolution with accumulated context
   - Step advancement logic (execute, skip, abort)
 - [ ] Implement session TTL and cleanup (24-hour expiry)
-- [ ] Add `prompt_flow_execute_step` to MCP server
+- [ ] Add `capillaries_execute_step` to MCP server
 - [ ] Test: execute a full skill end-to-end via MCP from Claude Code
 
 ### Phase 5: Advanced Features (ongoing)

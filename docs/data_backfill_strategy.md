@@ -333,7 +333,7 @@ Phase 1 backfill is **complete**. All 572 prompts classified via Ollama `qwen3.5
 
 Each backfill should be validated against the eval report, not just by fill-rate:
 
-1. **Before the backfill**: run `python -m prompt_flow.search.eval` and save the report
+1. **Before the backfill**: run `python -m capillaries.search.eval` and save the report
 2. **Run the backfill** (e.g. populate `secondary_stages`)
 3. **After**: run the eval again, diff the two reports
 4. **Check**: did chain coverage improve? Did any previously good results regress?

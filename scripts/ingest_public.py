@@ -19,7 +19,7 @@ import frontmatter
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PUBLIC_DIR = PROJECT_ROOT / "public_prompts"
-FRONTEND_PUBLIC = PROJECT_ROOT / "frontend" / "public"
+FRONTEND_PUBLIC = PROJECT_ROOT / "demo" / "frontend" / "public"
 SKILLS_DIR = PUBLIC_DIR / "skills"
 
 VALID_INTENTS = {"adapt", "automate", "build", "communicate", "decide", "explore", "improve", "learn", "prepare", "reflect", "validate"}
@@ -237,7 +237,7 @@ def write_json(prompts, skills):
 def insert_db(prompts, skills):
     import psycopg2
     sys.path.insert(0, str(PROJECT_ROOT / "src"))
-    from prompt_flow.config import DB_CONFIG
+    from capillaries.config import DB_CONFIG
 
     conn = psycopg2.connect(**DB_CONFIG)
     cur = conn.cursor()
@@ -300,7 +300,6 @@ def insert_db(prompts, skills):
                 step_order += 1
                 steps_json.append({
                     "prompt_id": prompt_id,
-                    "stage": "execute",
                     "step_order": step_order,
                 })
 

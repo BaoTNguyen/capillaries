@@ -1,6 +1,6 @@
-# Memory Project — Handoff from prompt-system
+# Memory Project — Handoff from capillaries
 
-Everything the memory project needs to know about how prompt-system consumes and depends on memory.
+Everything the memory project needs to know about how capillaries consumes and depends on memory.
 
 ## MemoryFrame contract
 
@@ -160,7 +160,7 @@ For the memory project to make good decisions about caching and confidence, it h
 - **Source filtering**: Default is `source='private'`. Public prompts are excluded unless explicitly requested.
 - **Corpus**: 849 private prompts, median length 2,203 chars. 114 are Image Gen prompts (12.4%) which tend to surface as false positives for business queries due to broad keyword overlap.
 
-## Files in prompt-system that touch memory
+## Files in capillaries that touch memory
 
 | File | What it does |
 |---|---|

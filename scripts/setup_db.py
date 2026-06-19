@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Set up the prompt_flow database: create schemas, optionally embed and classify.
+Set up the capillaries database: create schemas, optionally embed and classify.
 
 This script only touches the database. Obsidian sync (ingest, frontmatter
 writeback) is a separate concern — run those explicitly:
@@ -20,9 +20,9 @@ import sys
 
 import psycopg2
 
-from prompt_flow.config.paths import DB_CONFIG
-from prompt_flow.db.setup import create_database_schema, mark_low_confidence_prompts
-from prompt_flow.db.setup_skills import (
+from capillaries.config.paths import DB_CONFIG
+from capillaries.db.setup import create_database_schema, mark_low_confidence_prompts
+from capillaries.db.setup_skills import (
     create_skills_schema,
     create_skills_table,
     create_skill_runs_table,
@@ -56,12 +56,12 @@ def setup_schemas() -> None:
 
 
 async def run_embed() -> None:
-    from prompt_flow.db.embed import run
+    from capillaries.db.embed import run
     await run()
 
 
 async def run_classify() -> None:
-    from prompt_flow.classify.batch import BatchClassifier
+    from capillaries.classify.batch import BatchClassifier
     classifier = BatchClassifier(db_config=DB_CONFIG)
     stats = await classifier.process_all_prompts()
     print(f"\nClassification results: {stats}")
@@ -69,7 +69,7 @@ async def run_classify() -> None:
 
 async def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Set up the prompt_flow database (schemas, embeddings, classification)."
+        description="Set up the capillaries database (schemas, embeddings, classification)."
     )
     parser.add_argument("--embed", action="store_true", help="Generate embeddings for prompts missing them")
     parser.add_argument("--classify", action="store_true", help="Run batch LLM classification on pending prompts")

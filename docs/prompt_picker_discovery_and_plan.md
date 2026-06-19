@@ -187,7 +187,6 @@ Corpus analyzed under Base scope: 573 prompt files.
 | `last_evaluated` | `Last Evaluated` | 3 | 1 |
 | `expected_input` | `Expected Input` | 2 | 0 |
 | `expected_output` | `Expected Output` | 2 | 0 |
-| `parent_prompt` | `Parent Prompt` | 2 | 0 |
 | `notes` | `notes`, `Notes` | 2 | 0 |
 
 Other observed stats:
@@ -208,8 +207,6 @@ Recommended/accepted canonical keys in stack (lower snake case):
 - `expected_input`
 - `expected_output`
 - `status`
-- `models_tested`
-- `parent_prompt`
 - `original_link`
 - `last_updated`
 - `last_evaluated`

@@ -67,7 +67,7 @@ case "$cmd" in
       -x 220 -y 50 \
       "cd '$PROJECT_DIR' && \
        PYTHONPATH='$PROJECT_DIR/src' \
-       uvicorn prompt_flow.server:app \
+       uvicorn capillaries.server:app \
          --host 127.0.0.1 \
          --port $PORT \
          --log-level info; \

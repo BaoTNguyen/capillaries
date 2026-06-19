@@ -171,7 +171,7 @@ Works with existing PostgreSQL setup:
 ```python
 DB_CONFIG = {
     'host': 'localhost',
-    'database': 'prompt_flow',
+    'database': 'capillaries',
     'user': 'bao',
     'password': ''
 }

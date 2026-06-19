@@ -20,7 +20,7 @@ import logging
 import sys
 from pathlib import Path
 from typing import Dict, Any, List
-from prompt_flow.config.paths import DB_CONFIG
+from capillaries.config.paths import DB_CONFIG
 
 logging.basicConfig(
     level=logging.INFO,
@@ -39,10 +39,23 @@ FIELD_MAP = {
     'domain':               ('Category',             lambda v: v if v else None),  # AI stays AI, etc.
     'status':               ('status',               lambda v: v.title() if v else None),
     'complexity_level':     ('Complexity',           lambda v: v),
-    'models_tested':        ('Models Tested',        lambda v: v if v else []),
     'last_evaluated':       ('Last Evaluated',       lambda v: str(v) if v else None),
     'notes':                ('Notes',                lambda v: v if v else None),
 }
+
+
+def get_models_tested(title: str) -> list[str]:
+    """Derive models_tested from prompt_variants table."""
+    conn = psycopg2.connect(**DB_CONFIG)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT ARRAY_AGG(DISTINCT model) FROM prompt_variants WHERE prompt_title = %s AND is_current = TRUE",
+        (title,),
+    )
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    return row[0] if row and row[0] else []
 
 
 def get_classified_prompts() -> List[Dict[str, Any]]:
@@ -84,8 +97,7 @@ def sync_prompt_to_file(prompt: Dict[str, Any], dry_run: bool = False) -> bool:
         logger.error(f"  ERROR reading {file_path.name}: {e}")
         return False
 
-    # Fields that should be written even when empty (so they appear in Obsidian Base)
-    ALWAYS_WRITE = {'models_tested', 'last_evaluated', 'notes'}
+    ALWAYS_WRITE = {'last_evaluated', 'notes'}
 
     changed = False
     for db_field, (fm_key, transform) in FIELD_MAP.items():
@@ -103,6 +115,11 @@ def sync_prompt_to_file(prompt: Dict[str, Any], dry_run: bool = False) -> bool:
             continue
 
         post.metadata[fm_key] = new_value
+        changed = True
+
+    models = get_models_tested(prompt['title'])
+    if models and post.metadata.get('Models Tested') != models:
+        post.metadata['Models Tested'] = models
         changed = True
 
     if changed and not dry_run:

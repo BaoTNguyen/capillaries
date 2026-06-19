@@ -69,7 +69,6 @@ Data stores:
   "expected_output": "string|null",
   "status": "string|null",
   "models_tested": ["string"],
-  "parent_prompt": "string|null",
   "original_link": "string|null",
   "last_updated": "YYYY-MM-DDTHH:MM:SSZ",
   "last_evaluated": "YYYY-MM-DD|null",
@@ -172,7 +171,7 @@ Data stores:
   - metadata filtering (hard and soft constraints)
   - BM25 over prompt text
   - vector similarity
-  - neighbor expansion via `parent_prompt` and near-duplicate graph
+  - neighbor expansion via near-duplicate graph
 
 ## 5.4 PlannerAgent
 - Input: candidates + `TaskSpec`
@@ -345,13 +344,13 @@ When eval results show a problem, the diagnostic table in `docs/schema.md` maps 
 
 ```
 # 1. Run the eval (generates tests/artifacts/eval_<timestamp>.txt)
-python -m prompt_flow.search.eval
+python -m capillaries.search.eval
 
 # 2. Run with a specific query to zoom in
-python -m prompt_flow.search.eval --query "your specific query"
+python -m capillaries.search.eval --query "your specific query"
 
 # 3. Show more candidates per query
-python -m prompt_flow.search.eval --top-k 8
+python -m capillaries.search.eval --top-k 8
 
 # 4. Run the regression suite to check for regressions after a change
 pytest tests/test_search.py -x -v

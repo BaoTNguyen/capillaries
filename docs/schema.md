@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-04-18
 **Total prompts:** 972
-**DB:** PostgreSQL 16 + pgvector, database `prompt_flow`
+**DB:** PostgreSQL 16 + pgvector, database `capillaries`
 **Source of truth:** Obsidian vault frontmatter — DB is rebuilt from vault files
 **`intent` and `task_type` are always lowercase in the DB.** `domain` preserves original casing (e.g. `AI` stays uppercase). Obsidian displays Title Case for intent/task_type via the sync layer.
 
@@ -41,15 +41,13 @@
 |--------|------|-----------|----------------|-------|
 | `expected_input` | text | ~0% | Expected Input | What the prompt expects as input |
 | `expected_output` | text | ~0% | Expected Output | What the prompt produces |
-| `parent_prompt` | varchar | ~0% | Parent Prompt | FK to `prompt_id` of the parent in a chain |
 
 ### Obsidian-synced metadata
 
 | Column | Type | Fill rate | Obsidian field | Notes |
 |--------|------|-----------|----------------|-------|
-| `status` | varchar | 100% | status | `active` `deferred` `archived` — enforced by CHECK |
+| `status` | varchar | 100% | status | `draft` `active` `inactive` — enforced by CHECK |
 | `original_link` | text | ~79% | Original Link | URL the prompt was sourced from |
-| `models_tested` | varchar[] | ~0% | Models Tested | Models this prompt has been validated against |
 | `notes` | text | ~28% | Notes / notes | Freeform notes |
 | `last_evaluated` | date | ~0% | Last Evaluated | When the prompt was last tested/reviewed |
 
@@ -145,14 +143,14 @@ Reserved for future human correction of LLM classifications. FK to `prompts.prom
 |-----|--------|-----|
 | 401 prompts pending classification | 41% of prompts have no taxonomy metadata | Run batch classifier |
 | `reflect` stage has only 5 prompts | Chains never complete with a reflection step | Add reflect-stage prompts to vault |
-| `models_tested` / `last_evaluated` near 0% | No quality signal per prompt | Populate as prompts are used |
+| `last_evaluated` near 0% | No quality signal per prompt | Populate as prompts are used |
 | `expected_input` / `expected_output` at 0% | Can't verify chain coherence (does step N output feed step N+1 input?) | Add to classification or populate manually |
 
 ---
 
 ## Evaluation & Diagnostics
 
-Use this section alongside `prompt_flow.search.eval` to diagnose retrieval quality and decide where to invest improvement effort.
+Use this section alongside `capillaries.search.eval` to diagnose retrieval quality and decide where to invest improvement effort.
 
 ### Symptom → Layer Map
 
@@ -172,7 +170,7 @@ Use this section alongside `prompt_flow.search.eval` to diagnose retrieval quali
 ### Iteration Process
 
 ```
-1. Run eval         python -m prompt_flow.search.eval
+1. Run eval         python -m capillaries.search.eval
 2. Read report      tests/artifacts/eval_<timestamp>.txt
 3. For each query ask:
      - Are the right prompts showing up?     → retrieval or reranking problem

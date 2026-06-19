@@ -19,9 +19,9 @@ sudo systemctl enable postgresql
 sudo -u postgres psql
 
 # Create database and user
-CREATE DATABASE prompt_flow;
+CREATE DATABASE capillaries;
 CREATE USER "your-db-user" WITH PASSWORD 'your_password';  -- Change password as needed
-GRANT ALL PRIVILEGES ON DATABASE prompt_flow TO "your-db-user";
+GRANT ALL PRIVILEGES ON DATABASE capillaries TO "your-db-user";
 ALTER USER "your-db-user" CREATEDB;  -- Allow creating test databases
 
 # Exit psql
@@ -31,7 +31,7 @@ ALTER USER "your-db-user" CREATEDB;  -- Allow creating test databases
 ### Enable pgvector Extension
 ```bash
 # Connect to your database
-psql -d prompt_flow -U your-db-user
+psql -d capillaries -U your-db-user
 
 # Enable extensions
 CREATE EXTENSION IF NOT EXISTS vector;
@@ -47,7 +47,7 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 ```python
 DB_CONFIG = {
     'host': 'localhost',
-    'database': 'prompt_flow',
+    'database': 'capillaries',
     'user': 'your-db-user',  # Your username
     'password': 'your_password',  # Set if you used a password
 }
@@ -56,7 +56,7 @@ DB_CONFIG = {
 ### Environment Variables (Optional)
 Create `.env` file:
 ```
-DATABASE_URL=postgresql://your-db-user:your_password@localhost/prompt_flow
+DATABASE_URL=postgresql://your-db-user:your_password@localhost/capillaries
 ANTHROPIC_API_KEY=your_anthropic_key  # For batch classification
 OPENAI_API_KEY=your_openai_key  # For embeddings
 ```
@@ -65,12 +65,12 @@ OPENAI_API_KEY=your_openai_key  # For embeddings
 
 ### Test Connection
 ```bash
-psql -d prompt_flow -U your-db-user -c "SELECT version();"
+psql -d capillaries -U your-db-user -c "SELECT version();"
 ```
 
 ### Test pgvector
 ```bash
-psql -d prompt_flow -U your-db-user -c "SELECT '[1,2,3]'::vector;"
+psql -d capillaries -U your-db-user -c "SELECT '[1,2,3]'::vector;"
 ```
 
 ## Next Steps
@@ -87,7 +87,7 @@ psql -d prompt_flow -U your-db-user -c "SELECT '[1,2,3]'::vector;"
 
 3. **Verify data loading:**
    ```bash
-   psql -d prompt_flow -U your-db-user -c "SELECT COUNT(*) FROM prompts;"
+   psql -d capillaries -U your-db-user -c "SELECT COUNT(*) FROM prompts;"
    ```
 
 The setup script will:

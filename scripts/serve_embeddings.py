@@ -77,7 +77,7 @@ def _patch_snowflake_source() -> None:
     import glob
     pattern = os.path.expanduser(
         "~/.cache/huggingface/modules/transformers_modules/Snowflake/"
-        "snowflake_hyphen_arctic_hyphen_embed_hyphen_m_hyphen_v2*/modeling_hf_alibaba_nlp_gte.py"
+        "snowflake_hyphen_arctic_hyphen_embed_hyphen_m_hyphen_v2*/*/modeling_hf_alibaba_nlp_gte.py"
     )
     for path in glob.glob(pattern):
         with open(path, "r") as f:
@@ -109,6 +109,21 @@ def _patch_snowflake_source() -> None:
             print(f"Warning: could not find patch target in {path}")
 
 
+def _disable_xformers(m: SentenceTransformer) -> None:
+    """Disable xformers memory-efficient attention on all sub-modules.
+
+    The Snowflake model config sets use_memory_efficient_attention=True which
+    creates xformers BlockDiagonalMask objects. These require all tensors on
+    the same CUDA device and crash on CPU. Disabling falls back to standard
+    scaled dot-product attention.
+    """
+    for module in m.modules():
+        if hasattr(module, "use_memory_efficient_attention"):
+            module.use_memory_efficient_attention = False
+        if hasattr(module, "config") and hasattr(module.config, "use_memory_efficient_attention"):
+            module.config.use_memory_efficient_attention = False
+
+
 def main():
     global model
     parser = argparse.ArgumentParser(description="Serve embeddings via OpenAI-compatible API")
@@ -123,7 +138,12 @@ def main():
 
     _patch_snowflake_source()
     print(f"Loading {MODEL_NAME} on {device}...")
-    model = SentenceTransformer(MODEL_NAME, device=device, trust_remote_code=True)
+    model = SentenceTransformer(
+        MODEL_NAME, device=device, trust_remote_code=True,
+        config_kwargs={"use_memory_efficient_attention": device == "cuda"},
+    )
+    if device != "cuda":
+        _disable_xformers(model)
     print(f"Model ready. Embedding dim: {model.get_sentence_embedding_dimension()}")
 
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")

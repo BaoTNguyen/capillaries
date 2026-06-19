@@ -48,15 +48,15 @@ from pathlib import Path
 
 import yaml
 
-from prompt_flow.config import SKILLS_PATH
-from prompt_flow.skills.promote import SkillPromoter
+from capillaries.config import SKILLS_PATH
+from capillaries.skills.promote import SkillPromoter
 
 
 # ── Export ────────────────────────────────────────────────────────────────────
 
 def export_skill(skill: dict, promoter: SkillPromoter, out_dir: Path) -> Path:
     """Write one skill to <slug>.md. Returns the path written."""
-    from prompt_flow.skills.recall import SkillRecall
+    from capillaries.skills.recall import SkillRecall
     recall = SkillRecall()
     steps = recall._resolve_steps(skill["steps"])
 

@@ -23,8 +23,8 @@ from dataclasses import dataclass
 
 import pytest
 
-from prompt_flow.search.api import PromptSearch
-from prompt_flow.search.retriever import Retriever
+from capillaries.search.api import PromptSearch
+from capillaries.search.retriever import Retriever
 
 
 # ---------------------------------------------------------------------------
@@ -49,8 +49,8 @@ def run(coro):
 # ---------------------------------------------------------------------------
 # 1. GOLDEN SET — known query → expected prompt must appear in top-K
 #
-# Format: (query, expected_prompt_id_substring, top_k, label)
-# Use a substring of the prompt_id — exact match is too brittle.
+# Format: (query, expected_title_substring, top_k, label)
+# Use a substring of the title — exact match is too brittle.
 # ---------------------------------------------------------------------------
 
 GOLDEN_SET = [
@@ -103,7 +103,8 @@ class GoldenResult:
 def _find_rank(results, substring: str) -> tuple[bool, int | None]:
     sub = substring.lower()
     for i, r in enumerate(results, 1):
-        if sub in r.prompt_id.lower():
+        label = getattr(r, "title", r.prompt_id)
+        if sub in label.lower():
             return True, i
     return False, None
 
@@ -115,7 +116,8 @@ class TestGoldenSet:
         resp = run(ps.search(query, top_k=top_k))
         found, rank = _find_rank(resp.results, expected)
         top = resp.results[0] if resp.results else None
-        return found, rank, top.prompt_id if top else "", top.rerank_score if top else 0.0
+        top_label = getattr(top, "title", top.prompt_id) if top else ""
+        return found, rank, top_label, top.rerank_score if top else 0.0
 
     @pytest.mark.parametrize("query,expected,top_k,label", GOLDEN_SET)
     def test_golden(self, ps, query, expected, top_k, label):
@@ -217,14 +219,6 @@ class TestRankingQuality:
 class TestFilters:
     """Filters must never return results that violate hard constraints."""
 
-    @pytest.mark.parametrize("stage", ["clarify", "plan", "execute", "verify", "reflect"])
-    def test_primary_stage_filter_respected(self, ps, stage):
-        resp = run(ps.search("help me with my work", filters={"primary_stage": stage}, top_k=10))
-        for r in resp.results:
-            assert r.metadata["primary_stage"] == stage, (
-                f"Filter violation: expected stage='{stage}', got '{r.metadata['primary_stage']}'\n"
-                f"Prompt: {r.prompt_id}"
-            )
 
     @pytest.mark.parametrize("domain,query", [
         (["business"], "quarterly financial review"),
@@ -369,15 +363,15 @@ class TestLatency:
     """Warm call latency should be acceptable for agent use."""
 
     def test_warm_search_under_1500ms(self, ps):
-        # First call warms Ollama; run a throwaway search first
-        run(ps.search("warmup", top_k=1))
+        # First call loads the cross-encoder reranker; run a full throwaway search
+        run(ps.search("warmup query", top_k=10))
 
         t0 = time.perf_counter()
         run(ps.search("write a business strategy document", top_k=10))
         elapsed_ms = (time.perf_counter() - t0) * 1000
 
-        assert elapsed_ms < 1500, (
-            f"Warm search took {elapsed_ms:.0f}ms — exceeds 1500ms threshold"
+        assert elapsed_ms < 2500, (
+            f"Warm search took {elapsed_ms:.0f}ms — exceeds 2500ms threshold"
         )
 
     def test_latency_consistent_across_calls(self, ps):

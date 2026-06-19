@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "prompt-flow"
+name = "capillaries"
 version = "0.1.0"
-description = "Search and management system for an Obsidian prompt vault"
+description = "Prompt search and management system with semantic retrieval"
 requires-python = ">=3.10"
 dependencies = [
     "psycopg2-binary>=2.9.0",
@@ -37,7 +37,7 @@ lightweight = [
     "structlog>=22.1.0",
 ]
 advanced = [
-    "prompt-flow[lightweight]",
+    "capillaries[lightweight]",
     "faiss-cpu>=1.7.4",
     "transformers>=4.21.0",
     "torch>=1.12.0",
@@ -45,6 +45,9 @@ advanced = [
     "hdbscan>=0.8.28",
     "redis>=4.3.0",
     "prometheus-client>=0.14.0",
+]
+obsidian = [
+    "python-frontmatter>=1.0.0",
 ]
 dev = [
     "pytest>=7.1.0",

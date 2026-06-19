@@ -208,6 +208,11 @@ __marimo__/
 
 tests/artifacts
 
+# Transient reports
+chain_report.txt
+eval_report.txt
+workflow_eval.txt
+
 # Claude Code worktrees
 .claude/worktrees/
 
