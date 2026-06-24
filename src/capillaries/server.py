@@ -135,7 +135,7 @@ async def get_prompt(title: str):
             """
             SELECT title, prompt_text, intent, task_type, domain,
                    complexity_level,
-                   status, models_tested, notes, original_link,
+                   status, notes, original_link,
                    last_evaluated, last_updated, embedding_version
             FROM prompts
             WHERE title = %s

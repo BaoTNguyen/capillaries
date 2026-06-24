@@ -2,11 +2,80 @@
   "permissions": {
     "allow": [
       "Bash(*)",
-      "Bash(ls -lh /c/Users/baotn/Coding/Projects/prompt-flow/*.py)",
-      "Bash(wc -l /c/Users/baotn/Coding/Projects/prompt-flow/*.py 2>/dev/null | tail -1)",
-      "Bash(find /c/Users/baotn/Coding/Projects/prompt-flow -type f \\\\\\( -name \"*.jsonl\" -o -name \"*.ndjson\" -o -name \"sample*\" -o -name \"*example*\" -o -name \"*test*\" \\\\\\) 2>/dev/null | head -20)",
+      "Bash(ls -lh /c/Users/baotn/Coding/Projects/capillaries/*.py)",
+      "Bash(wc -l /c/Users/baotn/Coding/Projects/capillaries/*.py 2>/dev/null | tail -1)",
+      "Bash(find /c/Users/baotn/Coding/Projects/capillaries -type f \\\\\\( -name \"*.jsonl\" -o -name \"*.ndjson\" -o -name \"sample*\" -o -name \"*example*\" -o -name \"*test*\" \\\\\\) 2>/dev/null | head -20)",
       "Bash(find \"/c/Users/baotn\" -name \"*.md\" -path \"*/Prompts/*\" 2>/dev/null | grep -v Clippings | head -20)",
       "WebSearch"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/hooks/arteries-activate.js\"",
+            "timeout": 5,
+            "statusMessage": "Activating arteries memory..."
+          }
+        ]
+      },
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .arteries/hooks/activate.sh",
+            "timeout": 5,
+            "statusMessage": "Activating arteries memory..."
+          }
+        ]
+      },
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ARTERIES_CLI=claude bash .arteries/hooks/activate.sh",
+            "timeout": 5,
+            "statusMessage": "Activating arteries memory..."
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/hooks/arteries-observe.js\"",
+            "timeout": 10,
+            "statusMessage": "arteries"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .arteries/hooks/generic-observe.sh \"$CLAUDE_USER_PROMPT\"",
+            "timeout": 10,
+            "statusMessage": "arteries"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ARTERIES_CLI=claude bash .arteries/hooks/generic-observe.sh \"$CLAUDE_USER_PROMPT\"",
+            "timeout": 10,
+            "statusMessage": "arteries"
+          }
+        ]
+      }
     ]
   }
 }

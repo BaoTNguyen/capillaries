@@ -1,0 +1,7 @@
+{
+  "arteries_root": "../arteries",
+  "project_root": ".",
+  "project": "prompt-system",
+  "agent_id": "prompt-system-hook",
+  "cli": "codex"
+}

@@ -250,7 +250,7 @@ class Retriever:
                 prompt_id::text, title,
                 prompt_text,
                 intent, task_type, domain,
-                complexity_level, status, models_tested, notes,
+                complexity_level, status, notes,
                 1 - (embedding <=> %s::vector) AS dense_sim
             FROM prompts
             WHERE embedding IS NOT NULL
@@ -291,7 +291,7 @@ class Retriever:
                 prompt_id::text, title,
                 prompt_text,
                 intent, task_type, domain,
-                complexity_level, status, models_tested, notes,
+                complexity_level, status, notes,
                 ts_rank_cd(search_tsv, to_tsquery('english', %s), 1|4|32) AS sparse_sim
             FROM prompts
             WHERE search_tsv @@ to_tsquery('english', %s)
@@ -349,8 +349,7 @@ class Retriever:
                         "domain": row.get("domain") or [],
                         "complexity_level": row.get("complexity_level"),
                         "status": row.get("status"),
-                        "models_tested": row.get("models_tested") or [],
-                        "notes": row.get("notes"),
+                                                "notes": row.get("notes"),
                     },
                 )
             )
@@ -419,7 +418,7 @@ class Retriever:
             sql = f"""
                 SELECT prompt_id::text, title, prompt_text,
                        intent, task_type, domain,
-                       complexity_level, status, models_tested, notes
+                       complexity_level, status, notes
                 FROM prompts
                 WHERE {filter_clause}
             """
@@ -445,7 +444,6 @@ class Retriever:
 
                     "complexity_level": r.get("complexity_level"),
                     "status": r.get("status"),
-                    "models_tested": r.get("models_tested") or [],
                     "notes": r.get("notes"),
                 },
             )

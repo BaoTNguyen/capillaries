@@ -214,7 +214,10 @@ eval_report.txt
 workflow_eval.txt
 
 # Claude Code worktrees
-.claude/worktrees/
+.claude/
+
+.codex/
+.claude-plugin/
 
 # Temporary demo prototype
 demo/

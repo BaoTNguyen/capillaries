@@ -109,6 +109,22 @@ def _patch_snowflake_source() -> None:
             print(f"Warning: could not find patch target in {path}")
 
 
+def _fix_rotary_caches(m: SentenceTransformer) -> None:
+    """Recompute rotary embedding cos/sin caches after model load.
+
+    torch >=2.12 corrupts non-persistent buffers during checkpoint loading —
+    cos_cached/sin_cached end up with garbage values while inv_freq is fine.
+    """
+    for module in m.modules():
+        if type(module).__name__ in ("RotaryEmbedding", "NTKScalingRotaryEmbedding"):
+            if hasattr(module, "inv_freq") and hasattr(module, "cos_cached"):
+                module._set_cos_sin_cache(
+                    seq_len=module.max_seq_len_cached,
+                    device=module.inv_freq.device,
+                    dtype=torch.get_default_dtype(),
+                )
+
+
 def _disable_xformers(m: SentenceTransformer) -> None:
     """Disable xformers memory-efficient attention on all sub-modules.
 
@@ -142,6 +158,7 @@ def main():
         MODEL_NAME, device=device, trust_remote_code=True,
         config_kwargs={"use_memory_efficient_attention": device == "cuda"},
     )
+    _fix_rotary_caches(model)
     if device != "cuda":
         _disable_xformers(model)
     print(f"Model ready. Embedding dim: {model.get_sentence_embedding_dimension()}")

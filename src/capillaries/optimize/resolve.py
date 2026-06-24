@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import psycopg2
-import psycopg2.extras
 
 from capillaries.config.paths import DB_CONFIG
 
 
 def resolve_prompt_text(
-    prompt_title: str,
+    prompt_id: str,
     model: str | None = None,
     db_config: dict | None = None,
 ) -> str:
@@ -24,16 +23,16 @@ def resolve_prompt_text(
             if model:
                 cur.execute("""
                     SELECT prompt_text FROM prompt_variants
-                    WHERE prompt_title = %s AND model = %s AND is_current = TRUE
+                    WHERE prompt_id = %s AND model = %s AND is_current = TRUE
                     LIMIT 1
-                """, (prompt_title, model))
+                """, (prompt_id, model))
                 row = cur.fetchone()
                 if row:
                     return row[0]
 
             cur.execute(
-                "SELECT prompt_text FROM prompts WHERE title = %s",
-                (prompt_title,),
+                "SELECT prompt_text FROM prompts WHERE prompt_id = %s",
+                (prompt_id,),
             )
             row = cur.fetchone()
             return row[0] if row else ""

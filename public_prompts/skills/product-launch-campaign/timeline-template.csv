@@ -1,0 +1,43 @@
+# Product Launch Timeline Template
+# 12-week plan organized by phase and functional area
+# Import into your project management tool or spreadsheet
+# Adjust dates by setting Week 1 = your actual start date
+Week,Phase,Functional Area,Milestone,Task,Owner Role,Dependencies,Status
+1,Discovery,Product,"Requirements locked","Finalize feature scope and acceptance criteria",Product Manager,None,Not Started
+1,Discovery,Marketing,"Positioning draft","Complete market positioning analysis and messaging framework",Product Marketing,None,Not Started
+1,Discovery,Finance,"Pricing model draft","Propose pricing tiers based on competitive analysis",Finance Lead,Positioning draft,Not Started
+2,Discovery,Product,"Technical design approved","Architecture review and capacity planning sign-off",Engineering Lead,Requirements locked,Not Started
+2,Discovery,Legal,"Compliance review initiated","Begin regulatory and legal review for launch materials",Legal Counsel,Positioning draft,Not Started
+2,Discovery,Marketing,"Competitive landscape mapped","Document competitor positioning and identify differentiation angles",Product Marketing,None,Not Started
+3,Build,Product,"Alpha build ready","Core features functional in staging environment",Engineering Lead,Technical design approved,Not Started
+3,Build,Marketing,"Brand assets created","Logo usage, screenshots, hero images, and demo video scripted",Design Lead,Positioning draft,Not Started
+3,Build,Sales,"Sales enablement started","Begin drafting battle cards, FAQ, and objection handling guide",Sales Enablement,Positioning draft,Not Started
+4,Build,Product,"Internal dogfooding begins","Team uses product daily and logs feedback",Product Manager,Alpha build ready,Not Started
+4,Build,Marketing,"Website copy drafted","Landing page, product page, and blog post drafts complete",Content Lead,Brand assets created,Not Started
+4,Build,Customer Success,"Knowledge base outlined","Draft support articles for core workflows",CS Lead,Alpha build ready,Not Started
+5,Build,Product,"Beta build ready","Feature-complete build with known issues documented",Engineering Lead,Internal dogfooding feedback,Not Started
+5,Build,Marketing,"Email sequences drafted","Nurture, announcement, and onboarding email copy finalized",Email Marketing,Website copy drafted,Not Started
+5,Build,Finance,"Pricing finalized","Pricing approved by leadership and configured in billing system",Finance Lead,Pricing model draft,Not Started
+6,Validate,Product,"Beta program launched","External beta users onboarded and feedback loop active",Product Manager,Beta build ready,Not Started
+6,Validate,Marketing,"PR and media outreach begins","Press release drafted and journalist briefings scheduled",PR Lead,Website copy drafted,Not Started
+6,Validate,Sales,"Sales team training session 1","Product demo walkthrough and value prop training",Sales Enablement,Sales enablement materials,Not Started
+7,Validate,Product,"Beta feedback synthesized","Top issues prioritized and fix plan committed",Product Manager,Beta program launched,Not Started
+7,Validate,Infrastructure,"Load testing complete","Performance benchmarks met under projected launch traffic",DevOps Lead,Beta build ready,Not Started
+7,Validate,Legal,"Legal review complete","Terms of service, privacy policy, and contracts approved",Legal Counsel,Compliance review initiated,Not Started
+8,Validate,Product,"Release candidate ready","All launch-blocking bugs resolved, RC build tagged",Engineering Lead,Beta feedback synthesized,Not Started
+8,Validate,Marketing,"Website and landing pages staged","Final copy, design, and tracking pixels in staging",Web Dev Lead,Email sequences drafted,Not Started
+8,Validate,Customer Success,"Support team trained","Training sessions complete with role-play scenarios",CS Lead,Knowledge base outlined,Not Started
+9,Pre-Launch,Product,"Go/No-Go decision","Cross-functional launch readiness review meeting",Product Manager,All validate phase items,Not Started
+9,Pre-Launch,Marketing,"Launch campaign armed","All emails scheduled, social posts queued, ads ready",Marketing Lead,Website staged,Not Started
+9,Pre-Launch,Sales,"Sales team training session 2","Objection handling practice and competitive scenarios",Sales Enablement,Sales training session 1,Not Started
+10,Pre-Launch,Infrastructure,"Monitoring dashboards live","Real-time dashboards for uptime, errors, and key metrics",DevOps Lead,Load testing complete,Not Started
+10,Pre-Launch,Marketing,"Analyst and influencer briefings","Key industry voices briefed under NDA or embargo",PR Lead,PR outreach,Not Started
+10,Pre-Launch,Customer Success,"Escalation runbook finalized","Severity definitions, routing rules, and war room plan documented",CS Lead,Support team trained,Not Started
+11,Launch,Product,"Product live in production","Feature flags flipped, production deployment verified",Engineering Lead,Go/No-Go decision,Not Started
+11,Launch,Marketing,"Launch campaign activated","Emails sent, PR published, social and ads live",Marketing Lead,Launch campaign armed,Not Started
+11,Launch,Sales,"Outbound launch blitz","Sales team executes launch-day outreach to pipeline",Sales Lead,Sales training session 2,Not Started
+11,Launch,Customer Success,"War room active","Support team monitoring tickets with 1-hour response SLA",CS Lead,Escalation runbook finalized,Not Started
+12,Post-Launch,Product,"Week 1 metrics review","Adoption, activation, and error rate analysis",Product Manager,Product live,Not Started
+12,Post-Launch,Marketing,"Campaign performance report","Email open rates, website traffic, conversion funnel analysis",Marketing Lead,Launch campaign activated,Not Started
+12,Post-Launch,All,"Launch retrospective","Cross-functional retro: what worked, what to improve",Product Manager,All launch tasks,Not Started
+12,Post-Launch,Finance,"Revenue impact assessment","Compare actual vs. projected revenue and unit economics",Finance Lead,Week 1 metrics review,Not Started

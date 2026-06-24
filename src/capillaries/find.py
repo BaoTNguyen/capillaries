@@ -12,7 +12,7 @@ Usage:
 
     # With memory context from arteries
     from capillaries.find import FindResult
-    from capillaries.agent.gate import MemoryFrame
+    from capillaries.agent.memory_types import MemoryFrame
 
     result = await find("debug auth middleware", memory=memory_frame)
 
@@ -33,9 +33,11 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from capillaries.agent.memory_types import MemoryFrame
+from capillaries.search.memory_filter import MemoryFilter
 
 SINGLE_THRESHOLD = 0.3
 SKILL_THRESHOLD = 0.50
+MEMORY_FILTER_CANDIDATES = 5
 
 
 @dataclass
@@ -90,6 +92,7 @@ class _FindEngine:
 
         self._search = PromptSearch()
         self._skill_recall = SkillRecall()
+        self._memory_filter = MemoryFilter()
 
     async def find(
         self,
@@ -116,7 +119,7 @@ class _FindEngine:
                 return skill_result
 
         # Single prompt retrieval
-        single_result = await self._try_single(situation)
+        single_result = await self._try_single(situation, memory)
         if single_result and single_result.confidence >= SINGLE_THRESHOLD:
             return single_result
 
@@ -153,12 +156,21 @@ class _FindEngine:
         )
         return inference.domain, inference.intent, inference.complexity
 
-    async def _try_single(self, situation: str) -> FindResult | None:
-        response = await self._search.search(situation, top_k=1)
+    async def _try_single(
+        self, situation: str, memory: MemoryFrame | None = None
+    ) -> FindResult | None:
+        top_k = MEMORY_FILTER_CANDIDATES if memory else 1
+        response = await self._search.search(situation, top_k=top_k)
         if not response.results:
             return None
 
-        top = response.results[0]
+        if memory:
+            filtered = self._memory_filter.apply(response.results, memory)
+            best = filtered[0]
+            top = best.result
+        else:
+            top = response.results[0]
+
         return FindResult(
             mode="single",
             confidence=top.rerank_score,
@@ -225,6 +237,8 @@ async def find(
 
     Returns:
         FindResult with .mode, .confidence, .prompt_text, and metadata.
+        Caller can pass result.prompt_id to optimize.resolve.resolve_prompt_text()
+        for model-specific variants when needed.
     """
     engine = _get_engine()
     return await engine.find(situation, memory, prefer)

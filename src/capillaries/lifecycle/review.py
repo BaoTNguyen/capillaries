@@ -46,12 +46,12 @@ def review_inactive_prompts(db_config: dict | None = None) -> list[dict]:
                     (
                         SELECT COUNT(*)
                         FROM golden_examples ge
-                        WHERE ge.prompt_title = p.title
+                        WHERE ge.prompt_id = p.prompt_id
                     ) AS golden_example_count,
                     (
                         SELECT COUNT(*)
                         FROM prompt_variants pv
-                        WHERE pv.prompt_title = p.title AND pv.is_current = TRUE
+                        WHERE pv.prompt_id = p.prompt_id AND pv.is_current = TRUE
                     ) AS variant_count
                 FROM prompts p
                 WHERE p.status = 'inactive'

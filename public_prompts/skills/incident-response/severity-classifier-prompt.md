@@ -1,0 +1,41 @@
+---
+intent: [validate]
+task_type: [evaluate]
+domain: [technical]
+primary_stage: clarify
+complexity_level: 2
+source: public
+Original Link: ""
+Notes: "Part of the incident-response skill"
+---
+
+Assess the severity of the following production incident and recommend the appropriate response level:
+
+**Incident description:** {{incident_description}}
+**Systems affected:** {{affected_systems}}
+**User impact:** {{user_impact}} (e.g., "API returning 500s for 30% of requests", "payments processing delayed")
+**Duration so far:** {{duration}}
+**Workaround available:** {{workaround}} (yes/no, describe if yes)
+
+Evaluate against these dimensions:
+
+| Dimension | Assessment | Evidence |
+|-----------|-----------|----------|
+| **User Impact Scope** | % of users affected | |
+| **Revenue Impact** | Estimated revenue at risk per hour | |
+| **Data Integrity** | Any data loss or corruption risk? | |
+| **Security Exposure** | Any unauthorized access or data exposure? | |
+| **Regulatory Impact** | Any compliance obligations triggered? | |
+| **Reputational Risk** | Likelihood of external visibility | |
+
+**Recommended Severity:**
+- **SEV-1 (Critical):** Complete outage, data breach, >50% users affected
+- **SEV-2 (High):** Major degradation, revenue impact, >10% users affected
+- **SEV-3 (Medium):** Partial degradation, workaround available, <10% users
+- **SEV-4 (Low):** Minor issue, no user impact, cosmetic or internal
+
+For the assigned severity, specify:
+- **Escalation requirement** — who must be notified immediately
+- **Communication cadence** — how often to update stakeholders
+- **Response team size** — minimum roles needed (IC, comms lead, subject matter expert)
+- **Expected resolution window** — based on severity SLA

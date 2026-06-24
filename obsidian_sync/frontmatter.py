@@ -48,10 +48,12 @@ def get_models_tested(title: str) -> list[str]:
     """Derive models_tested from prompt_variants table."""
     conn = psycopg2.connect(**DB_CONFIG)
     cur = conn.cursor()
-    cur.execute(
-        "SELECT ARRAY_AGG(DISTINCT model) FROM prompt_variants WHERE prompt_title = %s AND is_current = TRUE",
-        (title,),
-    )
+    cur.execute("""
+        SELECT ARRAY_AGG(DISTINCT pv.model)
+        FROM prompt_variants pv
+        JOIN prompts p ON p.prompt_id = pv.prompt_id
+        WHERE p.title = %s AND pv.is_current = TRUE
+    """, (title,))
     row = cur.fetchone()
     cur.close()
     conn.close()
@@ -66,7 +68,7 @@ def get_classified_prompts() -> List[Dict[str, Any]]:
         SELECT title, file_path,
                intent, task_type, domain, status,
                complexity_level,
-               models_tested, last_evaluated, notes
+               last_evaluated, notes
         FROM prompts
         WHERE backfill_status IN ('complete', 'needs_review')
           AND last_classified IS NOT NULL
@@ -75,7 +77,7 @@ def get_classified_prompts() -> List[Dict[str, Any]]:
         'title', 'file_path',
         'intent', 'task_type', 'domain', 'status',
         'complexity_level',
-        'models_tested', 'last_evaluated', 'notes',
+        'last_evaluated', 'notes',
     ]
     rows = [dict(zip(columns, row)) for row in cur.fetchall()]
     cur.close()

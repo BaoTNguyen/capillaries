@@ -69,24 +69,24 @@ def create_database_schema(cursor):
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS prompt_variants (
-        variant_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        prompt_title    VARCHAR NOT NULL REFERENCES prompts(title) ON DELETE CASCADE,
-        model           VARCHAR NOT NULL,
-        prompt_text     TEXT NOT NULL,
-        content_hash    VARCHAR NOT NULL,
-        optimizer       VARCHAR NOT NULL,
+        variant_id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        prompt_id           UUID NOT NULL REFERENCES prompts(prompt_id) ON DELETE CASCADE,
+        model               VARCHAR NOT NULL,
+        prompt_text         TEXT NOT NULL,
+        content_hash        VARCHAR NOT NULL,
+        optimizer           VARCHAR NOT NULL,
         optimization_run_id UUID,
-        metric_score    FLOAT,
-        created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        is_current      BOOLEAN DEFAULT TRUE,
-        UNIQUE (prompt_title, model, content_hash)
+        metric_score        FLOAT,
+        created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        is_current          BOOLEAN DEFAULT TRUE,
+        UNIQUE (prompt_id, model, content_hash)
     );
     """)
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS golden_examples (
         example_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        prompt_title    VARCHAR NOT NULL REFERENCES prompts(title) ON DELETE CASCADE,
+        prompt_id       UUID NOT NULL REFERENCES prompts(prompt_id) ON DELETE CASCADE,
         input_text      TEXT NOT NULL,
         output_text     TEXT NOT NULL,
         context_text    TEXT,
@@ -102,7 +102,7 @@ def create_database_schema(cursor):
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS optimization_runs (
         run_id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        prompt_title    VARCHAR NOT NULL REFERENCES prompts(title),
+        prompt_id       UUID NOT NULL REFERENCES prompts(prompt_id),
         model           VARCHAR NOT NULL,
         optimizer       VARCHAR NOT NULL,
         num_examples    INTEGER NOT NULL,
@@ -165,10 +165,10 @@ def create_database_schema(cursor):
         "CREATE INDEX IF NOT EXISTS idx_prompts_embedding ON prompts USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);",
         "CREATE INDEX IF NOT EXISTS idx_prompts_confidence ON prompts USING GIN (metadata_confidence);",
         "CREATE INDEX IF NOT EXISTS idx_prompts_backfill ON prompts (backfill_status);",
-        "CREATE INDEX IF NOT EXISTS idx_variants_prompt_model ON prompt_variants (prompt_title, model) WHERE is_current = TRUE;",
-        "CREATE INDEX IF NOT EXISTS idx_golden_prompt ON golden_examples (prompt_title);",
+        "CREATE INDEX IF NOT EXISTS idx_variants_prompt_model ON prompt_variants (prompt_id, model) WHERE is_current = TRUE;",
+        "CREATE INDEX IF NOT EXISTS idx_golden_prompt ON golden_examples (prompt_id);",
         "CREATE INDEX IF NOT EXISTS idx_golden_source ON golden_examples (source);",
-        "CREATE INDEX IF NOT EXISTS idx_opt_runs_prompt ON optimization_runs (prompt_title, started_at DESC);",
+        "CREATE INDEX IF NOT EXISTS idx_opt_runs_prompt ON optimization_runs (prompt_id, started_at DESC);",
     ]
 
     for index_sql in indexes:
