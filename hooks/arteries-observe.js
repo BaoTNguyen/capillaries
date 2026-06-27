@@ -1,13 +1,19 @@
 #!/usr/bin/env node
-// prompt-system wrapper for arteries UserPromptSubmit.
+// Capillaries wrapper for arteries UserPromptSubmit.
 // Reads Claude/Codex-style JSON on stdin and returns the expected hook JSON.
 
 const { execFileSync } = require('child_process');
+const path = require('path');
 
-const ARTERIES_ROOT = process.env.ARTERIES_ROOT || '../arteries';
-const PROMPT_SYSTEM_ROOT = process.env.PROMPT_SYSTEM_ROOT || '.';
+const ARTERIES_ROOT = process.env.ARTERIES_ROOT;
+const CAPILLARIES_ROOT = process.env.CAPILLARIES_ROOT || process.env.CLAUDE_PROJECT_DIR || path.resolve(__dirname, '..');
 const isCopilot = Boolean(process.env.COPILOT_PLUGIN_DATA);
 const isCodex = !isCopilot && Boolean(process.env.PLUGIN_DATA);
+
+if (!ARTERIES_ROOT) {
+  process.stdout.write(isCopilot || isCodex ? '{}' : '');
+  process.exit(0);
+}
 
 function writeOutput(output) {
   if (isCopilot) {
@@ -39,10 +45,10 @@ process.stdin.on('end', () => {
     }
 
     const env = { ...process.env };
-    const paths = [`${ARTERIES_ROOT}/src`, `${PROMPT_SYSTEM_ROOT}/src`];
+    const paths = [`${ARTERIES_ROOT}/src`, `${CAPILLARIES_ROOT}/src`];
     env.PYTHONPATH = env.PYTHONPATH ? `${paths.join(':')}:${env.PYTHONPATH}` : paths.join(':');
-    env.ARTERIES_PROJECT = env.ARTERIES_PROJECT || 'prompt-system';
-    env.ARTERIES_AGENT_ID = env.ARTERIES_AGENT_ID || 'prompt-system-hook';
+    env.ARTERIES_PROJECT = env.ARTERIES_PROJECT || 'capillaries';
+    env.ARTERIES_AGENT_ID = env.ARTERIES_AGENT_ID || 'capillaries-hook';
 
     const result = execFileSync(
       'python3',
