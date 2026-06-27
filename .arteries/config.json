@@ -1,7 +1,8 @@
 {
-  "arteries_root": "../arteries",
-  "project_root": ".",
-  "project": "prompt-system",
-  "agent_id": "prompt-system-hook",
-  "cli": "codex"
+  "arteries_root": "/home/bao-tn/Coding/Projects/arteries",
+  "project_root": "/home/bao-tn/Coding/Projects/capillaries",
+  "project": "capillaries",
+  "agent_id": "capillaries-hook",
+  "cli": "generic",
+  "capillaries_root": "/home/bao-tn/Coding/Projects/capillaries"
 }

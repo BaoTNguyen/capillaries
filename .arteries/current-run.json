@@ -1,9 +1,9 @@
 {
-  "agent_id": "prompt-system-hook",
-  "cli": "codex",
+  "agent_id": "capillaries-hook",
+  "cli": "generic",
   "metadata": {},
-  "project_id": "prompt-system",
-  "repo_path": ".",
-  "run_id": "45ca0650-bef6-46c4-a348-9a2ade8fccc4",
-  "started_at": "2026-06-24T02:24:14.418776+00:00"
+  "project_id": "capillaries",
+  "repo_path": "/home/bao-tn/Coding/Projects/capillaries",
+  "run_id": "a0d450be-0126-481a-a62c-4c43d4d6f32b",
+  "started_at": "2026-06-26T16:15:30.365365+00:00"
 }
