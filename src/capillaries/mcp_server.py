@@ -28,6 +28,7 @@ from capillaries.agent.api import (
     _get_catalog_handler,
 )
 from capillaries.agent.catalog import get_discover_response
+from capillaries.agent.context import normalize_agent_context, with_agent_context
 
 
 try:
@@ -42,6 +43,8 @@ try:
         domain: list[str] | None = None,
         complexity: int | None = None,
         prefer: str = "auto",
+        context: dict | None = None,
+        agent_context: dict | None = None,
     ) -> dict:
         """
         Find the best prompt or multi-step skill for your current situation.
@@ -54,14 +57,19 @@ try:
         Works with natural language - just describe your situation.
         """
         router = _get_router()
+        normalized = normalize_agent_context(agent_context)
         result = await router.route(
             situation=situation,
-            stage=stage,
             domain=domain,
+            intent=[stage] if stage else None,
             complexity=complexity,
             prefer=prefer,
+            context=with_agent_context(context, normalized),
         )
-        return result.to_dict()
+        response = result.to_dict()
+        if normalized:
+            response["agent_context"] = normalized.to_dict()
+        return response
 
     @mcp.tool()
     async def capillaries_execute_step(
@@ -105,6 +113,7 @@ try:
         quality_score: float | None = None,
         failure_step: int | None = None,
         notes: str | None = None,
+        agent_context: dict | None = None,
     ) -> dict:
         """
         Report whether a prompt or skill worked.
@@ -115,7 +124,7 @@ try:
         This data improves future recommendations.
         """
         handler = _get_feedback_handler()
-        return handler.submit_feedback(
+        result = handler.submit_feedback(
             trace_id=trace_id,
             outcome=outcome,
             mode="single",
@@ -123,6 +132,10 @@ try:
             failure_step=failure_step,
             notes=notes,
         )
+        normalized = normalize_agent_context(agent_context)
+        if normalized:
+            result["agent_context"] = normalized.to_dict()
+        return result
 
     @mcp.tool()
     async def capillaries_catalog(
@@ -165,13 +178,13 @@ try:
 except ImportError:
     import sys
 
-    def capillaries_find(situation: str, stage: str = None, domain: list = None, complexity: int = None, prefer: str = "auto") -> dict:
+    def capillaries_find(situation: str, stage: str = None, domain: list = None, complexity: int = None, prefer: str = "auto", context: dict = None, agent_context: dict = None) -> dict:
         raise ImportError("MCP SDK not installed. Run: pip install mcp")
 
     def capillaries_execute_step(session_id: str, step_order: int, previous_output: str = None, variables: dict = None, skip_reason: str = None) -> dict:
         raise ImportError("MCP SDK not installed. Run: pip install mcp")
 
-    def capillaries_feedback(trace_id: str, outcome: str, quality_score: float = None, failure_step: int = None, notes: str = None) -> dict:
+    def capillaries_feedback(trace_id: str, outcome: str, quality_score: float = None, failure_step: int = None, notes: str = None, agent_context: dict = None) -> dict:
         raise ImportError("MCP SDK not installed. Run: pip install mcp")
 
     def capillaries_catalog(view: str = "overview", domain_filter: str = None) -> dict:

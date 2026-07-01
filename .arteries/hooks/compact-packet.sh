@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ARTERIES_ROOT="${ARTERIES_ROOT:-/home/user/Coding/Projects/arteries}"
+CAPILLARIES_ROOT="${CAPILLARIES_ROOT:-/home/user/Coding/Projects/capillaries}"
+PROJECT_ROOT="${PROJECT_ROOT:-/home/user/Coding/Projects/capillaries}"
+export PYTHONPATH="$ARTERIES_ROOT/src:$CAPILLARIES_ROOT/src:$PROJECT_ROOT/src:${PYTHONPATH:-}"
+export ARTERIES_PROJECT="${ARTERIES_PROJECT:-capillaries}"
+export ARTERIES_AGENT_ID="${ARTERIES_AGENT_ID:-capillaries-hook}"
+export ARTERIES_CLI="${ARTERIES_CLI:-codex}"
+export ARTERIES_REPO="${ARTERIES_REPO:-$PROJECT_ROOT}"
+
+format="${ARTERIES_PACKET_FORMAT:-markdown}"
+message="${1:-context-pressure}"
+python3 -m arteries.packet --format "$format" --message "$message" --budget "${ARTERIES_PACKET_BUDGET:-6000}"
