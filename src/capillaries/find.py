@@ -32,6 +32,7 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Any
 
+from capillaries.agent.context import AgentContext, normalize_agent_context
 from capillaries.agent.memory_types import MemoryFrame
 from capillaries.search.memory_filter import MemoryFilter
 
@@ -60,6 +61,7 @@ class FindResult:
     domain: list[str] = field(default_factory=list)
     intent: list[str] = field(default_factory=list)
     task_type: list[str] = field(default_factory=list)
+    agent_context: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -72,6 +74,8 @@ class FindResult:
             "intent": self.intent,
             "task_type": self.task_type,
         }
+        if self.agent_context:
+            d["agent_context"] = self.agent_context
         if self.mode == "skill":
             d["skill_id"] = self.skill_id
             d["skill_name"] = self.skill_name
@@ -221,6 +225,7 @@ async def find(
     situation: str,
     memory: MemoryFrame | None = None,
     prefer: str = "auto",
+    agent_context: dict[str, Any] | AgentContext | None = None,
 ) -> FindResult:
     """
     Find the best prompt or skill for a situation.
@@ -234,6 +239,8 @@ async def find(
                    domain/intent hints from active context.
         prefer:    'auto' (default), 'single', or 'skill'.
                    'auto' checks skills first for complex situations.
+        agent_context: Optional normalized agent/CLI metadata. It is returned
+                       for telemetry and callers; retrieval remains CLI-neutral.
 
     Returns:
         FindResult with .mode, .confidence, .prompt_text, and metadata.
@@ -241,13 +248,18 @@ async def find(
         for model-specific variants when needed.
     """
     engine = _get_engine()
-    return await engine.find(situation, memory, prefer)
+    result = await engine.find(situation, memory, prefer)
+    normalized = normalize_agent_context(agent_context)
+    if normalized:
+        result.agent_context = normalized.to_dict()
+    return result
 
 
 def find_sync(
     situation: str,
     memory: MemoryFrame | None = None,
     prefer: str = "auto",
+    agent_context: dict[str, Any] | AgentContext | None = None,
 ) -> FindResult:
     """Synchronous wrapper for non-async callers."""
-    return asyncio.run(find(situation, memory, prefer))
+    return asyncio.run(find(situation, memory, prefer, agent_context))

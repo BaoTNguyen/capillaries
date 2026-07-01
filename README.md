@@ -30,9 +30,9 @@ Dense embeddings come from snowflake-arctic-embed-m-v2.0 (768 dimensions), serve
 
 ## Interfaces
 
-**MCP server.** Agents running in Claude Code, Cursor, or any MCP client get four tools: `capillaries_find` (describe a situation, get a prompt or skill), `capillaries_execute_step` (run the next step in a multi-step skill), `capillaries_feedback` (report whether the result worked), and `capillaries_catalog` (browse available domains and skills).
+**MCP server.** Agents running in Claude Code, Cursor, OpenCode, Hermes, or any MCP client get four tools: `capillaries_find` (describe a situation, get a prompt or skill), `capillaries_execute_step` (run the next step in a multi-step skill), `capillaries_feedback` (report whether the result worked), and `capillaries_catalog` (browse available domains and skills). MCP tools accept optional `agent_context` metadata from Arteries adapters.
 
-**HTTP API.** FastAPI endpoints at `/agent/route`, `/agent/step`, `/agent/feedback`, `/agent/catalog`, plus `/search` for direct retrieval.
+**HTTP API.** FastAPI endpoints at `/agent/route`, `/agent/step`, `/agent/feedback`, `/agent/catalog`, plus `/search` for direct retrieval. `/agent/route` and `/agent/feedback` accept optional normalized `agent_context` metadata.
 
 **Python library.**
 
@@ -43,6 +43,13 @@ result = await find("debug auth middleware")
 result.prompt_text   # the prompt, ready to use
 result.confidence    # rerank score
 result.mode          # 'single', 'skill', or 'none'
+
+# Optional metadata from Arteries or another adapter is preserved, not used
+# for CLI-specific branching inside Capillaries.
+result = await find(
+    "debug auth middleware",
+    agent_context={"cli": "cursor", "agent_id": "career-ops-hook"},
+)
 ```
 
 **CLI.**

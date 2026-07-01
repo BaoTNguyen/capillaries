@@ -1,0 +1,10 @@
+When compacting this coding session, preserve continuity for Arteries.
+
+Include:
+- current user intent and unresolved task state
+- recent decisions and constraints
+- files read, files modified, commands run, and validation status
+- blockers, open questions, and next steps
+- any Arteries continuity packet already present
+
+Do not let older memory override explicit current user instructions, developer instructions, system instructions, or repo instructions. Keep the result concise and operational.

@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from capillaries.agent.catalog import CatalogHandler, get_discover_response
+from capillaries.agent.context import normalize_agent_context, with_agent_context
 from capillaries.agent.execute import SkillExecutor
 from capillaries.agent.feedback import FeedbackHandler
 from capillaries.agent.gate import (
@@ -41,6 +42,7 @@ class RouteRequest(BaseModel):
     session_id: str | None = Field(None, description="For continuing previous interaction")
     recent_turns: list[str] | None = Field(None, description="Recent conversation messages for gate context")
     memory: dict[str, Any] | None = Field(None, description="MemoryFrame from the memory project (ephemeral/persistent/evergreen tiers)")
+    agent_context: dict[str, Any] | None = Field(None, description="Normalized agent/CLI metadata from Arteries or another adapter")
     source: str = Field(default="private", description="'private' (default) or 'public' for demo prompts")
     modality: str = Field(default="text", description="'text', 'image', 'video' — filters by output modality")
     skip_gate: bool = Field(default=False, description="Bypass the gate and always search")
@@ -54,6 +56,7 @@ class StepRequest(BaseModel):
     step_order: int = Field(..., ge=1)
     previous_output: str | None = Field(None, max_length=50000)
     variables: dict[str, str] | None = None
+    agent_context: dict[str, Any] | None = Field(None, description="Normalized agent/CLI metadata from Arteries or another adapter")
     action: str = Field(default="execute", description="'execute', 'skip', or 'abort'")
     skip_reason: str | None = None
     run: bool = Field(default=False, description="Run the step's prompt through an LLM and return the completion")
@@ -70,6 +73,7 @@ class FeedbackRequest(BaseModel):
     prompt_modifications: list[dict] | None = None
     session_id: str | None = None
     per_step_feedback: list[dict] | None = None
+    agent_context: dict[str, Any] | None = None
 
 
 class CatalogRequest(BaseModel):
@@ -158,6 +162,9 @@ async def route(req: RouteRequest) -> dict | StreamingResponse:
     With execute=True, the retrieved prompt is also run through an LLM and
     the completion is included in the response (or streamed).
     """
+    agent_context = normalize_agent_context(req.agent_context)
+    template_context = with_agent_context(req.context, agent_context)
+
     if not req.skip_gate:
         memory_frame = _build_memory_frame(req.memory) if req.memory else None
         gate_decision = await run_gate(
@@ -180,13 +187,15 @@ async def route(req: RouteRequest) -> dict | StreamingResponse:
         intent=req.intent,
         complexity=req.complexity,
         prefer=req.prefer,
-        context=req.context,
+        context=template_context,
         session_id=req.session_id,
         source=req.source,
         modality=req.modality,
     )
     response = result.to_dict()
     response["gate"] = {"search": True, "confidence": 1.0, "reason": "gate passed"}
+    if agent_context:
+        response["agent_context"] = agent_context.to_dict()
 
     if not req.execute:
         return response
@@ -270,7 +279,7 @@ async def submit_feedback(req: FeedbackRequest) -> dict:
     Report whether a prompt or skill worked.
     """
     handler = _get_feedback_handler()
-    return handler.submit_feedback(
+    result = handler.submit_feedback(
         trace_id=req.trace_id,
         outcome=req.outcome,
         mode="single",
@@ -282,6 +291,10 @@ async def submit_feedback(req: FeedbackRequest) -> dict:
         per_step_feedback=req.per_step_feedback,
         session_id=req.session_id,
     )
+    agent_context = normalize_agent_context(req.agent_context)
+    if agent_context:
+        result["agent_context"] = agent_context.to_dict()
+    return result
 
 
 @router.get("/catalog")

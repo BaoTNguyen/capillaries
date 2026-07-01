@@ -3,6 +3,6 @@
   "project_root": "/home/bao-tn/Coding/Projects/capillaries",
   "project": "capillaries",
   "agent_id": "capillaries-hook",
-  "cli": "generic",
+  "cli": "codex",
   "capillaries_root": "/home/bao-tn/Coding/Projects/capillaries"
 }
