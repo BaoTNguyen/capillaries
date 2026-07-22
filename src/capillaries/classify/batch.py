@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Batch classification of prompts using a local Ollama model.
-Sends prompts in batches; writes results back to PostgreSQL.
+Batch classification of prompts using a local llama.cpp server.
+Sends prompts one at a time; writes results back to PostgreSQL.
 """
 
 import asyncio
@@ -14,8 +14,8 @@ from capillaries.config.paths import DB_CONFIG
 
 logger = logging.getLogger(__name__)
 
-OLLAMA_URL  = "http://localhost:11434/api/chat"
-OLLAMA_MODEL = "qwen3.5:latest"
+LLAMA_URL   = "http://127.0.0.1:8001/v1/chat/completions"
+LLAMA_MODEL = "qwen3.6-27b"
 BATCH_SIZE  = 1   # one at a time for reliability with local model
 MAX_RETRIES = 2
 CONFIDENCE_THRESHOLD = 0.80
@@ -193,9 +193,8 @@ class BatchClassifier:
             .replace("{n}", str(len(prompts)))
         )
         payload = {
-            "model": OLLAMA_MODEL,
-            "stream": False,
-            "options": {"temperature": 0.1},
+            "model": LLAMA_MODEL,
+            "temperature": 0.1,
             "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user",   "content": user_content},
@@ -205,10 +204,10 @@ class BatchClassifier:
         for attempt in range(1, MAX_RETRIES + 1):
             try:
                 async with httpx.AsyncClient(timeout=600.0) as client:
-                    response = await client.post(OLLAMA_URL, json=payload)
+                    response = await client.post(LLAMA_URL, json=payload)
                     response.raise_for_status()
 
-                text = response.json()["message"]["content"]
+                text = response.json()["choices"][0]["message"]["content"]
                 text = self._extract_json(text)
                 results = json.loads(text)
 
@@ -315,7 +314,7 @@ class BatchClassifier:
                 c.get('domain', []),
                 c.get('complexity'),
                 json.dumps(confidence),
-                f'v1.0-{OLLAMA_MODEL.replace(":", "-")}',
+                f'v1.0-{LLAMA_MODEL}',
                 status,
                 c['title']
             ))

@@ -28,10 +28,11 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
-import torch
-from sentence_transformers import CrossEncoder
-
 from capillaries.search.retriever import SearchResult
+
+# sentence_transformers (and torch under it) cost seconds to import, before any
+# model is even loaded. Both are pulled in lazily by _load_model() so that a
+# process which never scores locally — because the daemon does it — pays neither.
 
 # --- Constants -----------------------------------------------------------
 
@@ -39,6 +40,46 @@ MODEL_NAME = "mixedbread-ai/mxbai-rerank-base-v2"
 
 MAX_DOC_CHARS = 512
 MAX_QUERY_CHARS = 500
+
+# Daemon scoring. CAPILLARIES_URL points at a running `capillaries.server`;
+# CAPILLARIES_NO_REMOTE is set by that server on itself so it never calls back
+# into its own endpoint.
+DAEMON_URL = os.getenv("CAPILLARIES_URL", "http://127.0.0.1:8000")
+_daemon_up: bool | None = None  # None = not yet probed, False = probed and absent
+
+
+def _remote_scores(pairs: list[tuple[str, str]]) -> list[float] | None:
+    """Scores from the daemon, or None if there isn't one.
+
+    A refused connection on loopback costs well under a millisecond, and the
+    result is cached per process, so the no-daemon path stays free.
+    """
+    global _daemon_up
+    if _daemon_up is False or os.getenv("CAPILLARIES_NO_REMOTE"):
+        return None
+    try:
+        import httpx
+        r = httpx.post(f"{DAEMON_URL}/rerank/scores",
+                       json={"pairs": [list(p) for p in pairs]},
+                       timeout=httpx.Timeout(30.0, connect=0.5))
+        r.raise_for_status()
+        scores = r.json()["scores"]
+        if len(scores) != len(pairs):
+            raise ValueError("daemon returned the wrong number of scores")
+        _daemon_up = True
+        return [float(s) for s in scores]
+    except Exception:
+        # any failure falls back to loading locally: retrieval must not depend
+        # on a daemon being up, it just runs faster when one is
+        _daemon_up = False
+        try:
+            # bring one up for whoever comes next — this call still scores
+            # locally rather than waiting on a cold start
+            from capillaries.daemon import ensure
+            ensure()
+        except Exception:
+            pass
+        return None
 
 LENGTH_THRESHOLD = 2_200
 LENGTH_PENALTY_STRENGTH = 0.02
@@ -103,11 +144,46 @@ class Reranker:
         if device is None:
             device = os.getenv("RERANKER_DEVICE", "cpu")
 
-        print(f"Loading cross-encoder {model_name} on {device}...")
-        self.model = CrossEncoder(model_name, device=device)
+        self.model_name = model_name
         self.device = device
         self.batch_size = batch_size
-        print("Reranker ready.")
+        self._model = None  # loaded on first local scoring, never if the daemon serves
+
+    @property
+    def model(self):
+        """The cross-encoder, loaded on first use.
+
+        Construction used to load it eagerly, which cost ~4.4s in every process
+        that merely built a PromptSearch — including hook subprocesses that then
+        scored nothing locally because a daemon was available.
+        """
+        if self._model is None:
+            from sentence_transformers import CrossEncoder
+            print(f"Loading cross-encoder {self.model_name} on {self.device}...")
+            self._model = CrossEncoder(self.model_name, device=self.device)
+            print("Reranker ready.")
+        return self._model
+
+    def warm(self) -> None:
+        """Force the load now. The daemon calls this at startup so its first
+        request is not the one that pays."""
+        _ = self.model
+
+    def _predict(self, pairs: list[tuple[str, str]]) -> list[float]:
+        """Cross-encoder scores for (query, doc) pairs.
+
+        Prefers a running capillaries daemon: model load is ~4.4s and happens in
+        *every* process otherwise, because agent hooks are one subprocess per
+        prompt and can never stay warm. Scoring is the only part that needs the
+        model — the length penalty and result assembly below stay local, so the
+        remote and local paths are numerically identical.
+        """
+        scores = _remote_scores(pairs)
+        if scores is not None:
+            return scores
+        return self.model.predict(
+            pairs, batch_size=self.batch_size, show_progress_bar=False,
+        ).tolist()
 
     def rerank(
         self,
@@ -131,12 +207,7 @@ class Reranker:
 
         q = query[:MAX_QUERY_CHARS]
         pairs = [(q, c.prompt_text[:MAX_DOC_CHARS]) for c in candidates]
-
-        raw_scores: list[float] = self.model.predict(
-            pairs,
-            batch_size=self.batch_size,
-            show_progress_bar=False,
-        ).tolist()
+        raw_scores = self._predict(pairs)
 
         ranked = []
         for c, raw in zip(candidates, raw_scores):
