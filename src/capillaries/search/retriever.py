@@ -263,18 +263,26 @@ class Retriever:
 
     @staticmethod
     def _to_or_tsquery(cur, query: str) -> str:
-        """Convert a query string to an OR-joined tsquery via PostgreSQL."""
+        """Convert a query string to an OR-joined tsquery via PostgreSQL.
+
+        Every token is quoted. Unquoted, a token carrying punctuation —
+        `textkit/__init__.py`, `slugify('')`, a bare `&` — is read as tsquery
+        *syntax* rather than a lexeme, and the whole search dies with "syntax
+        error in tsquery". Real agent prompts are full of such tokens, so this
+        is the common case, not an edge case. Pure-punctuation tokens are
+        dropped outright: quoted, they would produce empty lexemes.
+        """
         cur.execute(
             "SELECT array_to_string("
-            "  array_agg(token), ' | '"
+            "  array_agg(DISTINCT quote_literal(token)), ' | '"
             ") FROM ts_parse('default', %s) "
-            "WHERE tokid != 12",  # exclude whitespace tokens
+            "WHERE tokid != 12 "              # exclude whitespace tokens
+            "  AND token ~ '[[:alnum:]]'",    # ...and anything with no lexeme in it
             [query],
         )
-        raw = cur.fetchone()[0]
-        if not raw:
-            return "''"
-        return raw
+        # No lexemes at all (pure punctuation, e.g. "!!! ???"). "''" was returned
+        # here before and is itself invalid tsquery; empty means "skip sparse".
+        return cur.fetchone()[0] or ""
 
     def _sparse_search(
         self,
@@ -286,6 +294,8 @@ class Retriever:
     ) -> list[dict]:
         """Return top-n results by BM25-style full-text search on search_tsv."""
         or_terms = self._to_or_tsquery(cur, query)
+        if not or_terms:
+            return []  # nothing searchable; dense retrieval still stands on its own
         sql = f"""
             SELECT
                 prompt_id::text, title,
@@ -323,7 +333,13 @@ class Retriever:
         for r in sparse_rows:
             all_rows.setdefault(r["prompt_id"], r)
 
-        all_ids = set(dense_rank) | set(sparse_rank)
+        # sorted(), not set order: dense and sparse are weighted equally, so the
+        # doc at dense rank i ties exactly with the doc at sparse rank i, and
+        # roughly half of every candidate list is in some tie. Set iteration
+        # order for str keys varies per process (hash randomization) and the
+        # sort below is stable, so ties used to resolve differently in every
+        # process — same query, same data, different ranking.
+        all_ids = sorted(set(dense_rank) | set(sparse_rank))
         scored: list[SearchResult] = []
         for pid in all_ids:
             dr = dense_rank.get(pid)
@@ -354,7 +370,8 @@ class Retriever:
                 )
             )
 
-        scored.sort(key=lambda r: r.rrf_score, reverse=True)
+        # explicit tie-break on prompt_id: stable across processes and runs
+        scored.sort(key=lambda r: (-r.rrf_score, r.prompt_id))
         return scored
 
     async def search(
