@@ -12,6 +12,7 @@ The memory project owns all write logic — the gate only reads the frame.
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 
@@ -27,7 +28,59 @@ from capillaries.agent.memory_types import (  # noqa: F401 — re-export for bac
 QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
 MAX_CHARS = 4_000
 
-SIMILARITY_THRESHOLD = 0.50
+# Retrieve only when a message clears BOTH signals: it has a real semantic match
+# to the corpus AND it is neither too simple nor too complicated. The two are
+# complementary, not redundant — measured on real traffic, each is decisive
+# exactly where the other is blind:
+#   - a fully-specified spec scores HIGH similarity (0.61-0.74) but is out of the
+#     complexity band, so similarity alone would wrongly retrieve it (this is the
+#     "Delegate Like a Parallel Coworker" false positive);
+#   - a vague-but-real request sits IN the band but scores below the similarity
+#     bar, so the band alone would retrieve a prompt that doesn't fit.
+# Type is not consulted — a question, a command and a paste are judged the same
+# way, on these two signals.
+# 0.47 sits in the narrow gap between the queries worth retrieving and the ones
+# not: on labelled traffic, open questions land ~0.498 and meta-questions about
+# prior work ("what did you map?") ~0.462, so 0.47 catches the former and rejects
+# the latter. The gap is real but small — no single cut fully separates them,
+# since embedding can't tell "how should I do X" from "what did you do about X" —
+# so this is the one genuinely tunable knob; the word/density signals separate
+# cleanly and don't move.
+SIMILARITY_THRESHOLD = float(os.getenv("CAPILLARIES_SIMILARITY_THRESHOLD", "0.47"))
+
+# "not too simple / not too complicated" — a word-count band with a second,
+# density-based ceiling. Both ceilings earn their place: HIGH catches long
+# low-density prose dumps; the density ceiling catches the terse-but-fully-decided
+# spec (e.g. 9 words naming file, signature and expected value at density 0.67)
+# that slips under HIGH. Calibrated on labelled messages: want-retrieve span
+# 7-42 words at density <=0.02; feature specs 116-211 words at density 0.11-0.20.
+WORD_BAND_LOW = int(os.getenv("CAPILLARIES_WORD_BAND_LOW", "5"))
+WORD_BAND_HIGH = int(os.getenv("CAPILLARIES_WORD_BAND_HIGH", "60"))
+SPECIFICITY_THRESHOLD = float(os.getenv("CAPILLARIES_SPECIFICITY_THRESHOLD", "0.08"))
+
+_SPEC_TOKEN = re.compile(r"""
+      \w+/[\w./-]+                 # a/b/c.py paths
+    | \w+\.(py|js|ts|json|toml|md|txt|sh|yaml|yml|rs|go)\b
+    | \w+\([^)]*\)                  # call(...) or signature(s: str)
+    | \w+_\w+                      # snake_case identifiers
+    | [A-Z]{2,}[A-Z_]*=            # ENV_VAR=
+    | --?[a-zA-Z][\w-]+            # --flags
+    | ==|!=|->|=>|>=|<=            # assertions and arrows
+    | `[^`]+`                      # inline code
+    | "[^"]{1,40}"|'[^']{1,40}'    # short literals, usually expected values
+""", re.VERBOSE)
+
+def specification_density(message: str) -> float:
+    """Fraction of tokens that encode an already-made decision.
+
+    High means the caller has done the deciding: paths, signatures, expected
+    values, flags. Low means the message states an intent and leaves the how
+    open — which is what a prompt library can actually help with.
+    """
+    tokens = message.split()
+    if not tokens:
+        return 0.0
+    return len(_SPEC_TOKEN.findall(message)) / len(tokens)
 
 WORKFLOW_VERBS = frozenset({
     "build", "create", "design", "develop", "implement", "write",
@@ -56,7 +109,6 @@ CASUAL_PATTERNS = re.compile(
     r"^(hi|hello|hey|good morning|good afternoon|good evening|what's up|howdy|sup)\b",
     re.IGNORECASE,
 )
-
 
 # ---------------------------------------------------------------------------
 # Gate decision
@@ -114,6 +166,34 @@ def _heuristic_check(message: str, recent_turns: list[str] | None = None) -> Gat
     return None
 
 
+def _band_decision(sim: float, words: int, density: float,
+                   threshold: float) -> GateDecision:
+    """The two-signal gate, as a pure function of the three measured values.
+
+    retrieve  <=>  sim >= threshold  AND  LOW <= words <= HIGH  AND  density <= D
+
+    Kept free of I/O so the whole decision layer is unit-testable without a
+    database or embedding endpoint. Every failed sub-condition is named in the
+    skip reason, so a skipped message says exactly which signal stopped it.
+    """
+    fails = []
+    if sim < threshold:
+        fails.append(f"no semantic match (sim={sim:.2f}<{threshold:.2f})")
+    if words < WORD_BAND_LOW:
+        fails.append(f"too simple ({words}w<{WORD_BAND_LOW})")
+    if words > WORD_BAND_HIGH:
+        fails.append(f"too long ({words}w>{WORD_BAND_HIGH})")
+    if density > SPECIFICITY_THRESHOLD:
+        fails.append(f"already specified (density={density:.2f}>{SPECIFICITY_THRESHOLD:.2f})")
+    if fails:
+        # confidence is how sure we are of the *skip*: a clear miss on similarity
+        # is a confident skip, a marginal one is not
+        return GateDecision(search=False, confidence=round(1.0 - sim, 3),
+                            reason="; ".join(fails))
+    return GateDecision(search=True, confidence=round(sim, 3),
+                        reason=f"semantic match (sim={sim:.2f}), in complexity band")
+
+
 async def _embedding_proximity(message: str, db_config: dict | None = None) -> tuple[float, str | None]:
     """
     Stage 2: embed the message and check nearest-neighbor similarity in the corpus.
@@ -160,38 +240,22 @@ async def _embedding_proximity(message: str, db_config: dict | None = None) -> t
 
 
 def _check_memory_frame(memory: MemoryFrame, message: str) -> GateDecision | None:
-    """Evaluate memory signals. Returns a decision if memory is conclusive, else None."""
-    eph = memory.ephemeral
-    per = memory.persistent
-    evg = memory.evergreen
+    """Memory can only SKIP here, never force a search.
 
-    # High topic drift — conversation has shifted, worth searching
-    if eph.topic_drift > 0.3:
-        return GateDecision(
-            search=True,
-            confidence=eph.topic_drift,
-            reason=f"topic drift ({eph.topic_drift:.2f}) exceeds threshold",
-        )
-
-    # Check prior_retrievals — similar situation already handled recently
-    msg_lower = message.lower()
-    for cached in per.prior_retrievals:
+    The old topic-drift and stale-context branches forced `search=True` on drift
+    alone — which could retrieve for a message with no corpus match at all,
+    contradicting the rule that retrieval requires a semantic match. They are
+    gone. The one surviving signal is the cached-retrieval skip: if a recent
+    retrieval already covers this situation, don't retrieve again.
+    """
+    for cached in memory.persistent.prior_retrievals:
         if cached.relevance > 0.75 and cached.score > 0.7:
-            if _situation_overlaps(msg_lower, cached.situation):
+            if _situation_overlaps(message.lower(), cached.situation):
                 return GateDecision(
                     search=False,
                     confidence=cached.relevance,
                     reason=f"cached retrieval covers this (prompt={cached.prompt_id}, relevance={cached.relevance:.2f})",
                 )
-
-    # Many turns without retrieval + moderate drift — passive trigger
-    if eph.turn_count > 5 and eph.topic_drift > 0.15:
-        return GateDecision(
-            search=True,
-            confidence=0.6,
-            reason=f"stale context ({eph.turn_count} turns, drift={eph.topic_drift:.2f})",
-        )
-
     return None
 
 
@@ -257,15 +321,9 @@ async def gate(
             reason="embedding check failed, defaulting to search",
         )
 
-    if max_sim < threshold:
-        return GateDecision(
-            search=False,
-            confidence=1.0 - max_sim,
-            reason=f"no corpus match (similarity={max_sim:.3f}, threshold={threshold})",
-        )
-
-    return GateDecision(
-        search=True,
-        confidence=max_sim,
-        reason=f"corpus match found (similarity={max_sim:.3f}, closest={closest_id})",
-    )
+    decision = _band_decision(
+        max_sim, len(message.split()), specification_density(message), threshold)
+    # thread the matched prompt through when we're going to search, for the log
+    if decision.search and closest_id is not None:
+        decision.reason += f", closest={closest_id}"
+    return decision
