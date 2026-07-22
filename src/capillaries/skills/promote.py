@@ -19,12 +19,13 @@ import re
 import json
 import uuid
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 import psycopg2
 import psycopg2.extras
 
 from capillaries.config import DB_CONFIG
+from capillaries import spine
 
 
 @dataclass
@@ -416,6 +417,151 @@ class SkillPromoter:
                     "UPDATE skills.skills SET status = %s WHERE skill_id = %s",
                     (status, skill_id),
                 )
+
+
+# ── A/B promotion gate (STACK_READINESS §5.3) ──────────────────────────────
+#
+# Evaluate a candidate prompt text against the current canonical text over
+# harvested golden examples (optimize/harvest.py), and promote only on a
+# strict win. Never promotes blind: a prompt with no harvested traffic
+# cannot be evaluated, so it cannot be promoted.
+
+
+class _StaticPrediction:
+    """Wraps a fixed text as a metric-fn "prediction" — ab_gate scores prompt
+    *text* directly against golden outputs rather than running a live LM
+    generation per candidate (that's dspy_optimize.PromptOptimizer's job);
+    this keeps promotion checks cheap and metric-pluggable."""
+
+    def __init__(self, output_text: str) -> None:
+        self.output_text = output_text
+
+
+class _Example:
+    def __init__(self, output_text: str) -> None:
+        self.output_text = output_text
+
+
+def _load_prompt_row(cur, prompt_title: str) -> dict | None:
+    cur.execute(
+        "SELECT prompt_id, prompt_text FROM prompts WHERE title = %s",
+        (prompt_title,),
+    )
+    row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def _load_golden_examples(cur, prompt_id: str) -> list[dict]:
+    cur.execute(
+        """
+        SELECT input_text, output_text
+        FROM golden_examples
+        WHERE prompt_id = %s AND NOT is_negative
+        ORDER BY created_at
+        """,
+        (prompt_id,),
+    )
+    return [dict(r) for r in cur.fetchall()]
+
+
+def _score_text(text: str, examples: list[dict], metric_fn: Callable) -> float:
+    scores = []
+    for ex in examples:
+        pred = _StaticPrediction(text)
+        example = _Example(ex["output_text"])
+        try:
+            scores.append(float(metric_fn(pred, example)))
+        except Exception:
+            scores.append(0.0)
+    return sum(scores) / max(len(scores), 1)
+
+
+def ab_gate(
+    prompt_title: str,
+    candidate_text: str,
+    metric: Callable | None = None,
+    examples: list[dict] | None = None,
+    db_config: dict | None = None,
+) -> dict:
+    """
+    Evaluate `candidate_text` against the canonical prompt text for
+    `prompt_title` over harvested golden examples, and promote on a strict
+    win only.
+
+    Args:
+        prompt_title: title of the prompt in `prompts`.
+        candidate_text: the proposed replacement prompt text.
+        metric: metric_fn(prediction, example) -> float, as in
+            optimize/metrics.py. Defaults to optimize.metrics.exact_match.
+        examples: override the harvested examples (mainly for tests). Each
+            dict needs at least {"output_text": str}. When omitted, loads
+            golden_examples for this prompt from the DB.
+
+    Returns:
+        {"promoted": bool, "prompt_title", "baseline_score", "candidate_score",
+         "reason" (when not promoted)}.
+
+    Never promotes blind: no examples for this title -> not promoted.
+    Every version is kept (prompt_variants keeps prior rows, only flips
+    is_current — see dspy_optimize.PromptOptimizer._write_variant); a
+    rejected candidate never touches the canonical text.
+    """
+    from capillaries.optimize.dspy_optimize import PromptOptimizer
+    from capillaries.optimize.fences import assert_fences_unchanged
+    from capillaries.optimize.metrics import get_metric
+
+    config = db_config or DB_CONFIG
+    metric_fn = metric or get_metric("exact_match")
+
+    with psycopg2.connect(**config) as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            prompt_row = _load_prompt_row(cur, prompt_title)
+            if prompt_row is None:
+                return {"promoted": False, "prompt_title": prompt_title, "reason": "prompt not found"}
+
+            if examples is None:
+                examples = _load_golden_examples(cur, str(prompt_row["prompt_id"]))
+
+    if not examples:
+        return {"promoted": False, "prompt_title": prompt_title, "reason": "no traffic"}
+
+    canonical_text = prompt_row["prompt_text"]
+    baseline_score = _score_text(canonical_text, examples, metric_fn)
+    candidate_score = _score_text(candidate_text, examples, metric_fn)
+
+    result = {
+        "promoted": False,
+        "prompt_title": prompt_title,
+        "baseline_score": baseline_score,
+        "candidate_score": candidate_score,
+    }
+
+    if candidate_score <= baseline_score:
+        result["reason"] = "candidate did not beat baseline"
+        spine.emit("skill.rejected", prompt_title=prompt_title,
+                   baseline_score=baseline_score, candidate_score=candidate_score,
+                   reason=result["reason"])
+        return result
+
+    try:
+        assert_fences_unchanged(canonical_text, candidate_text)
+    except ValueError as e:
+        result["reason"] = f"fence violation: {e}"
+        spine.emit("skill.rejected", prompt_title=prompt_title,
+                   baseline_score=baseline_score, candidate_score=candidate_score,
+                   reason=result["reason"])
+        return result
+
+    optimizer = PromptOptimizer(config)
+    prompt_id = str(prompt_row["prompt_id"])
+    optimizer._write_variant(prompt_id, "ab_gate", candidate_text, "ab_gate",
+                              None, candidate_score, canonical_text)
+    optimizer._update_canonical(prompt_id, candidate_text, canonical_text)
+
+    result["promoted"] = True
+    spine.emit("skill.promoted", prompt_title=prompt_title,
+               baseline_score=baseline_score, candidate_score=candidate_score)
+    return result
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────
