@@ -10,6 +10,7 @@ import psycopg2.extras
 
 from capillaries.config.paths import DB_CONFIG
 from capillaries.optimize.capture import ExampleCapture, _resolve_prompt_id
+from capillaries.optimize.fences import assert_fences_unchanged
 from capillaries.optimize.metrics import get_metric
 
 
@@ -107,9 +108,22 @@ class PromptOptimizer:
 
         optimized_text = self._extract_optimized_text(optimized, prompt_text)
 
+        # Code improves through execution-verified episodes, never through a
+        # prompt optimizer (STACK_READINESS §5.2). An optimizer that rewrote
+        # a code fence or frontmatter is a hard failure: log it, don't write
+        # the variant, don't touch the canonical text.
+        try:
+            assert_fences_unchanged(prompt_text, optimized_text)
+        except ValueError as e:
+            self._log_run_complete(run_id, baseline_score, optimized_score, "failed",
+                                    error_message=f"fence violation: {e}")
+            result["status"] = "failed"
+            result["error"] = f"fence violation: {e}"
+            return result
+
         self._write_variant(prompt_id, model, optimized_text,
-                            optimizer, run_id, optimized_score)
-        self._update_canonical(prompt_id, optimized_text)
+                            optimizer, run_id, optimized_score, prompt_text)
+        self._update_canonical(prompt_id, optimized_text, prompt_text)
         self._log_run_complete(run_id, baseline_score, optimized_score, "completed")
 
         result["status"] = "completed"
@@ -238,7 +252,12 @@ class PromptOptimizer:
         optimizer: str,
         run_id: str,
         score: float,
+        original_text: str | None = None,
     ) -> None:
+        # Guard again at the write boundary — belt-and-suspenders in case a
+        # future call site skips the check in optimize().
+        if original_text is not None:
+            assert_fences_unchanged(original_text, text)
         content_hash = _content_hash(text)
         with psycopg2.connect(**self._db_config) as conn:
             with conn.cursor() as cur:
@@ -260,7 +279,9 @@ class PromptOptimizer:
                 ))
                 conn.commit()
 
-    def _update_canonical(self, prompt_id: str, text: str) -> None:
+    def _update_canonical(self, prompt_id: str, text: str, original_text: str | None = None) -> None:
+        if original_text is not None:
+            assert_fences_unchanged(original_text, text)
         content_hash = _content_hash(text)
         with psycopg2.connect(**self._db_config) as conn:
             with conn.cursor() as cur:
@@ -284,15 +305,16 @@ class PromptOptimizer:
                       num_examples, metric_type))
                 conn.commit()
 
-    def _log_run_complete(self, run_id, baseline, optimized, status) -> None:
+    def _log_run_complete(self, run_id, baseline, optimized, status, error_message: str | None = None) -> None:
         with psycopg2.connect(**self._db_config) as conn:
             with conn.cursor() as cur:
                 cur.execute("""
                     UPDATE optimization_runs
                     SET baseline_score = %s, optimized_score = %s,
-                        status = %s, completed_at = CURRENT_TIMESTAMP
+                        status = %s, completed_at = CURRENT_TIMESTAMP,
+                        error_message = %s
                     WHERE run_id = %s
-                """, (baseline, optimized, status, run_id))
+                """, (baseline, optimized, status, error_message, run_id))
                 conn.commit()
 
 

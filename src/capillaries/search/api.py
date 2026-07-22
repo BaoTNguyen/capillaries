@@ -140,8 +140,18 @@ class PromptSearch:
         total = len(candidates)
         best_score = results[0].rerank_score if results else float("-inf")
 
+        # Top-k candidates the ranker considered, regardless of which tier is
+        # ultimately served — this is the ranking signal harvest.py needs
+        # (STACK_READINESS §5.1: "without the candidates that weren't served,
+        # the optimizer can't learn ranking").
+        ranked_candidates = [
+            {"id": r.prompt_id, "score": r.rerank_score} for r in results
+        ]
+
         # ── Tier 1: single prompt good enough ─────────────────────────────
         if best_score >= SINGLE_THRESHOLD:
+            self._log_serving(query, "single_prompt", results[0].prompt_id if results else None,
+                               ranked_candidates)
             return SearchResponse(
                 query=query,
                 recommendation="single_prompt",
@@ -155,6 +165,7 @@ class PromptSearch:
             match = self.recall.search(query, filters, model=model)
             if match is not None:
                 self._log_skill_run(match)
+                self._log_serving(query, "skill", match.skill_id, ranked_candidates)
                 return SearchResponse(
                     query=query,
                     recommendation="skill",
@@ -164,6 +175,8 @@ class PromptSearch:
                     skill_match=match,
                 )
 
+        self._log_serving(query, "single_prompt", results[0].prompt_id if results else None,
+                           ranked_candidates)
         return SearchResponse(
             query=query,
             recommendation="single_prompt",
@@ -197,6 +210,16 @@ class PromptSearch:
                     for s in match.steps
                 ],
             )
+        except Exception:
+            pass
+
+    def _log_serving(
+        self, query: str, served_kind: str, served_id: str | None, candidates: list[dict]
+    ) -> None:
+        """Best-effort serving log — never blocks or breaks retrieval."""
+        try:
+            from capillaries.optimize.serving import log_serving
+            log_serving(query, served_kind, served_id, candidates)
         except Exception:
             pass
 

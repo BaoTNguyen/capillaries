@@ -140,6 +140,23 @@ def cmd_capture(args: argparse.Namespace) -> None:
         print(f"Captured example: {eid} (source={source})")
 
 
+def cmd_harvest(args: argparse.Namespace) -> None:
+    """Harvest golden examples from serving_log + arteries.rewards."""
+    from capillaries.optimize.harvest import harvest
+
+    result = harvest(
+        prompt_title=args.prompt_title,
+        min_reward_gap=args.min_reward_gap,
+    )
+
+    title = args.prompt_title or "(all prompts)"
+    print(f"\nHarvest: {title}")
+    print(f"  Rows considered:    {result['rows_considered']}")
+    print(f"  Examples captured:  {result['examples_captured']}")
+    print(f"  Contrastive pairs:  {result['contrastive_pairs']}")
+    print(f"  Skills skipped:     {result['skills_skipped']}")
+
+
 def cmd_examples(args: argparse.Namespace) -> None:
     """List golden examples for a prompt."""
     from capillaries.optimize.capture import ExampleCapture
@@ -201,6 +218,12 @@ def main() -> None:
     ex = sub.add_parser("examples", help="List golden examples")
     ex.add_argument("prompt_title")
 
+    hv = sub.add_parser("harvest", help="Harvest golden examples from serving_log + arteries.rewards")
+    hv.add_argument("prompt_title", nargs="?", default=None,
+                     help="Restrict harvest to one prompt/skill title (default: all)")
+    hv.add_argument("--min-reward-gap", type=float, default=0.3,
+                     help="Minimum reward spread to emit a contrastive pair (default: 0.3)")
+
     args = parser.parse_args()
     commands = {
         "optimize": cmd_optimize,
@@ -208,6 +231,7 @@ def main() -> None:
         "compare": cmd_compare,
         "capture": cmd_capture,
         "examples": cmd_examples,
+        "harvest": cmd_harvest,
     }
     commands[args.command](args)
 
