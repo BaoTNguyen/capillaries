@@ -18,6 +18,7 @@ Endpoints:
 
 from __future__ import annotations
 
+import os
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -41,8 +42,14 @@ _search: PromptSearch | None = None
 async def lifespan(app: FastAPI):
     """Load models once on startup, release on shutdown."""
     global _search
+    # This process *is* the daemon: stop its own reranker from calling the
+    # /rerank/scores endpoint that it serves.
+    os.environ["CAPILLARIES_NO_REMOTE"] = "1"
     print("Loading PromptSearch (cross-encoder + retriever)...")
     _search = PromptSearch()
+    # the model loads lazily now, so pull it in here rather than making the
+    # first request pay for it — arriving warm is the point of the daemon
+    _search.reranker.warm()
     print("Service ready.")
     yield
     _search = None
@@ -118,6 +125,36 @@ async def search(req: SearchRequest):
         top_k=req.top_k,
     )
     return JSONResponse(content=payload)
+
+
+class RerankRequest(BaseModel):
+    pairs: list[list[str]] = Field(
+        ..., description="[query, document] pairs to score with the cross-encoder"
+    )
+
+
+@app.post("/rerank/scores")
+async def rerank_scores(req: RerankRequest):
+    """Raw cross-encoder scores for [query, document] pairs.
+
+    This exists for agent hooks. A hook is one short-lived subprocess per
+    prompt submission, so it can never keep a model warm and pays ~4.4s of
+    load on every single call — and N parallel hooks pay it N times over,
+    each with its own ~2.9GB copy. Borrowing this process's already-loaded
+    model turns that into a sub-millisecond loopback round trip.
+
+    Only scoring is remote. Callers keep their own ranking, length penalties
+    and filtering, so remote and local results are numerically identical.
+    """
+    if not req.pairs:
+        return {"scores": []}
+    rr = get_search().reranker
+    scores = rr.model.predict(
+        [(p[0], p[1]) for p in req.pairs],
+        batch_size=rr.batch_size,
+        show_progress_bar=False,
+    )
+    return {"scores": [float(x) for x in scores.tolist()]}
 
 
 @app.get("/prompts/{title:path}")

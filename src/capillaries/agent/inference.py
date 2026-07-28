@@ -35,7 +35,7 @@ DOMAIN_KEYWORDS = {
     "career": ["career", "job", "resume", "interview", "promotion", "salary", "skills", "professional", "development", "leadership"],
     "learning": ["learn", "study", "education", "course", "training", "knowledge", "skill", "practice", "teach"],
     "personal": ["personal", "life", "habit", "goal", "productivity", "health", "wellness", "organization"],
-    "writing": ["write", "writing", "content", "copy", "blog", "article", "documentation", "documentation", "story", "narrative"],
+    "writing": ["write", "writing", "content", "copy", "blog", "article", "documentation", "story", "narrative"],
 }
 
 COMPLEXITY_INDICATORS = {
