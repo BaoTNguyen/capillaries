@@ -42,8 +42,9 @@ def retriever() -> Retriever:
 
 
 def run(coro):
-    """Run a coroutine synchronously (pytest-asyncio not required)."""
-    return asyncio.get_event_loop().run_until_complete(coro)
+    """Run a coroutine synchronously (pytest-asyncio not required). A fresh loop
+    per call — asyncio.get_event_loop() is deprecated in 3.12."""
+    return asyncio.run(coro)
 
 
 # ---------------------------------------------------------------------------
