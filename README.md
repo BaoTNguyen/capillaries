@@ -6,6 +6,31 @@ Capillaries sits between an agent and a library of ~1,000 prompts stored as mark
 
 The system also handles skills, which are multi-step procedures with their own routing descriptions. When "quarterly business review" matches a validated skill better than any single prompt, the skill's procedure is returned instead.
 
+## Where it sits in the stack
+
+Capillaries is the retrieval layer under a five-repo agent stack. Each repo does one job and imports downward:
+
+```text
+capillaries  prompt/skill retrieval                <- this repo
+arteries     memory + trace substrate
+heart        orchestration + environment + reward
+plexus       goal decomposition + acceptance loop
+marrow       RL training on heart's episodes
+```
+
+Arteries wraps capillaries with per-project memory, heart runs coding agents through it, plexus drives goals, and marrow trains on the results. Capillaries owns nothing above the retrieval line. It answers one question, which prompt fits this situation, and leaves memory and orchestration to the repos above it.
+
+## What sets it apart
+
+Most "prompt library" projects are a folder of files and an embedding lookup. Capillaries is a real retrieval system:
+
+- **Hybrid retrieval, not cosine-only.** Dense (pgvector HNSW) and sparse (pg_trgm trigram BM25) run in parallel, merge via Reciprocal Rank Fusion, then a cross-encoder reranks the survivors. Lexical matches and semantic matches both survive; neither path alone decides.
+- **A gate, not just a ranker.** Retrieval can return nothing. The top rerank score has to clear a threshold before a prompt comes back, so an agent asking about something your corpus doesn't cover gets silence instead of the nearest irrelevant match.
+- **Skills as first-class citizens.** A multi-step procedure with its own routing description competes against single prompts and wins when it fits better, then executes step by step with inline content — no runtime dependency on the prompts table.
+- **Per-model prompt variants.** A DSPy integration tailors a prompt to the model that will run it; `resolve_prompt_text()` picks the model-specific variant before the base text.
+- **It ages the corpus.** Unused prompts and skills auto-inactivate, cascade checks warn when something still references them, and stale content gets flagged for quarterly review. The library curates itself instead of growing forever.
+- **Four ways in, one engine.** MCP tools, an HTTP API, a Python function, and a CLI all resolve to the same `find()` — bring whatever client you already have.
+
 ## How it works
 
 ```
@@ -139,6 +164,8 @@ python -m capillaries.skills.cli --edit gtm-strategy-builder
 ## Prompt optimization
 
 A DSPy integration generates per-model prompt variants. When a prompt works well with one model but poorly with another, the optimizer produces a tailored variant stored in `prompt_variants`. At retrieval time, `resolve_prompt_text()` checks for a model-specific variant before falling back to the base text.
+
+The optimizer is grounded in real outcomes, not a proxy metric. A serving log records what got served for each query alongside the top-k candidates the ranker considered but passed over — the negatives the optimizer needs to learn ranking, not just "was the served prompt any good." `harvest.py` joins that log against the reward signal (episode-reward-weighted first, then explicit skill/classification feedback, with an LLM judge only as a fallback for prompts that have no real traffic yet) and turns it into golden examples for DSPy. A fence guard keeps an optimized variant from shipping unless it clears the base text on held-out examples, and new variants roll out behind an A/B gate rather than replacing the base outright. Optimization events tee to heart's event spine, so a variant's win or regression is visible in the same `pulse` view as everything else in the stack.
 
 ## Obsidian sync
 
