@@ -26,6 +26,13 @@ import pytest
 from capillaries.search.api import PromptSearch
 from capillaries.search.retriever import Retriever
 
+# Every test in this file builds a PromptSearch or a Retriever, which loads
+# models and opens a Postgres connection — the `db` marker was already the
+# convention for that, this file just never claimed it. Without the mark,
+# `-m "not db"` selected two minutes of live embedding calls and failed
+# wherever there is no database, which is every machine but this one.
+pytestmark = pytest.mark.db
+
 
 # ---------------------------------------------------------------------------
 # Shared fixture — load models once for the whole test session
