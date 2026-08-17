@@ -109,8 +109,18 @@ def harvest(
             if prompt_title:
                 sql += " AND (p.title = %s OR sk.name = %s)"
                 params.extend([prompt_title, prompt_title])
-            cur.execute(sql, params)
-            rows = [dict(r) for r in cur.fetchall()]
+            try:
+                cur.execute(sql, params)
+                rows = [dict(r) for r in cur.fetchall()]
+            except (psycopg2.errors.UndefinedTable, psycopg2.errors.InvalidSchemaName):
+                # Reward-grounded harvest joins arteries.rewards, which only
+                # exists when arteries set up its schema in this same database.
+                # Degrade with a clear signal instead of a raw psycopg error.
+                return {
+                    "rows_considered": 0, "examples_captured": 0,
+                    "contrastive_pairs": 0, "skills_skipped": 0,
+                    "error": "arteries schema/rewards table not present in this database",
+                }
 
     examples_captured = 0
     skills_skipped = 0

@@ -37,7 +37,7 @@ import argparse
 import asyncio
 
 from capillaries.search.api import PromptSearch
-from capillaries.skills.promote import SkillPromoter, _slugify
+from capillaries.skills.promote import SkillPromoter, _tagify
 
 # ── Display helpers ───────────────────────────────────────────────────────
 
@@ -45,12 +45,12 @@ def _print_skill(skill: dict, verbose: bool = True) -> None:
     steps = skill.get("steps") or []
     runs = skill.get("total_runs") or 0
     rate = f"{skill['success_rate']:.0%}" if skill.get("success_rate") is not None else "—"
-    print(f"\n  [{skill['status']:10}]  v{skill['version']}  {skill['slug']}")
+    print(f"\n  [{skill['status']:10}]  v{skill['version']}  {skill['tag']}")
     print(f"  Name    : {skill['name']}")
     print(f"  ID      : {skill['skill_id']}")
     print(f"  Routing : {skill['routing_description']}")
     print(f"  Domain  : {skill.get('domain', [])}  |  Intent: {skill.get('intent', [])}  |  Type: {skill.get('task_type', [])}")
-    print(f"  Runs    : {runs}  |  Success: {rate}  |  Complexity: {skill.get('complexity_level', '—')}")
+    print(f"  Runs    : {runs}  |  Success: {rate}")
     if verbose and steps:
         print(f"  Steps   :")
         for s in sorted(steps, key=lambda x: x.get("step_order", 0)):
@@ -66,7 +66,7 @@ def _print_skill_list(skills: list[dict]) -> None:
     for s in skills:
         runs = s.get("total_runs") or 0
         rate = f"{s['success_rate']:.0%}" if s.get("success_rate") is not None else "—"
-        print(f"  [{s['status']:10}]  v{s['version']}  {s['slug']}")
+        print(f"  [{s['status']:10}]  v{s['version']}  {s['tag']}")
         print(f"             {s['name']}")
         print(f"             runs={runs}  success={rate}  id={s['skill_id']}")
         print()
@@ -128,11 +128,11 @@ def _collect_steps(existing: list | None = None) -> list[dict]:
 
 # ── Command implementations ───────────────────────────────────────────────
 
-def run_show(slug_or_id: str) -> None:
+def run_show(tag_or_id: str) -> None:
     promoter = SkillPromoter()
-    skill = promoter.get(slug_or_id)
+    skill = promoter.get(tag_or_id)
     if not skill:
-        print(f"Skill not found: {slug_or_id}")
+        print(f"Skill not found: {tag_or_id}")
         return
     _print_skill(skill, verbose=True)
     print()
@@ -144,24 +144,21 @@ def run_create() -> None:
     print("\nCreate new skill\n")
 
     name = _prompt_field("Name", required=True)
-    slug_suggestion = _slugify(name)
-    slug_input = input(f"  Slug [{slug_suggestion}]: ").strip()
-    slug = slug_input or slug_suggestion
+    tag_suggestion = _tagify(name)
+    tag_input = input(f"  Tag [{tag_suggestion}]: ").strip()
+    tag = tag_input or tag_suggestion
 
     routing = _prompt_field("Routing description (one line — what triggers this skill)", required=True)
     domain = _prompt_list("Domain (comma-separated, e.g. AI, technical)")
     intent = _prompt_list("Intent (comma-separated, e.g. analyze, plan)")
     task_type = _prompt_list("Task type (comma-separated, e.g. analysis, planning)")
 
-    complexity_raw = input("  Complexity (1-5, blank to skip): ").strip()
-    complexity = int(complexity_raw) if complexity_raw.isdigit() and 1 <= int(complexity_raw) <= 5 else None
-
     steps = _collect_steps()
 
     # Confirm
     print(f"\n{'─'*60}")
     print(f"  Name    : {name}")
-    print(f"  Slug    : {slug}")
+    print(f"  Tag    : {tag}")
     print(f"  Routing : {routing}")
     print(f"  Domain  : {domain}  Intent: {intent}  Type: {task_type}")
     print(f"  Steps   : {len(steps)}")
@@ -174,28 +171,27 @@ def run_create() -> None:
         return
 
     skill = promoter.create(
-        name=name, slug=slug,
+        name=name, tag=tag,
         routing_description=routing,
         steps=steps,
         domain=domain or None,
         intent=intent or None,
         task_type=task_type or None,
-        complexity_level=complexity,
     )
     print(f"\nSkill saved.")
     print(f"  skill_id : {skill.skill_id}")
-    print(f"  slug     : {skill.slug}  v{skill.version}")
+    print(f"  tag     : {skill.tag}  v{skill.version}")
     print(f"  status   : {skill.status}")
     print(f"\nActivate when validated:")
     print(f"  python -m capillaries.skills.cli --activate {skill.skill_id}")
 
 
-def run_edit(slug_or_id: str) -> None:
+def run_edit(tag_or_id: str) -> None:
     """Interactively edit a skill's metadata and/or steps."""
     promoter = SkillPromoter()
-    skill = promoter.get(slug_or_id)
+    skill = promoter.get(tag_or_id)
     if not skill:
-        print(f"Skill not found: {slug_or_id}")
+        print(f"Skill not found: {tag_or_id}")
         return
 
     print(f"\nEditing: {skill['name']}  (v{skill['version']}  {skill['status']})")
@@ -206,36 +202,35 @@ def run_edit(slug_or_id: str) -> None:
     domain = _prompt_list("Domain", current=skill.get("domain"))
     intent = _prompt_list("Intent", current=skill.get("intent"))
     task_type = _prompt_list("Task type", current=skill.get("task_type"))
-    complexity_raw = input(f"  Complexity (1-5) [{skill.get('complexity_level', '')}]: ").strip()
-    complexity = int(complexity_raw) if complexity_raw.isdigit() and 1 <= int(complexity_raw) <= 5 else skill.get("complexity_level")
     changelog = input("  Changelog note (what changed): ").strip() or None
+    last_evaluated = input(f"  Last evaluated (YYYY-MM-DD) [{skill.get('last_evaluated') or ''}]: ").strip() or None
 
     promoter.update_metadata(
-        slug_or_id,
+        tag_or_id,
         name=name,
         routing_description=routing,
         domain=domain or None,
         intent=intent or None,
         task_type=task_type or None,
-        complexity_level=complexity,
         changelog=changelog,
+        last_evaluated=last_evaluated,
     )
     print("  Metadata updated.")
 
     if input("\nEdit steps? (y/n): ").strip().lower() == "y":
         steps = _collect_steps(existing=skill.get("steps", []))
-        promoter.set_steps(slug_or_id, steps)
+        promoter.set_steps(tag_or_id, steps)
         print(f"  Steps updated ({len(steps)} total).")
 
     print("\nDone.")
 
 
-def run_add_step(slug_or_id: str) -> None:
+def run_add_step(tag_or_id: str) -> None:
     """Add a single step to an existing skill."""
     promoter = SkillPromoter()
-    skill = promoter.get(slug_or_id)
+    skill = promoter.get(tag_or_id)
     if not skill:
-        print(f"Skill not found: {slug_or_id}")
+        print(f"Skill not found: {tag_or_id}")
         return
 
     current_steps = skill.get("steps") or []
@@ -269,19 +264,19 @@ def run_add_step(slug_or_id: str) -> None:
     })
     current_steps.sort(key=lambda s: s.get("step_order", 0))
 
-    promoter.set_steps(slug_or_id, current_steps)
+    promoter.set_steps(tag_or_id, current_steps)
     print(f"\nStep added at position {order}.")
     print("Updated steps:")
     for s in current_steps:
         print(f"  {s['step_order']}. {s['prompt_id']}")
 
 
-def run_remove_step(slug_or_id: str) -> None:
+def run_remove_step(tag_or_id: str) -> None:
     """Remove a step from a skill by step number."""
     promoter = SkillPromoter()
-    skill = promoter.get(slug_or_id)
+    skill = promoter.get(tag_or_id)
     if not skill:
-        print(f"Skill not found: {slug_or_id}")
+        print(f"Skill not found: {tag_or_id}")
         return
 
     steps = skill.get("steps") or []
@@ -309,7 +304,7 @@ def run_remove_step(slug_or_id: str) -> None:
     for i, s in enumerate(sorted(new_steps, key=lambda x: x.get("step_order", 0)), 1):
         s["step_order"] = i
 
-    promoter.set_steps(slug_or_id, new_steps)
+    promoter.set_steps(tag_or_id, new_steps)
     print(f"\nStep {order} removed. Updated steps:")
     for s in new_steps:
         print(f"  {s['step_order']}. {s['prompt_id']}")
@@ -344,7 +339,7 @@ async def run_promote(query: str, filters: dict, top_k: int) -> None:
     if resp.skill_match:
         print(f"\n── Existing Skill Match {'─'*37}")
         m = resp.skill_match
-        print(f"  {m.name}  (slug={m.slug}  v{m.version}  score={m.match_score:.4f})")
+        print(f"  {m.name}  (tag={m.tag}  v{m.version}  score={m.match_score:.4f})")
         for step in m.steps:
             print(f"    {step['step_order']}. {step['prompt_id']}")
         print("  (Already exists — no promotion needed)")
@@ -379,20 +374,20 @@ async def run_promote(query: str, filters: dict, top_k: int) -> None:
     print()
 
     name = _prompt_field("Skill name", required=True)
-    slug_suggestion = _slugify(name)
-    slug_input = input(f"  Slug [{slug_suggestion}]: ").strip()
-    slug = slug_input or slug_suggestion
+    tag_suggestion = _tagify(name)
+    tag_input = input(f"  Tag [{tag_suggestion}]: ").strip()
+    tag = tag_input or tag_suggestion
     routing = _prompt_field("Routing description", current=query, required=True)
 
     promoter = SkillPromoter()
     skill = promoter.create(
-        name=name, slug=slug,
+        name=name, tag=tag,
         routing_description=routing,
         steps=steps,
     )
     print(f"\nSkill saved.")
     print(f"  skill_id : {skill.skill_id}")
-    print(f"  slug     : {skill.slug}  v{skill.version}")
+    print(f"  tag     : {skill.tag}  v{skill.version}")
     print(f"  status   : {skill.status}")
     print(f"\nActivate when validated:")
     print(f"  python -m capillaries.skills.cli --activate {skill.skill_id}")
@@ -408,13 +403,13 @@ def main() -> None:
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--create", action="store_true",
                         help="Create a skill from scratch")
-    parser.add_argument("--show", type=str, metavar="SLUG_OR_ID",
+    parser.add_argument("--show", type=str, metavar="TAG_OR_ID",
                         help="Show full skill details")
-    parser.add_argument("--edit", type=str, metavar="SLUG_OR_ID",
+    parser.add_argument("--edit", type=str, metavar="TAG_OR_ID",
                         help="Edit a skill's metadata and/or steps interactively")
-    parser.add_argument("--add-step", type=str, metavar="SLUG_OR_ID",
+    parser.add_argument("--add-step", type=str, metavar="TAG_OR_ID",
                         help="Add a step to an existing skill")
-    parser.add_argument("--remove-step", type=str, metavar="SLUG_OR_ID",
+    parser.add_argument("--remove-step", type=str, metavar="TAG_OR_ID",
                         help="Remove a step from a skill")
     parser.add_argument("--list", action="store_true", help="List all skills")
     parser.add_argument("--status", type=str, default=None,

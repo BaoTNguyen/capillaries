@@ -5,10 +5,8 @@ Takes the top-N candidates from the hybrid retriever and rescores each
 (query, prompt_text) pair using a cross-encoder model running on GPU.
 This significantly improves ranking quality over bi-encoder retrieval alone.
 
-Model: cross-encoder/ms-marco-MiniLM-L-6-v2
-  - 22M parameters, fast on GPU (~50ms for 50 pairs on a 3090)
-  - Trained on MS MARCO passage ranking
-  - Outputs a relevance logit — higher = more relevant
+Model: Qwen/Qwen3-Reranker-0.6B (see MODEL_NAME)
+  - 0.6B params; raw logits are sigmoid-normalized to 0-1 (NORMALIZE_SCORES)
 
 Usage:
     from capillaries.search.reranker import Reranker
@@ -36,9 +34,23 @@ from capillaries.search.retriever import SearchResult
 
 # --- Constants -----------------------------------------------------------
 
-MODEL_NAME = "mixedbread-ai/mxbai-rerank-base-v2"
+MODEL_NAME = os.getenv("RERANKER_MODEL", "Qwen/Qwen3-Reranker-0.6B")
 
-MAX_DOC_CHARS = 512
+# Qwen3-Reranker emits raw logits, not probabilities. Squash them so the score
+# is a 0-1 confidence again — the length penalty below and every threshold
+# downstream assume that scale.
+#
+# This also fixes a problem mxbai had. Measured on identical union candidates,
+# top-1 score p10..p90: mxbai [+0.95, +1.00] — saturated, so no threshold could
+# separate a good match from a bad one. Qwen3 raw [-3.25, +5.25], which after
+# sigmoid spans [0.04, 0.99] and can actually express doubt.
+NORMALIZE_SCORES = True
+
+# 2000 chars ~ 500 tokens. Was 512 *characters*, which fed the model a quarter
+# of a median chunk — a leftover from a 512-token model this file no longer
+# loads. Qwen3-Reranker handles 32k positions, so this is a safety rail, not a
+# model limit.
+MAX_DOC_CHARS = 2_000
 MAX_QUERY_CHARS = 500
 
 # Daemon scoring. CAPILLARIES_URL points at a running `capillaries.server`;
@@ -142,12 +154,43 @@ class Reranker:
         batch_size: int = 16,
     ) -> None:
         if device is None:
-            device = os.getenv("RERANKER_DEVICE", "cpu")
+            # Auto-detect rather than defaulting to CPU. Measured on 50 real
+            # pairs: 27 354 ms on CPU vs 249 ms on a 3090 — a 110x difference
+            # that was silently costing ~8 s per search on a two-GPU box.
+            # Set RERANKER_DEVICE explicitly to override.
+            device = os.getenv("RERANKER_DEVICE") or self._autodetect_device()
 
         self.model_name = model_name
         self.device = device
         self.batch_size = batch_size
         self._model = None  # loaded on first local scoring, never if the daemon serves
+
+    # Rough bf16 footprint of the cross-encoder plus activation headroom.
+    MIN_FREE_VRAM = 3 * 1024**3
+
+    @staticmethod
+    def _autodetect_device() -> str:
+        """Pick the emptiest GPU with real headroom, else CPU.
+
+        `torch.cuda.is_available()` alone is the wrong question on a shared
+        box: this machine also hosts an LLM server and the embedding server,
+        and asking for the default device OOMs. Picking by free memory keeps
+        the fast path when there is room and degrades to CPU instead of
+        crashing when there isn't.
+
+        Imports torch lazily so a process that never scores locally — because
+        the daemon does it — pays nothing for the check.
+        """
+        try:
+            import torch
+            if not torch.cuda.is_available():
+                return "cpu"
+            free = [(torch.cuda.mem_get_info(i)[0], i)
+                    for i in range(torch.cuda.device_count())]
+            best, idx = max(free)
+            return f"cuda:{idx}" if best >= Reranker.MIN_FREE_VRAM else "cpu"
+        except Exception:
+            return "cpu"
 
     @property
     def model(self):
@@ -179,11 +222,14 @@ class Reranker:
         remote and local paths are numerically identical.
         """
         scores = _remote_scores(pairs)
-        if scores is not None:
-            return scores
-        return self.model.predict(
-            pairs, batch_size=self.batch_size, show_progress_bar=False,
-        ).tolist()
+        if scores is None:
+            scores = self.model.predict(
+                pairs, batch_size=self.batch_size, show_progress_bar=False,
+            ).tolist()
+        if NORMALIZE_SCORES:
+            scores = [1.0 / (1.0 + math.exp(-max(-30.0, min(30.0, s))))
+                      for s in scores]
+        return scores
 
     def rerank(
         self,

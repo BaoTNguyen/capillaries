@@ -1,8 +1,8 @@
 """
 Inference module for extracting structured fields from freeform situation text.
 
-Uses keyword heuristics and taxonomy matching to infer domain, intent, stage,
-and complexity. Falls back to defaults when confidence is low.
+Uses keyword heuristics and taxonomy matching to infer domain and intent.
+Falls back to defaults when confidence is low.
 """
 
 from __future__ import annotations
@@ -38,23 +38,13 @@ DOMAIN_KEYWORDS = {
     "writing": ["write", "writing", "content", "copy", "blog", "article", "documentation", "story", "narrative"],
 }
 
-COMPLEXITY_INDICATORS = {
-    1: ["simple", "quick", "easy", "small", "one", "single", "straightforward", "basic"],
-    2: ["moderate", "couple", "few", "some", "standard"],
-    3: ["complex", "several", "multiple", "many", "detailed", "involved"],
-    4: ["very complex", "large", "extensive", "comprehensive", "enterprise", "critical"],
-    5: ["extremely complex", "massive", "mission critical", "high stakes", "transformational"],
-}
-
-
 @dataclass
 class InferenceResult:
     domain: list[str]
     intent: list[str]
-    complexity: int
 
 
-def infer_from_situation(situation: str, explicit_domain: list[str] | None = None, explicit_intent: list[str] | None = None, explicit_complexity: int | None = None) -> InferenceResult:
+def infer_from_situation(situation: str, explicit_domain: list[str] | None = None, explicit_intent: list[str] | None = None) -> InferenceResult:
     """
     Infer structured fields from the situation text.
 
@@ -72,12 +62,7 @@ def infer_from_situation(situation: str, explicit_domain: list[str] | None = Non
     else:
         intent = _infer_intent(text)
 
-    if explicit_complexity:
-        complexity = explicit_complexity
-    else:
-        complexity = _infer_complexity(text)
-
-    return InferenceResult(domain=domain, intent=intent, complexity=complexity)
+    return InferenceResult(domain=domain, intent=intent)
 
 
 def _infer_domain(text: str) -> list[str]:
@@ -112,21 +97,3 @@ def _infer_intent(text: str) -> list[str]:
 
     sorted_intents = sorted(scores.keys(), key=lambda i: scores[i], reverse=True)
     return sorted_intents[:2]
-
-
-def _infer_complexity(text: str) -> int:
-    """Infer complexity from text indicators."""
-    text_length = len(text.split())
-    score = 2
-
-    for level, indicators in COMPLEXITY_INDICATORS.items():
-        if any(ind in text for ind in indicators):
-            score = level
-            break
-
-    if text_length > 500:
-        score = min(5, score + 1)
-    elif text_length > 200:
-        score = min(4, score)
-
-    return max(1, min(5, score))

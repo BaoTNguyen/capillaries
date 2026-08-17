@@ -11,7 +11,7 @@ about the user's current and long-term work?).
 
 Usage:
     from capillaries.search.memory_filter import MemoryFilter
-    from capillaries.agent.memory_types import MemoryFrame
+    from arteries.memory_types import MemoryFrame
 
     mf = MemoryFilter()
     filtered = mf.apply(candidates, memory_frame)
@@ -23,7 +23,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from capillaries.agent.memory_types import MemoryFrame
+from arteries.memory_types import MemoryFrame
 from capillaries.search.reranker import RankedResult
 
 

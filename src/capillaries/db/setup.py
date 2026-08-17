@@ -10,7 +10,7 @@ import json
 import psycopg2
 from typing import List, Dict, Any
 
-from capillaries.config.paths import DB_CONFIG
+from capillaries.config.paths import DB_CONFIG, EMBED_DIM
 
 def create_database_schema(cursor):
     """Create the complete database schema"""
@@ -24,6 +24,7 @@ def create_database_schema(cursor):
     CREATE TABLE IF NOT EXISTS prompts (
         prompt_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         title VARCHAR NOT NULL UNIQUE,
+        tag VARCHAR UNIQUE,  -- stable slug derived from title, same convention as skills.skills.tag
         file_path TEXT NOT NULL,
         prompt_text TEXT NOT NULL,
 
@@ -32,8 +33,6 @@ def create_database_schema(cursor):
         task_type VARCHAR[] DEFAULT '{}',
         domain VARCHAR[] DEFAULT '{}',
         status VARCHAR DEFAULT 'active' CHECK (status IN ('draft', 'active', 'inactive')),
-
-        complexity_level INTEGER CHECK (complexity_level BETWEEN 1 AND 5),
 
         -- Original metadata
         original_link TEXT,
@@ -54,9 +53,9 @@ def create_database_schema(cursor):
         -- Data source
         source VARCHAR DEFAULT 'private',
 
-        -- Vector search (snowflake-arctic-embed-m-v2.0, 768 dimensions)
+        -- Vector search. Width is config-driven — see EMBED_DIM below.
         embedding_version VARCHAR,
-        embedding VECTOR(768),
+        embedding VECTOR(EMBED_DIM),
 
         -- Full-text search (A-weighted title + body with acronym expansion)
         search_tsv TSVECTOR,
@@ -65,7 +64,18 @@ def create_database_schema(cursor):
         modality VARCHAR DEFAULT 'text'
     );
     """
-    cursor.execute(create_prompts_table)
+    # Substituted rather than f-string-interpolated: the DDL above uses `'{}'`
+    # array defaults, which an f-string would try to read as fields.
+    cursor.execute(create_prompts_table.replace("VECTOR(EMBED_DIM)", f"VECTOR({EMBED_DIM})"))
+    cursor.execute("ALTER TABLE prompts ADD COLUMN IF NOT EXISTS summary TEXT;")
+    cursor.execute("ALTER TABLE prompts ADD COLUMN IF NOT EXISTS tag VARCHAR;")
+    cursor.execute("""
+        DO $$ BEGIN
+            ALTER TABLE prompts ADD CONSTRAINT prompts_tag_key UNIQUE (tag);
+        EXCEPTION WHEN duplicate_table THEN NULL;
+        END $$;
+    """)
+    cursor.execute("ALTER TABLE prompts DROP COLUMN IF EXISTS complexity_level;")
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS prompt_variants (
@@ -159,7 +169,6 @@ def create_database_schema(cursor):
         "CREATE INDEX IF NOT EXISTS idx_prompts_intent ON prompts USING GIN (intent);",
         "CREATE INDEX IF NOT EXISTS idx_prompts_task_type ON prompts USING GIN (task_type);",
         "CREATE INDEX IF NOT EXISTS idx_prompts_domain ON prompts USING GIN (domain);",
-        "CREATE INDEX IF NOT EXISTS idx_prompts_complexity ON prompts (complexity_level);",
         "CREATE INDEX IF NOT EXISTS idx_prompts_status ON prompts (status);",
         "CREATE INDEX IF NOT EXISTS idx_prompts_search_tsv ON prompts USING GIN (search_tsv);",
         "CREATE INDEX IF NOT EXISTS idx_prompts_embedding ON prompts USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);",

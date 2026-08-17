@@ -26,11 +26,10 @@ import httpx
 import psycopg2
 import psycopg2.extras
 
-from capillaries.config import DB_CONFIG, EMBED_URL, EMBED_MODEL
+from capillaries.config import DB_CONFIG, EMBED_URL, EMBED_MODEL, QUERY_PREFIX
 
 # --- Constants -----------------------------------------------------------
 
-QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
 MAX_CHARS = 4_000
 
 # Number of candidates to pull from each retrieval path before fusion
@@ -161,6 +160,29 @@ def expand_acronyms(text: str) -> str:
 
 # --- Embedding -----------------------------------------------------------
 
+def assert_index_matches_model(cur, table: str = "prompts") -> None:
+    """Refuse to search an index built by a different embedding model.
+
+    Vectors from two models share a column but not a space; querying across
+    them returns confident nonsense and raises nothing. That is exactly how
+    every embedding in this database came to be garbage without anyone
+    noticing (see docs/rework_actions.md). Cheap check, loud failure.
+    """
+    cur.execute(
+        f"SELECT DISTINCT embedding_version FROM {table} WHERE embedding IS NOT NULL"
+    )
+    versions = {r[0] for r in cur.fetchall()}
+    if not versions:
+        return  # empty index; nothing to disagree with
+    if versions != {EMBED_MODEL}:
+        raise RuntimeError(
+            f"{table} was embedded by {sorted(versions)} but the configured model "
+            f"is {EMBED_MODEL}. Re-embed before searching: "
+            f"python3 -m capillaries.db.migrate_embed_dim --apply && "
+            f"python3 -m capillaries.db.embed --reembed"
+        )
+
+
 async def embed_query(text: str) -> list[float]:
     """Embed a search query with the retrieval instruction prefix."""
     expanded = expand_acronyms(text)
@@ -185,8 +207,6 @@ def _build_filter_clause(filters: dict[str, Any]) -> tuple[str, list]:
         domain         list[str]  — any-of match on domain array column
         intent         list[str]  — any-of match
         task_type      list[str]  — any-of match
-        complexity_min int        — complexity_level >= value
-        complexity_max int        — complexity_level <= value
         status         str        — default 'active'
     """
     clauses: list[str] = ["status = %s"]
@@ -197,14 +217,6 @@ def _build_filter_clause(filters: dict[str, Any]) -> tuple[str, list]:
         if vals:
             clauses.append(f"{col} && %s::varchar[]")
             params.append(vals)
-
-    if filters.get("complexity_min") is not None:
-        clauses.append("complexity_level >= %s")
-        params.append(filters["complexity_min"])
-
-    if filters.get("complexity_max") is not None:
-        clauses.append("complexity_level <= %s")
-        params.append(filters["complexity_max"])
 
     if filters.get("source"):
         clauses.append("source = %s")
@@ -250,7 +262,7 @@ class Retriever:
                 prompt_id::text, title,
                 prompt_text,
                 intent, task_type, domain,
-                complexity_level, status, notes,
+                status, notes,
                 1 - (embedding <=> %s::vector) AS dense_sim
             FROM prompts
             WHERE embedding IS NOT NULL
@@ -301,7 +313,7 @@ class Retriever:
                 prompt_id::text, title,
                 prompt_text,
                 intent, task_type, domain,
-                complexity_level, status, notes,
+                status, notes,
                 ts_rank_cd(search_tsv, to_tsquery('english', %s), 1|4|32) AS sparse_sim
             FROM prompts
             WHERE search_tsv @@ to_tsquery('english', %s)
@@ -363,7 +375,6 @@ class Retriever:
                         "intent": row.get("intent") or [],
                         "task_type": row.get("task_type") or [],
                         "domain": row.get("domain") or [],
-                        "complexity_level": row.get("complexity_level"),
                         "status": row.get("status"),
                                                 "notes": row.get("notes"),
                     },
@@ -407,6 +418,7 @@ class Retriever:
         try:
             cur = conn.cursor()
             psycopg2.extras.register_default_jsonb(conn)
+            assert_index_matches_model(cur)
 
             dense_rows = await asyncio.get_event_loop().run_in_executor(
                 None,
@@ -435,7 +447,7 @@ class Retriever:
             sql = f"""
                 SELECT prompt_id::text, title, prompt_text,
                        intent, task_type, domain,
-                       complexity_level, status, notes
+                       status, notes
                 FROM prompts
                 WHERE {filter_clause}
             """
@@ -458,8 +470,6 @@ class Retriever:
                     "intent": r.get("intent") or [],
                     "task_type": r.get("task_type") or [],
                     "domain": r.get("domain") or [],
-
-                    "complexity_level": r.get("complexity_level"),
                     "status": r.get("status"),
                     "notes": r.get("notes"),
                 },
