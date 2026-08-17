@@ -1,6 +1,6 @@
 ---
 intent: [improve, decide]
-task_type: [evaluate, optimize]
+task_type: [analyze, optimize]
 domain: [technical, strategy]
 primary_stage: plan
 complexity_level: 4

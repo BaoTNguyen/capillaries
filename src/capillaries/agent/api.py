@@ -36,7 +36,6 @@ class RouteRequest(BaseModel):
     situation: str = Field(..., min_length=10, max_length=2000)
     domain: list[str] | None = Field(None, description="Domain hints")
     intent: list[str] | None = Field(None, description="Intent hints")
-    complexity: int | None = Field(None, ge=1, le=5)
     prefer: str = Field(default="auto", description="'single', 'skill', or 'auto'")
     context: dict[str, Any] | None = Field(None, description="Structured context for template filling")
     session_id: str | None = Field(None, description="For continuing previous interaction")
@@ -185,7 +184,6 @@ async def route(req: RouteRequest) -> dict | StreamingResponse:
         situation=req.situation,
         domain=req.domain,
         intent=req.intent,
-        complexity=req.complexity,
         prefer=req.prefer,
         context=template_context,
         session_id=req.session_id,

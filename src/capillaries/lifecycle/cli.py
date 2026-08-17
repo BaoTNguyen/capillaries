@@ -30,7 +30,7 @@ def cmd_inactivate(args: argparse.Namespace) -> None:
             if deps:
                 print(f"    ⚠ Referenced by active skills:")
                 for d in deps:
-                    print(f"      {d['name']} ({d['slug']}) step {d['step_order']}")
+                    print(f"      {d['name']} ({d['tag']}) step {d['step_order']}")
     else:
         print("  No stale prompts found.")
 
@@ -41,7 +41,7 @@ def cmd_inactivate(args: argparse.Namespace) -> None:
         action = "Would inactivate" if args.dry_run else "Inactivated"
         print(f"\n{action} {len(skills)} skill(s):")
         for s in skills:
-            print(f"  - {s['name']} ({s['slug']})")
+            print(f"  - {s['name']} ({s['tag']})")
     else:
         print("  No stale skills found.")
 
@@ -84,7 +84,7 @@ def cmd_review(args: argparse.Namespace) -> None:
             print(f"INACTIVE SKILLS ({len(skills)})")
             print(f"{'=' * 80}")
             for s in skills:
-                print(f"\n  {s['name']} ({s['slug']})")
+                print(f"\n  {s['name']} ({s['tag']})")
                 print(f"    Last run:             {s['last_run_at'] or 'never'}")
                 print(f"    Total runs:           {s['total_runs']}")
                 print(f"    Success rate:         {s['success_rate'] or 'N/A'}")

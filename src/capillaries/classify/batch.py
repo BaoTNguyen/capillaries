@@ -30,7 +30,7 @@ VALID_VALUES: Dict[str, set] = {
         'improve', 'learn', 'prepare', 'reflect', 'validate'
     },
     'task_type': {
-        'analyze', 'compare', 'debug', 'evaluate', 'model', 'optimize',
+        'analyze', 'compare', 'debug', 'model', 'optimize',
         'design', 'generate', 'synthesize', 'explain'
     },
     'domain': {
@@ -52,24 +52,15 @@ Each object in the array must correspond to one prompt, in the same order given.
 RULES:
 - intent and task_type: arrays of 1–3 values each
 - domain: array of 1–2 values
-- complexity: single value
 - confidence: per-field dict with scores 0.0–1.0 reflecting how clearly the prompt signals each field
 - If a field is ambiguous, pick the closest match and lower its confidence score
-- Do NOT include fields outside these four categories"""
+- Do NOT include fields outside these three categories"""
 
 USER_PROMPT_TEMPLATE = """\
 ALLOWED VALUES:
 intent:        adapt | automate | build | communicate | decide | explore | improve | learn | prepare | reflect | validate
-task_type:     analyze | compare | debug | evaluate | model | optimize | design | generate | synthesize | explain
+task_type:     analyze | compare | debug | model | optimize | design | generate | synthesize | explain
 domain:        AI | business | career | finance | learning | personal | product | strategy | writing | technical
-complexity:    1 | 2 | 3 | 4 | 5
-
-COMPLEXITY SCALE:
-1 = Single instruction, no role, minimal structure
-2 = Defined role + clear output format, low context requirement
-3 = Expert role + multi-point output + moderate context required
-4 = Expert role + multi-phase output + substantial input data required
-5 = Multi-phase workflow or embedded step chains, comprehensive artifact output
 
 ---
 
@@ -80,10 +71,9 @@ Prompt text: "[YOUR INITIAL REQUEST AND MODEL RESPONSE]\\n\\nNow attack your pre
 Output:
 {
   "intent": ["improve", "validate"],
-  "task_type": ["evaluate", "analyze"],
+  "task_type": ["analyze"],
   "domain": ["AI"],
-  "complexity": 2,
-  "confidence": {"intent": 0.92, "task_type": 0.95, "domain": 0.70, "complexity": 0.88}
+  "confidence": {"intent": 0.92, "task_type": 0.95, "domain": 0.70}
 }
 
 Prompt title: "Management Consultant - Executive Summary"
@@ -93,8 +83,7 @@ Output:
   "intent": ["communicate", "build"],
   "task_type": ["synthesize", "generate"],
   "domain": ["business", "strategy"],
-  "complexity": 3,
-  "confidence": {"intent": 0.90, "task_type": 0.88, "domain": 0.95, "complexity": 0.85}
+  "confidence": {"intent": 0.90, "task_type": 0.88, "domain": 0.95}
 }
 
 Prompt title: "Department Budget vs. Actual Tracker"
@@ -104,8 +93,7 @@ Output:
   "intent": ["build", "model"],
   "task_type": ["design", "generate"],
   "domain": ["finance", "business"],
-  "complexity": 5,
-  "confidence": {"intent": 0.88, "task_type": 0.90, "domain": 0.95, "complexity": 0.92}
+  "confidence": {"intent": 0.88, "task_type": 0.90, "domain": 0.95}
 }
 
 ---
@@ -243,7 +231,7 @@ class BatchClassifier:
     def validate_classification(self, c: Dict) -> Tuple[bool, List[str]]:
         errors = []
         required = [
-            'intent', 'task_type', 'domain', 'complexity',
+            'intent', 'task_type', 'domain',
             'confidence'
         ]
         for field in required:
@@ -258,10 +246,6 @@ class BatchClassifier:
                     invalid = [v for v in c[field] if v not in VALID_VALUES[field]]
                     if invalid:
                         errors.append(f"Invalid {field} values: {invalid}")
-
-        if 'complexity' in c:
-            if not isinstance(c['complexity'], int) or not (1 <= c['complexity'] <= 5):
-                errors.append(f"complexity must be integer 1–5, got: {c['complexity']}")
 
         if 'confidence' in c and not isinstance(c['confidence'], dict):
             errors.append("confidence must be a per-field dict")
@@ -302,7 +286,6 @@ class BatchClassifier:
                     intent                = %s,
                     task_type             = %s,
                     domain                = %s,
-                    complexity_level      = %s,
                     metadata_confidence   = %s,
                     classification_version = %s,
                     last_classified       = CURRENT_TIMESTAMP,
@@ -312,7 +295,6 @@ class BatchClassifier:
                 c.get('intent', []),
                 c.get('task_type', []),
                 c.get('domain', []),
-                c.get('complexity'),
                 json.dumps(confidence),
                 f'v1.0-{LLAMA_MODEL}',
                 status,
@@ -366,8 +348,7 @@ class BatchClassifier:
                     stats['successful'] += 1
                     logger.info(
                         f"  ✓ {title} [{bstatus}] "
-                        f"intent={result.get('intent')} "
-                        f"complexity={result.get('complexity')}"
+                        f"intent={result.get('intent')}"
                     )
                 else:
                     stats['failed'] += 1

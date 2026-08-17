@@ -1,6 +1,6 @@
 ---
 intent: [validate, improve]
-task_type: [analyze, evaluate]
+task_type: [analyze]
 domain: [business, finance]
 primary_stage: verify
 complexity_level: 3

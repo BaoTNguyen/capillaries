@@ -1,6 +1,6 @@
 ---
 intent: [decide]
-task_type: [evaluate]
+task_type: [analyze]
 domain: [business]
 primary_stage: clarify
 complexity_level: 3

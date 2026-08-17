@@ -3,7 +3,14 @@
 from __future__ import annotations
 
 import difflib
+import os
 from typing import Callable
+
+# A candidate must beat the baseline by at least this margin before it replaces
+# anything. exact_match is difflib similarity on generated prose — noisy enough
+# that a hair over baseline is often measurement noise, not a real win. The gate
+# is `optimized > baseline + MIN_IMPROVEMENT`, not `optimized > baseline`.
+MIN_IMPROVEMENT = float(os.getenv("CAPILLARIES_MIN_IMPROVEMENT", "0.02"))
 
 _CUSTOM_METRICS: dict[str, Callable] = {}
 

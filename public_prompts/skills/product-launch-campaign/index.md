@@ -1,14 +1,14 @@
 ---
 name: Product Launch Campaign
-slug: product-launch-campaign
+tag: product-launch-campaign
 status: active
 routing_description: >
   Plan and execute a product launch campaign from positioning through go-to-market.
   Covers market analysis, pricing strategy, launch announcements, and readiness
   checklists for new product or feature releases.
-domain: [marketing, product]
-intent: [plan, create, analyze]
-task_type: [campaign-planning, market-analysis, pricing]
+domain: [product, business]
+intent: [build, prepare]
+task_type: [design, analyze]
 complexity_level: 4
 source: public
 created_by: system

@@ -1,6 +1,6 @@
 ---
 intent: [decide]
-task_type: [compare, evaluate]
+task_type: [compare, analyze]
 domain: [business]
 primary_stage: plan
 complexity_level: 3

@@ -41,7 +41,6 @@ try:
         situation: str,
         stage: str | None = None,
         domain: list[str] | None = None,
-        complexity: int | None = None,
         prefer: str = "auto",
         context: dict | None = None,
         agent_context: dict | None = None,
@@ -62,7 +61,6 @@ try:
             situation=situation,
             domain=domain,
             intent=[stage] if stage else None,
-            complexity=complexity,
             prefer=prefer,
             context=with_agent_context(context, normalized),
         )
@@ -178,7 +176,7 @@ try:
 except ImportError:
     import sys
 
-    def capillaries_find(situation: str, stage: str = None, domain: list = None, complexity: int = None, prefer: str = "auto", context: dict = None, agent_context: dict = None) -> dict:
+    def capillaries_find(situation: str, stage: str = None, domain: list = None, prefer: str = "auto", context: dict = None, agent_context: dict = None) -> dict:
         raise ImportError("MCP SDK not installed. Run: pip install mcp")
 
     def capillaries_execute_step(session_id: str, step_order: int, previous_output: str = None, variables: dict = None, skip_reason: str = None) -> dict:

@@ -1,6 +1,6 @@
 ---
 intent: [communicate, reflect]
-task_type: [generate, evaluate]
+task_type: [generate, analyze]
 domain: [career, business]
 primary_stage: execute
 complexity_level: 3

@@ -29,7 +29,7 @@ def main() -> None:
 
     if args.command == "find":
         from capillaries.find import find_sync, FindResult
-        from capillaries.agent.memory_types import MemoryFrame
+        from arteries.memory_types import MemoryFrame
 
         memory = None
         if args.memory:

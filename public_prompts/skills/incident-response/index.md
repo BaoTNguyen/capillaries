@@ -1,6 +1,6 @@
 ---
 name: Incident Response
-slug: incident-response
+tag: incident-response
 status: active
 routing_description: >
   Handle production incidents from initial triage through resolution and

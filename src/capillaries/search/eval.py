@@ -23,11 +23,11 @@ import textwrap
 from datetime import datetime
 from pathlib import Path
 
-from capillaries.search.api import (
-    PromptSearch,
-    SearchResponse,
-    SINGLE_THRESHOLD,
-)
+from capillaries.search.api import PromptSearch, SearchResponse
+
+# Kept only so this legacy report still renders; the threshold it described no
+# longer exists (search/api.py).
+SINGLE_THRESHOLD = 0.3
 
 SEPARATOR = "=" * 80
 
@@ -86,8 +86,7 @@ def _render_single(lines: list, rank: int, result, threshold: float) -> None:
     lines.append(f"  #{rank}  {result.prompt_id}{flag}")
     lines.append(
         f"      rerank={result.rerank_score:.2f}  rrf={result.rrf_score:.4f}  "
-        f"domain={result.metadata.get('domain', [])}  "
-        f"complexity={result.metadata.get('complexity_level', '?')}"
+        f"domain={result.metadata.get('domain', [])}"
     )
     lines.append("")
     lines.append(_fmt_text(result.prompt_text, max_chars=500))
@@ -96,7 +95,7 @@ def _render_single(lines: list, rank: int, result, threshold: float) -> None:
 
 def _render_skill(lines: list, match) -> None:
     """Render a matched skill with its steps."""
-    lines.append(f"  SKILL: {match.name}  (slug={match.slug}  v{match.version})")
+    lines.append(f"  SKILL: {match.name}  (tag={match.tag}  v{match.version})")
     lines.append(f"  match_score={match.match_score:.4f}  "
                  f"domain={match.domain}  intent={match.intent}")
     lines.append(f"  routing: {match.routing_description}")
@@ -129,8 +128,7 @@ def _render_suggestion(lines: list, steps: list) -> None:
         )
         lines.append(
             f"      rerank={step.rerank_score:.2f}  "
-            f"domain={step.metadata.get('domain', [])}  "
-            f"complexity={step.metadata.get('complexity_level', '?')}"
+            f"domain={step.metadata.get('domain', [])}"
         )
         lines.append("")
         lines.append(_fmt_text(step.prompt_text, max_chars=300))
