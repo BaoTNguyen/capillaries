@@ -12,7 +12,7 @@ Usage:
 
     # With memory context from arteries
     from capillaries.find import FindResult
-    from capillaries.agent.memory_types import MemoryFrame
+    from arteries.memory_types import MemoryFrame
 
     result = await find("debug auth middleware", memory=memory_frame)
 
@@ -33,11 +33,13 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from capillaries.agent.context import AgentContext, normalize_agent_context
-from capillaries.agent.memory_types import MemoryFrame
+from arteries.memory_types import MemoryFrame
 from capillaries.search.memory_filter import MemoryFilter
 
-SINGLE_THRESHOLD = 0.3
-SKILL_THRESHOLD = 0.50
+# Modality (prompt vs skill) is decided entirely inside PromptSearch: prompt
+# and skill candidates are retrieved into one pool and reranked in one pass,
+# so this module just trusts `response.recommendation` — it never re-decides
+# with a second, separately-scored lookup.
 MEMORY_FILTER_CANDIDATES = 5
 
 
@@ -54,7 +56,7 @@ class FindResult:
     # Populated when mode == 'skill'
     skill_id: str | None = None
     skill_name: str | None = None
-    skill_slug: str | None = None
+    skill_tag: str | None = None
     steps: list[dict] = field(default_factory=list)
 
     # Metadata for arteries to inspect
@@ -79,7 +81,7 @@ class FindResult:
         if self.mode == "skill":
             d["skill_id"] = self.skill_id
             d["skill_name"] = self.skill_name
-            d["skill_slug"] = self.skill_slug
+            d["skill_tag"] = self.skill_tag
             d["steps"] = self.steps
         return d
 
@@ -92,10 +94,8 @@ class _FindEngine:
 
     def __init__(self) -> None:
         from capillaries.search.api import PromptSearch
-        from capillaries.skills.recall import SkillRecall
 
         self._search = PromptSearch()
-        self._skill_recall = SkillRecall()
         self._memory_filter = MemoryFilter()
 
     async def find(
@@ -104,7 +104,7 @@ class _FindEngine:
         memory: MemoryFrame | None = None,
         prefer: str = "auto",
     ) -> FindResult:
-        domain_hints, intent_hints, complexity = self._extract_hints(situation, memory)
+        domain_hints, intent_hints = self._extract_hints(situation, memory)
 
         skill_hints: dict[str, list[str]] = {}
         if domain_hints:
@@ -112,36 +112,27 @@ class _FindEngine:
         if intent_hints:
             skill_hints["intent"] = intent_hints
 
-        prefer_mode = prefer
-        if prefer_mode == "auto":
-            prefer_mode = "skill" if complexity >= 3 else "single"
+        # prompt-vs-skill is decided by one comparison, not an order of
+        # attempts: prompt and skill candidates are retrieved into one pool
+        # and reranked in one pass (see search/api.py). `prefer` lets a
+        # caller force one path when it already knows which fits.
+        top_k = MEMORY_FILTER_CANDIDATES if memory else 1
+        resp = await self._search.search(
+            situation, top_k=top_k, skill_hints=skill_hints or None, prefer=prefer,
+        )
 
-        # Skill-preferred path: check skills first for complex situations
-        if prefer_mode == "skill":
-            skill_result = self._try_skill(situation, skill_hints)
-            if skill_result:
-                return skill_result
+        if resp.recommendation == "skill" and resp.skill_match:
+            return self._build_skill_result(resp.skill_match)
 
-        # Single prompt retrieval
-        single_result = await self._try_single(situation, memory)
-        if single_result and single_result.confidence >= SINGLE_THRESHOLD:
-            return single_result
-
-        # Fallback: try skill if we haven't yet
-        if prefer_mode != "skill":
-            skill_result = self._try_skill(situation, skill_hints)
-            if skill_result:
-                return skill_result
-
-        # Return best single even if below threshold, or none
-        if single_result and single_result.confidence > 0.0:
+        single_result = self._build_single_result(resp, memory)
+        if single_result:
             return single_result
 
         return FindResult(mode="none", confidence=0.0)
 
     def _extract_hints(
         self, situation: str, memory: MemoryFrame | None
-    ) -> tuple[list[str], list[str], int]:
+    ) -> tuple[list[str], list[str]]:
         domain: list[str] = []
         intent: list[str] = []
 
@@ -158,13 +149,11 @@ class _FindEngine:
             explicit_domain=domain or None,
             explicit_intent=intent or None,
         )
-        return inference.domain, inference.intent, inference.complexity
+        return inference.domain, inference.intent
 
-    async def _try_single(
-        self, situation: str, memory: MemoryFrame | None = None
+    def _build_single_result(
+        self, response, memory: MemoryFrame | None = None
     ) -> FindResult | None:
-        top_k = MEMORY_FILTER_CANDIDATES if memory else 1
-        response = await self._search.search(situation, top_k=top_k)
         if not response.results:
             return None
 
@@ -186,9 +175,11 @@ class _FindEngine:
             task_type=top.metadata.get("task_type", []),
         )
 
-    def _try_skill(self, situation: str, hints: dict) -> FindResult | None:
-        match = self._skill_recall.search(situation, hints)
-        if match is None or match.match_score < SKILL_THRESHOLD:
+    def _build_skill_result(self, match) -> FindResult | None:
+        # A skill with no steps has nothing to serve — returning it hands the
+        # caller prompt_text="". PromptSearch already filters these out as
+        # ineligible candidates, so this is a defensive no-op in practice.
+        if not match.steps:
             return None
 
         steps = []
@@ -206,7 +197,7 @@ class _FindEngine:
             prompt_text=match.steps[0].get("prompt_text", "") if match.steps else "",
             skill_id=match.skill_id,
             skill_name=match.name,
-            skill_slug=match.slug,
+            skill_tag=match.tag,
             steps=steps,
             domain=match.domain if hasattr(match, "domain") else [],
             intent=match.intent if hasattr(match, "intent") else [],
@@ -238,7 +229,9 @@ async def find(
         memory:    MemoryFrame from arteries (optional). Used to extract
                    domain/intent hints from active context.
         prefer:    'auto' (default), 'single', or 'skill'.
-                   'auto' checks skills first for complex situations.
+                   'auto' retrieves both prompt and skill candidates into one
+                   pool and reranks them together — whichever scores highest
+                   wins.
         agent_context: Optional normalized agent/CLI metadata. It is returned
                        for telemetry and callers; retrieval remains CLI-neutral.
 

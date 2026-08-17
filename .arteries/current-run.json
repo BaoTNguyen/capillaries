@@ -1,9 +1,9 @@
 {
   "agent_id": "capillaries-hook",
-  "cli": "codex",
+  "cli": "claude",
   "metadata": {},
   "project_id": "capillaries",
   "repo_path": "/home/bao-tn/Coding/Projects/capillaries",
-  "run_id": "e208f770-c471-4383-80b8-cc79ffb6ba56",
-  "started_at": "2026-07-01T22:53:39.221759+00:00"
+  "run_id": "877eacd3-69e8-4824-9a71-56d253e7d0d0",
+  "started_at": "2026-08-17T01:14:10.691599+00:00"
 }

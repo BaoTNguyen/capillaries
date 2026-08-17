@@ -25,15 +25,20 @@ import json
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import psycopg2
 import psycopg2.extras
 
-from capillaries.config import DB_CONFIG, EMBED_URL, EMBED_MODEL
+from capillaries.config import DB_CONFIG, EMBED_URL, EMBED_MODEL, QUERY_PREFIX
 
-QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
+if TYPE_CHECKING:
+    # capillaries.skills.__init__ imports this module; capillaries.search.api
+    # imports SkillRecall back, so importing SearchResult eagerly here breaks
+    # depending on which package a caller touches first. Import type-only.
+    from capillaries.search.retriever import SearchResult
+
 MAX_CHARS = 4_000
 
 RECALL_THRESHOLD = 0.50
@@ -48,7 +53,7 @@ class SkillMatch:
     """A recalled skill with its steps resolved to full prompt content."""
     skill_id: str
     name: str
-    slug: str
+    tag: str
     version: int
     routing_description: str
     match_score: float              # ts_rank — confidence this skill fits the query
@@ -62,7 +67,7 @@ class SkillMatch:
         return {
             "skill_id":            self.skill_id,
             "name":                self.name,
-            "slug":                self.slug,
+            "tag":                self.tag,
             "version":             self.version,
             "routing_description": self.routing_description,
             "match_score":         round(self.match_score, 4),
@@ -126,7 +131,7 @@ class SkillRecall:
         return SkillMatch(
             skill_id=str(best["skill_id"]),
             name=best["name"],
-            slug=best["slug"],
+            tag=best["tag"],
             version=best["version"],
             routing_description=best["routing_description"],
             match_score=best["match_score"],
@@ -134,6 +139,108 @@ class SkillRecall:
             intent=list(best["intent"] or []),
             task_type=list(best["task_type"] or []),
             steps=steps,
+        )
+
+    def candidates(
+        self,
+        query: str,
+        filters: dict[str, Any] | None = None,
+        per_channel: int = 10,
+    ) -> list[SearchResult]:
+        """
+        Top-N skills by FTS + top-N by semantic similarity, unioned like
+        prompt retrieval — a pool of candidates for the caller to rerank
+        alongside prompt candidates, rather than a single pre-decided best.
+
+        Each result carries metadata["kind"] = "skill" and the raw (unresolved)
+        steps JSON — steps are only resolved to full prompt text for whichever
+        candidate the reranker actually picks, via `_resolve_steps`.
+        """
+        filters = filters or {}
+        safe_query = " ".join(query.split())
+        taxonomy_boost = self._taxonomy_boost_sql(filters)
+
+        fts_sql = f"""
+            SELECT
+                skill_id, name, tag, version, routing_description,
+                steps, domain, intent, task_type,
+                ts_rank(
+                    to_tsvector('english', routing_description),
+                    plainto_tsquery('english', %s)
+                ) {taxonomy_boost} AS score
+            FROM skills.skills
+            WHERE status = 'active'
+              AND to_tsvector('english', routing_description)
+                  @@ plainto_tsquery('english', %s)
+            ORDER BY score DESC
+            LIMIT %s
+        """
+        with psycopg2.connect(**self._db_config) as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(fts_sql, [safe_query, safe_query, per_channel])
+                fts_rows = cur.fetchall()
+
+        try:
+            query_vec = self._embed_query(query)
+        except Exception:
+            query_vec = None
+
+        sem_rows: list[dict] = []
+        if query_vec is not None:
+            vec_str = "[" + ",".join(map(str, query_vec)) + "]"
+            sem_sql = """
+                SELECT
+                    skill_id, name, tag, version, routing_description,
+                    steps, domain, intent, task_type,
+                    1 - (routing_embedding <=> %s::vector) AS score
+                FROM skills.skills
+                WHERE status = 'active'
+                  AND routing_embedding IS NOT NULL
+                ORDER BY routing_embedding <=> %s::vector
+                LIMIT %s
+            """
+            with psycopg2.connect(**self._db_config) as conn:
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                    cur.execute(sem_sql, [vec_str, vec_str, per_channel])
+                    sem_rows = cur.fetchall()
+
+        by_id: dict[str, SearchResult] = {}
+        for rank, row in enumerate(fts_rows, 1):
+            by_id[str(row["skill_id"])] = self._to_candidate(row, sparse_rank=rank, sparse_sim=row["score"])
+        for rank, row in enumerate(sem_rows, 1):
+            sid = str(row["skill_id"])
+            if sid in by_id:
+                by_id[sid].dense_rank = rank
+                by_id[sid].dense_sim = row["score"]
+            else:
+                by_id[sid] = self._to_candidate(row, dense_rank=rank, dense_sim=row["score"])
+
+        return list(by_id.values())
+
+    @staticmethod
+    def _to_candidate(
+        row: dict, dense_rank: int | None = None, sparse_rank: int | None = None,
+        dense_sim: float | None = None, sparse_sim: float | None = None,
+    ) -> SearchResult:
+        from capillaries.search.retriever import SearchResult
+        return SearchResult(
+            prompt_id=str(row["skill_id"]),
+            title=row["name"],
+            prompt_text=f"{row['name']}\n\n{row['routing_description']}",
+            rrf_score=0.0,
+            dense_rank=dense_rank, sparse_rank=sparse_rank,
+            dense_sim=dense_sim, sparse_sim=sparse_sim,
+            metadata={
+                "kind": "skill",
+                "skill_id": str(row["skill_id"]),
+                "tag": row["tag"],
+                "version": row["version"],
+                "routing_description": row["routing_description"],
+                "domain": list(row["domain"] or []),
+                "intent": list(row["intent"] or []),
+                "task_type": list(row["task_type"] or []),
+                "steps": row["steps"],
+            },
         )
 
     def log_run(
@@ -195,7 +302,7 @@ class SkillRecall:
 
         sql = f"""
             SELECT
-                skill_id, name, slug, version, routing_description,
+                skill_id, name, tag, version, routing_description,
                 steps, domain, intent, task_type,
                 ts_rank(
                     to_tsvector('english', routing_description),
@@ -229,7 +336,7 @@ class SkillRecall:
 
         sql = """
             SELECT
-                skill_id, name, slug, version, routing_description,
+                skill_id, name, tag, version, routing_description,
                 steps, domain, intent, task_type,
                 1 - (routing_embedding <=> %s::vector) AS semantic_sim
             FROM skills.skills
@@ -335,7 +442,7 @@ class SkillRecall:
                 cur.execute(
                     """
                     SELECT title, prompt_text, domain, intent, task_type,
-                           complexity_level, content_hash
+                           content_hash
                     FROM prompts
                     WHERE title = ANY(%s)
                     """,
@@ -373,7 +480,6 @@ class SkillRecall:
                     "domain":          p.get("domain") or [],
                     "intent":          p.get("intent") or [],
                     "task_type":       p.get("task_type") or [],
-                    "complexity_level": p.get("complexity_level"),
                     "content_hash":    p.get("content_hash"),
                 },
             })

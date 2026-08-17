@@ -1,6 +1,6 @@
 ---
 name: Contract Negotiation
-slug: contract-negotiation
+tag: contract-negotiation
 status: active
 routing_description: >
   Prepare for and execute contract negotiations with vendors, partners, or

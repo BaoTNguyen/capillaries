@@ -57,7 +57,7 @@ def inactivate_stale_skills(
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             if dry_run:
                 cur.execute("""
-                    SELECT name, slug FROM skills.skills
+                    SELECT name, tag FROM skills.skills
                     WHERE status = 'active'
                       AND skill_id NOT IN (
                           SELECT DISTINCT skill_id FROM skills.skill_runs
@@ -73,7 +73,7 @@ def inactivate_stale_skills(
                       SELECT DISTINCT skill_id FROM skills.skill_runs
                       WHERE started_at > NOW() - INTERVAL '6 months'
                   )
-                RETURNING name, slug
+                RETURNING name, tag
             """)
             rows = [dict(row) for row in cur.fetchall()]
             conn.commit()

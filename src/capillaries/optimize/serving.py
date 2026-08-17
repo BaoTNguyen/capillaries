@@ -78,7 +78,9 @@ def log_serving(
     """
     try:
         episode_id = os.environ.get("ARTERIES_EPISODE_ID")
-        turn_id = None  # see docstring — no turn-id convention reaches capillaries yet
+        # arteries stamps ARTERIES_TURN_ID around its retrieval call (eval.py);
+        # null when the caller isn't arteries or predates the convention.
+        turn_id = os.environ.get("ARTERIES_TURN_ID")
 
         capped = [
             {"id": c.get("id"), "score": c.get("score")}

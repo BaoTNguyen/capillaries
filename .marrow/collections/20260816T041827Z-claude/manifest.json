@@ -1,0 +1,15 @@
+{
+  "collector": "cli-session",
+  "agent": "claude",
+  "task_id": null,
+  "command": [
+    "claude"
+  ],
+  "cwd": "/home/bao-tn/Coding/Projects/capillaries",
+  "mode": "pty",
+  "started_at": "2026-08-16T04:18:27.861133+00:00",
+  "finished_at": "2026-08-16T04:55:49.007243+00:00",
+  "duration_seconds": 2241.146,
+  "returncode": 0,
+  "terminal": "terminal.typescript"
+}

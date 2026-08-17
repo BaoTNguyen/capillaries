@@ -16,7 +16,7 @@ import os
 import re
 from dataclasses import dataclass
 
-from capillaries.agent.memory_types import (  # noqa: F401 — re-export for backward compat
+from arteries.memory_types import (  # noqa: F401 — re-export for backward compat
     Insight,
     CachedRetrieval,
     EphemeralMemory,
@@ -25,7 +25,8 @@ from capillaries.agent.memory_types import (  # noqa: F401 — re-export for bac
     MemoryFrame,
 )
 
-QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
+from capillaries.config import QUERY_PREFIX  # noqa: E402 — one source of truth
+
 MAX_CHARS = 4_000
 
 # Retrieve only when a message clears BOTH signals: it has a real semantic match
@@ -46,7 +47,20 @@ MAX_CHARS = 4_000
 # since embedding can't tell "how should I do X" from "what did you do about X" —
 # so this is the one genuinely tunable knob; the word/density signals separate
 # cleanly and don't move.
-SIMILARITY_THRESHOLD = float(os.getenv("CAPILLARIES_SIMILARITY_THRESHOLD", "0.47"))
+# Re-fitted for Qwen/Qwen3-Embedding-0.6B. The old 0.47 was hand-tuned against
+# an index that was silently broken, where the "narrow gap" described above was
+# unavoidable: on the 9 labelled cases in tests/test_gate.py the classes did not
+# separate at all (the top-scoring case overall was a should-SKIP at 0.699,
+# while should-RETRIEVE peaked at 0.536). No cut could work, so the constant was
+# doing nothing honest.
+#
+# Under the re-embedded index those 9 cases separate: should-retrieve spans
+# 0.589-0.644, should-skip spans 0.375-0.587. 0.58 sits in that gap.
+#
+# Still only 9 labelled points, so treat this as weakly grounded, not solved.
+# The real replacement is the normalized (z-score / margin) decision layer,
+# which needs the eval set. Do not hand-tune this in the meantime.
+SIMILARITY_THRESHOLD = float(os.getenv("CAPILLARIES_SIMILARITY_THRESHOLD", "0.58"))
 
 # "not too simple / not too complicated" — a word-count band with a second,
 # density-based ceiling. Both ceilings earn their place: HIGH catches long
@@ -57,6 +71,14 @@ SIMILARITY_THRESHOLD = float(os.getenv("CAPILLARIES_SIMILARITY_THRESHOLD", "0.47
 WORD_BAND_LOW = int(os.getenv("CAPILLARIES_WORD_BAND_LOW", "5"))
 WORD_BAND_HIGH = int(os.getenv("CAPILLARIES_WORD_BAND_HIGH", "60"))
 SPECIFICITY_THRESHOLD = float(os.getenv("CAPILLARIES_SPECIFICITY_THRESHOLD", "0.08"))
+
+# Topic drift (from the memory frame) signals the conversation moved to ground
+# the active domains don't cover yet. When it's high, relax the similarity bar a
+# little so a real-but-weak match can still open. Strictly additive and bounded:
+# it can only LOWER the bar, never force a search, so the sim>=threshold + band
+# invariant (and the "high drift, no corpus match → skip" rule) still holds.
+DRIFT_HIGH = float(os.getenv("CAPILLARIES_DRIFT_HIGH", "0.6"))
+DRIFT_RELAX = float(os.getenv("CAPILLARIES_DRIFT_RELAX", "0.03"))
 
 _SPEC_TOKEN = re.compile(r"""
       \w+/[\w./-]+                 # a/b/c.py paths
@@ -259,14 +281,32 @@ def _check_memory_frame(memory: MemoryFrame, message: str) -> GateDecision | Non
     return None
 
 
+# Common words carry no topic signal; counting them made short situations
+# collide with anything. Dropped before overlap is measured.
+_OVERLAP_STOPWORDS = frozenset({
+    "the", "and", "for", "with", "that", "this", "you", "your", "are", "was",
+    "how", "what", "why", "when", "should", "would", "could", "can", "get",
+    "use", "using", "from", "into", "about", "have", "has", "not", "but",
+})
+
+
 def _situation_overlaps(message: str, situation: str) -> bool:
-    """Quick lexical overlap check between current message and a cached situation."""
-    msg_words = set(re.findall(r"[a-z]{3,}", message))
-    sit_words = set(re.findall(r"[a-z]{3,}", situation.lower()))
-    if not msg_words or not sit_words:
+    """Is the current message the same situation as a cached retrieval?
+
+    The old overlap-coefficient (`shared / min(len)`) fired on any short cached
+    situation that happened to share a couple of common words. This uses Jaccard
+    over content words (stopwords removed) and requires a real floor of shared
+    terms, so paraphrased repeats still match but incidental vocabulary overlap
+    on unrelated tasks doesn't.
+    """
+    msg = {w for w in re.findall(r"[a-z]{3,}", message) if w not in _OVERLAP_STOPWORDS}
+    sit = {w for w in re.findall(r"[a-z]{3,}", situation.lower()) if w not in _OVERLAP_STOPWORDS}
+    if len(msg) < 2 or len(sit) < 2:
         return False
-    overlap = len(msg_words & sit_words) / min(len(msg_words), len(sit_words))
-    return overlap > 0.5
+    shared = msg & sit
+    if len(shared) < 2:
+        return False
+    return len(shared) / len(msg | sit) >= 0.4
 
 
 async def gate(
@@ -311,14 +351,20 @@ async def gate(
         # Active domains in persistent memory signal ongoing work — lower the bar
         if memory and memory.persistent.active_domains:
             threshold -= 0.05
+        # High topic drift → new territory; relax a touch more (see DRIFT_* above)
+        if memory and memory.ephemeral.topic_drift >= DRIFT_HIGH:
+            threshold -= DRIFT_RELAX
 
     try:
         max_sim, closest_id = await _embedding_proximity(message, db_config)
     except Exception:
+        # Fail closed. Dense retrieval and the reranker both need this same
+        # embedding endpoint, so if we can't embed to gate, opening the gate only
+        # buys an expensive retrieval that will itself fail. Skip and say why.
         return GateDecision(
-            search=True,
+            search=False,
             confidence=0.5,
-            reason="embedding check failed, defaulting to search",
+            reason="embedding unavailable; skipped (retrieval needs it too)",
         )
 
     decision = _band_decision(

@@ -1,6 +1,6 @@
 ---
 name: Quarterly Business Review
-slug: quarterly-business-review
+tag: quarterly-business-review
 status: active
 routing_description: >
   Prepare and execute a quarterly business review (QBR) including financial
@@ -8,7 +8,7 @@ routing_description: >
   building, presentation structuring, and action item tracking. Use when
   preparing board updates, leadership reviews, or quarterly planning sessions.
 domain: [finance, strategy]
-intent: [communicate, analyze]
+intent: [communicate, validate]
 task_type: [synthesize, analyze]
 complexity_level: 5
 source: public

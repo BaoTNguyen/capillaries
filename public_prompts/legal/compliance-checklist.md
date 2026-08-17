@@ -1,6 +1,6 @@
 ---
 intent: [validate]
-task_type: [evaluate]
+task_type: [analyze]
 domain: [business]
 primary_stage: verify
 complexity_level: 3
