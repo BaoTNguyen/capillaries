@@ -135,7 +135,7 @@ async def run(reembed: bool = False) -> None:
 
 
 async def run_skills(reembed: bool = False) -> None:
-    """Embed skill routing_descriptions into skills.skills.routing_embedding.
+    """Embed skill summarys into skills.skills.routing_embedding.
 
     Same convention as prompts: anchor the embedded text with the skill's
     human-readable `name` (not `skill_id` — a UUID carries no semantic
@@ -165,14 +165,14 @@ async def run_skills(reembed: bool = False) -> None:
 
     if reembed:
         cur.execute(
-            "SELECT skill_id::text, name, routing_description FROM skills.skills "
-            "WHERE status = 'active' AND length(trim(routing_description)) > 0"
+            "SELECT skill_id::text, name, summary FROM skills.skills "
+            "WHERE status = 'active' AND length(trim(summary)) > 0"
         )
     else:
         cur.execute(
-            "SELECT skill_id::text, name, routing_description FROM skills.skills "
+            "SELECT skill_id::text, name, summary FROM skills.skills "
             "WHERE status = 'active' AND routing_embedding IS NULL "
-            "AND length(trim(routing_description)) > 0"
+            "AND length(trim(summary)) > 0"
         )
 
     rows = cur.fetchall()
@@ -184,7 +184,7 @@ async def run_skills(reembed: bool = False) -> None:
         conn.close()
         return
 
-    print(f"Embedding {total} skill routing_descriptions with {EMBED_MODEL}...")
+    print(f"Embedding {total} skill summarys with {EMBED_MODEL}...")
     t0 = time.time()
 
     sem = asyncio.Semaphore(CONCURRENCY)
@@ -235,7 +235,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--skills-only",
         action="store_true",
-        help="Only embed skill routing_descriptions, skip prompts",
+        help="Only embed skill summarys, skip prompts",
     )
     args = parser.parse_args()
 
