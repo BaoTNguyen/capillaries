@@ -196,9 +196,12 @@ class TestPreFilters:
 # ---------------------------------------------------------------------------
 class TestMemoryNoLongerForcesSearch:
     def test_high_drift_no_corpus_match_does_not_retrieve(self):
-        from capillaries.agent.gate import MemoryFrame
+        # Constructing a frame needs the real contract, and arteries is not on
+        # PyPI — so this one skips where it is absent (CI) and runs where the
+        # sibling checkout is installed.
+        pytest.importorskip("arteries.memory_types")
         from arteries.memory_types import (
-            EphemeralMemory, PersistentMemory, EvergreenMemory,
+            MemoryFrame, EphemeralMemory, PersistentMemory, EvergreenMemory,
         )
         frame = MemoryFrame(
             ephemeral=EphemeralMemory(topic_drift=0.9, turn_count=9),
@@ -214,7 +217,7 @@ class TestMemoryNoLongerForcesSearch:
         orig = g._embedding_proximity
         g._embedding_proximity = _no_match
         try:
-            dec = run(gate("xxxxx yyyyy zzzzz qqqqq wwwww", memory=frame))
+            dec = run(gate("xxxxx yyyyy zzzzz qqqqq wwwww", context=frame))
         finally:
             g._embedding_proximity = orig
         assert dec.search is False, dec.reason

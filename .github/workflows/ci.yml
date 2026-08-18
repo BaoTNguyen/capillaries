@@ -16,10 +16,12 @@ jobs:
         with:
           python-version: '3.12'
 
-      # capillaries sits at the bottom of the stack and imports no sibling, so
-      # its own pyproject is the whole story. Editable rather than a hand-listed
-      # set of packages: a dependency added to pyproject should not need a
-      # second edit here to be tested.
+      # capillaries sits at the bottom of the stack and imports no sibling at
+      # module scope, so its own pyproject is the whole story. arteries is
+      # deliberately absent here: this job is what proves the standalone import
+      # still holds. The one test that constructs an arteries MemoryFrame skips.
+      # Editable rather than a hand-listed set of packages: a dependency added
+      # to pyproject should not need a second edit here to be tested.
       - run: pip install -e . pytest
 
       # `-m "not db"` drops the cases that need live Postgres and an embedding
