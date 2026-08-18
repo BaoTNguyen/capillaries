@@ -111,3 +111,46 @@ def test_variant_lookups_execute(cur, step_prompt_ids):
         (step_prompt_ids[0], "any-model"),
     )
     cur.fetchall()
+
+
+def test_both_tsv_columns_are_populated(cur):
+    """Neither lexical column may have gaps.
+
+    exact_tsv did not exist on prompts at all — search/channels.py queried it
+    and raised UndefinedColumn — and search_tsv was written inline by each
+    ingest path, one of which omitted it, leaving 68 prompts invisible to
+    lexical search with no error anywhere.
+    """
+    cur.execute(
+        "SELECT count(*) AS total,"
+        "       count(*) FILTER (WHERE exact_tsv IS NULL)  AS no_exact,"
+        "       count(*) FILTER (WHERE search_tsv IS NULL) AS no_search"
+        " FROM prompts"
+    )
+    r = cur.fetchone()
+    assert r["total"] > 0, "no prompts to check"
+    assert r["no_exact"] == 0, f"{r['no_exact']} prompts lack exact_tsv"
+    assert r["no_search"] == 0, (
+        f"{r['no_search']} prompts lack search_tsv — an ingest path is not "
+        f"writing it; check ingest_public.py and ingest_own_skills.py"
+    )
+
+
+def test_exact_tsv_is_generated_so_ingest_cannot_forget_it(cur):
+    """The column must stay derived. Making it writable reopens the whole bug."""
+    cur.execute(
+        "SELECT is_generated FROM information_schema.columns"
+        " WHERE table_name='prompts' AND column_name='exact_tsv'"
+    )
+    row = cur.fetchone()
+    assert row is not None, "exact_tsv column is missing"
+    assert row["is_generated"] == "ALWAYS"
+
+
+def test_exact_channel_matches_literal_tokens(cur):
+    """'simple' config, so a dotted identifier survives as one token."""
+    cur.execute(
+        "SELECT count(*) FROM prompts"
+        " WHERE exact_tsv @@ to_tsquery('simple', %s)", ("pgvector",)
+    )
+    assert cur.fetchone()["count"] >= 1, "literal token lookup found nothing"
