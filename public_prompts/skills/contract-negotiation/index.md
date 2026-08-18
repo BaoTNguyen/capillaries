@@ -2,7 +2,7 @@
 name: Contract Negotiation
 tag: contract-negotiation
 status: active
-routing_description: >
+summary: >
   Prepare for and execute contract negotiations with vendors, partners, or
   clients. Includes risk clause extraction, multi-vendor comparison, redline
   suggestion generation, and counter-offer preparation. Use when evaluating

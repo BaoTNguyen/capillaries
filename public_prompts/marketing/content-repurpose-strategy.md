@@ -1,12 +1,22 @@
 ---
-intent: [automate, improve]
-task_type: [synthesize, generate]
-domain: [business, writing]
-primary_stage: plan
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt creates a repurposing plan for long-form content into ten or
+  more pieces across multiple formats and platforms. The model must provide format,
+  platform, angle, draft copy, and production time for each piece, followed by a two-week
+  distribution timeline.
 complexity_level: 2
+domain:
+- business
+- writing
+intent:
+- automate
+- improve
+primary_stage: plan
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- synthesize
+- generate
 ---
 
 Take the following long-form content and create a repurposing plan that turns it into 10+ pieces of content across multiple formats and platforms.

@@ -1,12 +1,19 @@
 ---
-intent: [build, communicate]
-task_type: [generate]
-domain: [technical]
-primary_stage: execute
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt serves developers creating comprehensive documentation for specific
+  API endpoints. The model must produce detailed specs including authentication, request/response
+  schemas, error codes, rate limits, and code examples in a specified language.
 complexity_level: 2
+domain:
+- technical
+intent:
+- build
+- communicate
+primary_stage: execute
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- generate
 ---
 
 Generate comprehensive API documentation for the **{{api_name}}** API endpoint(s).

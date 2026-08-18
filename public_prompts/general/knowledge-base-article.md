@@ -1,12 +1,20 @@
 ---
-intent: [build]
-task_type: [explain]
-domain: [writing, technical]
-primary_stage: execute
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: 'This prompt helps technical writers create internal documentation for specific
+  audiences and expertise levels. It produces a markdown article with step-by-step
+  instructions, FAQs, and placeholders for screenshots, ready for Confluence or Notion.
+  Required context: [Screenshot: description].'
 complexity_level: 1
+domain:
+- writing
+- technical
+intent:
+- build
+primary_stage: execute
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- explain
 ---
 
 Write an internal knowledge base article about:

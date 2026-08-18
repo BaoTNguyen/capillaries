@@ -1,12 +1,21 @@
 ---
-intent: [communicate]
-task_type: [synthesize]
-domain: [business]
-primary_stage: execute
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: 'This prompt generates a concise project status report for stakeholders to
+  assess health in 30 seconds. The model formats provided details into a one-page
+  artifact with progress, risks, and metrics. Required context: [status], [Bullet
+  list of what was accomplished], [Bullet list of planned work with owners], [Each
+  risk with severity and mitigation], [Any decisions required from stakeholders, with
+  deadline].'
 complexity_level: 1
+domain:
+- business
+intent:
+- communicate
+primary_stage: execute
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- synthesize
 ---
 
 Generate a project status report for **{{project_name}}** covering **{{reporting_period}}**.

@@ -2,7 +2,7 @@
 name: Product Launch Campaign
 tag: product-launch-campaign
 status: active
-routing_description: >
+summary: >
   Plan and execute a product launch campaign from positioning through go-to-market.
   Covers market analysis, pricing strategy, launch announcements, and readiness
   checklists for new product or feature releases.

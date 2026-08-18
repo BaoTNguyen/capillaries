@@ -1,12 +1,22 @@
 ---
-intent: [analyze]
-task_type: [market-analysis]
-domain: [marketing, product]
-primary_stage: plan
+Notes: Part of the product-launch-campaign skill
+Original Link: ''
+Summary: 'Intended for product marketing strategists defining competitive positioning,
+  this prompt analyzes category definition, competitor matrices, and differentiation
+  attributes. It outputs a positioning document featuring a formal positioning statement,
+  messaging hierarchy, and identified positioning risks. Required context: [target
+  customer], [need/pain point], [category], [key benefit], [primary competitor], [key
+  differentiator].'
 complexity_level: 4
+domain:
+- marketing
+- product
+intent:
+- analyze
+primary_stage: plan
 source: public
-Original Link: ""
-Notes: "Part of the product-launch-campaign skill"
+task_type:
+- market-analysis
 ---
 
 # Market Positioning Analysis

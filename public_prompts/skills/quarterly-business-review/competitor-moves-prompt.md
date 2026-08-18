@@ -1,12 +1,20 @@
 ---
-intent: [explore]
-task_type: [analyze]
-domain: [strategy, business]
-primary_stage: clarify
+Notes: Part of the quarterly-business-review skill
+Original Link: ''
+Summary: This prompt analyzes competitive landscape changes for a specified company
+  and market segment during a given quarter. The model must generate a Competitor
+  Activity Matrix, strategic implications, emerging threats, opportunities, and recommended
+  responses in under 800 words.
 complexity_level: 4
+domain:
+- strategy
+- business
+intent:
+- explore
+primary_stage: clarify
 source: public
-Original Link: ""
-Notes: "Part of the quarterly-business-review skill"
+task_type:
+- analyze
 ---
 
 Summarize the competitive landscape changes relevant to **{{company_name}}** during **{{quarter}}**.

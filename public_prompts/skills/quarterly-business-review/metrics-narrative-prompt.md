@@ -1,12 +1,20 @@
 ---
-intent: [communicate]
-task_type: [synthesize]
-domain: [finance, strategy]
-primary_stage: execute
+Notes: Part of the quarterly-business-review skill
+Original Link: ''
+Summary: This prompt targets executives preparing quarterly business reviews by transforming
+  raw metrics into strategic insights. The model must generate a concise narrative
+  highlighting key trends, variance root causes, and resource asks, outputting a polished
+  section ready for presentation insertion.
 complexity_level: 4
+domain:
+- finance
+- strategy
+intent:
+- communicate
+primary_stage: execute
 source: public
-Original Link: ""
-Notes: "Part of the quarterly-business-review skill"
+task_type:
+- synthesize
 ---
 
 Transform the following raw metrics into an executive narrative for a quarterly business review:

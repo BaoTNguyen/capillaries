@@ -2,7 +2,7 @@
 name: Data Pipeline Audit
 tag: data-pipeline-audit
 status: active
-routing_description: >
+summary: >
   Audit and assess the health of data pipelines, ETL processes, and data
   infrastructure. Covers schema validation, query performance profiling,
   data quality assessment, and monitoring configuration for pipeline reliability.

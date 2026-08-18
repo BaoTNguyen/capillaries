@@ -1,12 +1,20 @@
 ---
-intent: [communicate]
-task_type: [generate]
-domain: [business, writing]
-primary_stage: execute
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt generates a four-email launch sequence for marketing teams promoting
+  a new product to a specific target audience. The model creates teaser, launch, social
+  proof, and urgency emails with subject lines, body copy, and CTAs tailored to the
+  provided brand tone and value proposition.
 complexity_level: 2
+domain:
+- business
+- writing
+intent:
+- communicate
+primary_stage: execute
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- generate
 ---
 
 Write a product launch email sequence for **{{product_name}}** by **{{company_name}}**, launching on **{{launch_date}}**.

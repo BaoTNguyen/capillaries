@@ -1,12 +1,18 @@
 ---
-intent: [improve]
-task_type: [generate]
-domain: [writing]
-primary_stage: execute
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This tool helps professionals refine draft emails for clarity, tone, and
+  conciseness based on specific context. The model must rewrite the content with an
+  action-oriented subject line, active voice, and a clear call-to-action.
 complexity_level: 1
+domain:
+- writing
+intent:
+- improve
+primary_stage: execute
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- generate
 ---
 
 Rewrite the following email to be more professional, clear, and effective:

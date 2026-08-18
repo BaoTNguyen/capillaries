@@ -1,12 +1,21 @@
 ---
-intent: [build, automate]
-task_type: [generate]
-domain: [business, writing]
-primary_stage: execute
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt generates a social media content calendar for a specified company,
+  audience, and platforms like LinkedIn or Instagram. The model must produce a weekly
+  table containing post copy, visual directions, hashtags, and CTAs, alongside reactive
+  content slots and pillar mix ratios.
 complexity_level: 2
+domain:
+- business
+- writing
+intent:
+- build
+- automate
+primary_stage: execute
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- generate
 ---
 
 Create a {{time_period}} social media content calendar for **{{company_name}}** targeting **{{target_audience}}**.

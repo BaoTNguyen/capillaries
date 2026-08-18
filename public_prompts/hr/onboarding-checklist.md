@@ -1,12 +1,20 @@
 ---
-intent: [build, automate]
-task_type: [generate]
-domain: [business]
-primary_stage: execute
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt targets HR professionals or managers creating a structured onboarding
+  plan for a new hire joining a specific department. The model must generate a detailed
+  checklist table covering five time periods, assigning owners and due dates for tasks
+  like IT setup and training.
 complexity_level: 1
+domain:
+- business
+intent:
+- build
+- automate
+primary_stage: execute
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- generate
 ---
 
 Create a detailed onboarding checklist for a new **{{role_title}}** joining the **{{department}}** team at **{{company_name}}**.

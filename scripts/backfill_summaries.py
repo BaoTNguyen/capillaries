@@ -101,7 +101,7 @@ def main() -> None:
             cursor.execute("""
                 SELECT title, file_path, prompt_text
                 FROM prompts
-                WHERE source = 'private' AND COALESCE(summary, '') = ''
+                WHERE COALESCE(summary, '') = ''
                 ORDER BY title
             """)
             columns = [column.name for column in cursor.description]
