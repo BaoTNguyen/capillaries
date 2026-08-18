@@ -6,12 +6,12 @@ surface automatically in the Base view.
 Field mapping (DB → Obsidian frontmatter):
     intent            → Intent          (list, Title Case for display)
     task_type         → Task Type       (list, Title Case for display)
-    domain            → Category        (list, preserve original casing)
+    domain            → Category        (list, Title Case for display; 'AI' stays 'AI')
     status            → status          (string, Title Case)
-    complexity_level  → Complexity      (int)
 
-DB stores taxonomy values in lowercase. This module Title-Cases them for
-Obsidian display. The ingest module lowercases them on the way back in.
+DB stores taxonomy values in lowercase ('AI' is an acronym exception, kept
+uppercase). This module Title-Cases them for Obsidian display. The ingest
+module lowercases them on the way back in.
 """
 
 import psycopg2
@@ -36,11 +36,11 @@ logger = logging.getLogger(__name__)
 FIELD_MAP = {
     'intent':               ('Intent',               lambda v: [s.title() for s in v] if v else None),
     'task_type':            ('Task Type',            lambda v: [s.title() for s in v] if v else None),
-    'domain':               ('Category',             lambda v: v if v else None),  # AI stays AI, etc.
+    'domain':               ('Category',             lambda v: [('AI' if s == 'AI' else s.title()) for s in v] if v else None),
     'status':               ('status',               lambda v: v.title() if v else None),
-    'complexity_level':     ('Complexity',           lambda v: v),
     'last_evaluated':       ('Last Evaluated',       lambda v: str(v) if v else None),
     'notes':                ('Notes',                lambda v: v if v else None),
+    'summary':              ('Summary',              lambda v: v if v else None),
 }
 
 
@@ -67,8 +67,7 @@ def get_classified_prompts() -> List[Dict[str, Any]]:
     cur.execute("""
         SELECT title, file_path,
                intent, task_type, domain, status,
-               complexity_level,
-               last_evaluated, notes
+               last_evaluated, notes, summary
         FROM prompts
         WHERE backfill_status IN ('complete', 'needs_review')
           AND last_classified IS NOT NULL
@@ -76,8 +75,7 @@ def get_classified_prompts() -> List[Dict[str, Any]]:
     columns = [
         'title', 'file_path',
         'intent', 'task_type', 'domain', 'status',
-        'complexity_level',
-        'last_evaluated', 'notes',
+        'last_evaluated', 'notes', 'summary',
     ]
     rows = [dict(zip(columns, row)) for row in cur.fetchall()]
     cur.close()

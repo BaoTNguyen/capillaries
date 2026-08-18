@@ -51,4 +51,20 @@ DB_CONFIG = {
 
 # --- Embedding server ---
 EMBED_URL = os.getenv("EMBED_URL", "http://127.0.0.1:8003/v1/embeddings")
-EMBED_MODEL = os.getenv("EMBED_MODEL", "snowflake-arctic-embed-m-v2.0")
+EMBED_MODEL = os.getenv("EMBED_MODEL", "Qwen/Qwen3-Embedding-0.6B")
+
+# Vector width, and the single source of truth for it. The schema pins this in
+# four places; they all read from here so a model change is one edit.
+EMBED_DIM = int(os.getenv("EMBED_DIM", "1024"))
+
+# Prepended to queries only — documents are embedded raw. Asymmetric retrieval
+# models each want their own convention, so this belongs with the model name
+# rather than copied into every call site.
+#
+# Empty for Qwen3-Embedding, and that is a measured choice, not an oversight.
+# The model card offers an "Instruct: {task}\nQuery: {q}" form; on this corpus
+# it scored WORSE at every k (notes-as-query recall: 7.3/16.1/24.1% instructed
+# vs 8.8/19.5/24.9% plain). The previous model wanted
+# "Represent this sentence for searching relevant passages: " — carrying that
+# over would have been silently wrong.
+QUERY_PREFIX = os.getenv("EMBED_QUERY_PREFIX", "")

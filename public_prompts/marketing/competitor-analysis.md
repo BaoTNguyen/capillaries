@@ -1,12 +1,21 @@
 ---
-intent: [explore, decide]
-task_type: [analyze, compare]
-domain: [business, strategy]
-primary_stage: plan
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt supports product leaders in analyzing competitors within a specific
+  industry and target market. The model must produce a strategy document featuring
+  a feature matrix, positioning map, and prioritized strategic recommendations.
 complexity_level: 4
+domain:
+- business
+- strategy
+intent:
+- explore
+- decide
+primary_stage: plan
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- analyze
+- compare
 ---
 
 Conduct a competitive analysis for **{{company_name}}** in the **{{industry}}** space.

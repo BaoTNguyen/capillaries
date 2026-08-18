@@ -1,6 +1,6 @@
 """
 Tests for M6 (STACK_READINESS §5): serving log + top-k, reward-grounded
-harvest, fence protection, and the A/B promotion gate.
+serving log, fence protection, and the A/B promotion gate.
 
 Run:
     PYTHONPATH=src python3 -m pytest tests/test_optimize_m6.py -v
@@ -78,11 +78,11 @@ class FenceTests(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Serving log + harvest — needs a live DB
+# Serving log + reward join — needs a live DB
 # ---------------------------------------------------------------------------
 
 @unittest.skipUnless(DB_UP, "Postgres not reachable")
-class ServingAndHarvestTests(unittest.TestCase):
+class ServingLogTests(unittest.TestCase):
     PROMPT_TITLE_A = "m6-test-prompt-a"
     PROMPT_TITLE_B = "m6-test-prompt-b"
     EP_PREFIX = "m6-test-ep-"
@@ -168,53 +168,35 @@ class ServingAndHarvestTests(unittest.TestCase):
         # Bad config -> should swallow the error, not raise.
         log_serving("q", "single_prompt", "x", [], db_config={"host": "nonexistent-host-xyz", "port": 1})
 
-    def test_harvest_captures_positive_example(self):
-        from capillaries.optimize.harvest import harvest
+    def test_serving_row_carries_episode_for_reward_join(self):
+        """The join key harvest.py used to consume — still the point of the log.
 
+        harvest.py is gone (it captured the retrieved prompt as the golden
+        *output*, which trains an optimizer to reproduce the library). What it
+        depended on is not gone: a serving row has to carry the episode_id that
+        matches it to a reward, or no downstream consumer can learn anything.
+        """
         cur = self.conn.cursor()
-        ep = self.EP_PREFIX + "harvest-1"
-        self._insert_serving(cur, ep, "m6 harvest query one", "single_prompt", self.prompt_id_a,
+        ep = self.EP_PREFIX + "reward-join-1"
+        self._insert_serving(cur, ep, "m6 reward join query", "single_prompt", self.prompt_id_a,
                               [{"id": self.prompt_id_a, "score": 0.9}])
         self._insert_reward(cur, ep, 0.8)
-        cur.close()
 
-        result = harvest(prompt_title=self.PROMPT_TITLE_A, db_config=DB_CONFIG)
-        self.assertGreaterEqual(result["rows_considered"], 1)
-        self.assertGreaterEqual(result["examples_captured"], 1)
-
-        vcur = self.conn.cursor()
-        vcur.execute(
-            "SELECT COUNT(*) FROM golden_examples WHERE prompt_id = %s AND source = 'external'",
-            (self.prompt_id_a,),
+        cur.execute(
+            """
+            SELECT s.served_id, r.value
+            FROM serving_log s
+            JOIN arteries.rewards r ON r.episode_id = s.episode_id
+            WHERE s.episode_id = %s
+            """,
+            (ep,),
         )
-        self.assertGreaterEqual(vcur.fetchone()[0], 1)
-        vcur.close()
-
-    def test_harvest_contrastive_pair_on_reward_gap(self):
-        from capillaries.optimize.harvest import harvest
-
-        cur = self.conn.cursor()
-        query = "m6 harvest contrastive query"
-        ep_high = self.EP_PREFIX + "contrastive-high"
-        ep_low = self.EP_PREFIX + "contrastive-low"
-        self._insert_serving(cur, ep_high, query, "single_prompt", self.prompt_id_a,
-                              [{"id": self.prompt_id_a, "score": 0.9}])
-        self._insert_reward(cur, ep_high, 0.9)
-        self._insert_serving(cur, ep_low, query, "single_prompt", self.prompt_id_b,
-                              [{"id": self.prompt_id_b, "score": 0.4}])
-        self._insert_reward(cur, ep_low, 0.1)
+        row = cur.fetchone()
         cur.close()
 
-        result = harvest(min_reward_gap=0.3, db_config=DB_CONFIG)
-        self.assertGreaterEqual(result["contrastive_pairs"], 1)
-
-    def test_harvest_no_traffic_returns_zero_counts(self):
-        from capillaries.optimize.harvest import harvest
-
-        result = harvest(prompt_title="m6-test-prompt-with-no-rows-at-all", db_config=DB_CONFIG)
-        self.assertEqual(result["rows_considered"], 0)
-        self.assertEqual(result["examples_captured"], 0)
-        self.assertEqual(result["contrastive_pairs"], 0)
+        self.assertIsNotNone(row, "serving row did not join to its reward")
+        self.assertEqual(row[0], self.prompt_id_a)
+        self.assertAlmostEqual(row[1], 0.8, places=5)
 
 
 # ---------------------------------------------------------------------------

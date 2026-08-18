@@ -86,16 +86,25 @@ TRACEBACK = (
 )
 
 #         label              text                         frozen_sim  want_retrieve
+# Re-frozen for Qwen/Qwen3-Embedding-0.6B. The previous values belonged to
+# snowflake-arctic-embed-m-v2.0, which was silently returning collapsed vectors
+# (see docs/rework_actions.md) — under it these numbers did not separate at all:
+# the highest-scoring case in the whole set (planner, 0.699) was a should-SKIP,
+# while should-RETRIEVE topped out at 0.536. No threshold could have classified
+# them, which is why the old 0.47 sat in a 0.036-wide gap and needed hand-tuning.
+#
+# Under the new model the set separates cleanly: every should-retrieve case
+# (0.589-0.644) scores above every should-skip case (0.375-0.587).
 GOLDEN_GATE = [
-    ("planner (a spec)", PLANNER,                              0.699,  False),
-    ("feature spec",     SPEC_0,                               0.512,  False),
-    ("feature spec",     SPEC_1,                               0.574,  False),
-    ("vague-but-real",   "Put this together in a testable UI and make it match the mock", 0.515, True),
-    ("vague-but-real",   "Continue with filling endpoint integration gaps first",         0.536, True),
-    ("open question",    "How should I structure the endpoint integrations across these data sources?", 0.498, True),
-    ("terse-dense spec", TERSE_SPEC,                           0.411,  False),
-    ("factual recall",   "What endpoints did you end up mapping",                          0.462, False),
-    ("traceback",        TRACEBACK,                            0.423,  False),
+    ("planner (a spec)", PLANNER,                              0.509,  False),
+    ("feature spec",     SPEC_0,                               0.457,  False),
+    ("feature spec",     SPEC_1,                               0.375,  False),
+    ("vague-but-real",   "Put this together in a testable UI and make it match the mock", 0.675, True),
+    ("vague-but-real",   "Continue with filling endpoint integration gaps first",         0.644, True),
+    ("open question",    "How should I structure the endpoint integrations across these data sources?", 0.636, True),
+    ("terse-dense spec", TERSE_SPEC,                           0.451,  False),
+    ("factual recall",   "What endpoints did you end up mapping",                          0.577, False),
+    ("traceback",        TRACEBACK,                            0.587,  False),
 ]
 
 
@@ -187,9 +196,12 @@ class TestPreFilters:
 # ---------------------------------------------------------------------------
 class TestMemoryNoLongerForcesSearch:
     def test_high_drift_no_corpus_match_does_not_retrieve(self):
-        from capillaries.agent.gate import MemoryFrame
-        from capillaries.agent.memory_types import (
-            EphemeralMemory, PersistentMemory, EvergreenMemory,
+        # Constructing a frame needs the real contract, and arteries is not on
+        # PyPI — so this one skips where it is absent (CI) and runs where the
+        # sibling checkout is installed.
+        pytest.importorskip("arteries.memory_types")
+        from arteries.memory_types import (
+            MemoryFrame, EphemeralMemory, PersistentMemory, EvergreenMemory,
         )
         frame = MemoryFrame(
             ephemeral=EphemeralMemory(topic_drift=0.9, turn_count=9),
@@ -205,7 +217,7 @@ class TestMemoryNoLongerForcesSearch:
         orig = g._embedding_proximity
         g._embedding_proximity = _no_match
         try:
-            dec = run(gate("xxxxx yyyyy zzzzz qqqqq wwwww", memory=frame))
+            dec = run(gate("xxxxx yyyyy zzzzz qqqqq wwwww", context=frame))
         finally:
             g._embedding_proximity = orig
         assert dec.search is False, dec.reason
@@ -266,3 +278,29 @@ class TestLiveGate:
         # the case retrieval actually exists for
         d = run(gate("Continue with filling endpoint integration gaps first"))
         assert d.search is True, d.reason
+
+
+# ---------------------------------------------------------------------------
+# 6. Cached-retrieval overlap — hermetic, guards the skip that reuses a cache
+# ---------------------------------------------------------------------------
+
+class TestSituationOverlap:
+    def test_paraphrase_of_cached_situation_still_matches(self):
+        from capillaries.agent.gate import _situation_overlaps
+        assert _situation_overlaps(
+            "help me design the postgres retrieval schema",
+            "designing the retrieval schema in postgres",
+        )
+
+    def test_incidental_stopword_overlap_does_not_match(self):
+        from capillaries.agent.gate import _situation_overlaps
+        # only stopwords + one content word shared — different tasks must not skip
+        assert not _situation_overlaps(
+            "how should i write the deployment script",
+            "how should i review the marketing budget",
+        )
+
+    def test_single_shared_content_word_is_not_enough(self):
+        from capillaries.agent.gate import _situation_overlaps
+        assert not _situation_overlaps("optimize the reranker latency",
+                                       "optimize the onboarding funnel copy")

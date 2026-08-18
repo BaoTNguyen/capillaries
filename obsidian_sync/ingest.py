@@ -3,12 +3,27 @@ Obsidian → DB: load markdown prompt files, parse frontmatter, and insert into 
 """
 
 import hashlib
+import re
 import frontmatter
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 
 from capillaries.search.retriever import expand_acronyms
+
+
+def tagify(name: str) -> str:
+    """'GTM Strategy Builder' -> 'gtm-strategy-builder'.
+
+    Same transform as skills.promote._tagify — duplicated rather than
+    imported so obsidian_sync doesn't reach into capillaries.skills for a
+    five-line pure function.
+    """
+    tag = name.lower().strip()
+    tag = re.sub(r"[^\w\s-]", "", tag)
+    tag = re.sub(r"[\s_]+", "-", tag)
+    tag = re.sub(r"-+", "-", tag).strip("-")
+    return tag
 
 
 def generate_content_hash(content: str) -> str:
@@ -28,6 +43,7 @@ def parse_frontmatter_to_canonical(metadata: Dict[str, Any]) -> Dict[str, Any]:
         'status': 'status',
         'Status': 'status',
         'Last Evaluated': 'last_evaluated',
+        'Summary': 'summary',
         'notes': 'notes',
         'Notes': 'notes',
     }
@@ -45,6 +61,18 @@ def parse_frontmatter_to_canonical(metadata: Dict[str, Any]) -> Dict[str, Any]:
                     vals = [str(value)] if value else []
                 if canonical_key in ('intent', 'task_type'):
                     vals = [v.lower() for v in vals]
+                    if canonical_key == 'task_type':
+                        # 'evaluate' was merged into 'analyze' (89% of
+                        # 'evaluate'-tagged prompts already carried 'analyze').
+                        vals = list(dict.fromkeys(
+                            'analyze' if v == 'evaluate' else v for v in vals
+                        ))
+                elif canonical_key == 'domain':
+                    # DB stores domain lowercase; 'AI' is an acronym exception,
+                    # not a casing choice, so it's the one value kept uppercase.
+                    vals = list(dict.fromkeys(
+                        'AI' if v.lower() == 'ai' else v.lower() for v in vals
+                    ))
                 canonical[canonical_key] = vals
             elif canonical_key == 'status':
                 v = str(value).lower().strip()
@@ -102,23 +130,24 @@ def load_prompts_from_obsidian(prompts_path: Path) -> List[Dict[str, Any]]:
     return prompts
 
 
-def insert_prompts_batch(cursor, prompts: List[Dict[str, Any]]):
-    """Insert prompts into database with batch processing."""
+def insert_prompts_batch(cursor, prompts: List[Dict[str, Any]], *, prune_orphans: bool = True):
+    """Insert prompts, optionally pruning rows absent from the vault batch."""
 
     insert_sql = """
     INSERT INTO prompts (
-        title, file_path, prompt_text, content_hash, file_mtime,
+        title, tag, file_path, prompt_text, content_hash, file_mtime,
         intent, task_type, domain, status,
-        original_link, notes, last_evaluated,
+        original_link, notes, last_evaluated, summary,
         modality,
         backfill_status, last_updated, search_tsv
     ) VALUES (
-        %(title)s, %(file_path)s, %(prompt_text)s, %(content_hash)s, %(file_mtime)s,
+        %(title)s, %(tag)s, %(file_path)s, %(prompt_text)s, %(content_hash)s, %(file_mtime)s,
         %(intent)s, %(task_type)s, %(domain)s, %(status)s,
-        %(original_link)s, %(notes)s, %(last_evaluated)s,
+        %(original_link)s, %(notes)s, %(last_evaluated)s, %(summary)s,
         %(modality)s,
         'pending', CURRENT_TIMESTAMP,
         setweight(to_tsvector('english', %(expanded_title)s), 'A') ||
+        setweight(to_tsvector('english', COALESCE(%(summary)s, '')), 'B') ||
         to_tsvector('english',
             %(expanded_text)s || ' ' ||
             COALESCE(array_to_string(%(intent)s::varchar[], ' '), '') || ' ' ||
@@ -127,19 +156,32 @@ def insert_prompts_batch(cursor, prompts: List[Dict[str, Any]]):
         )
     ) ON CONFLICT (title) DO UPDATE SET
         prompt_text = EXCLUDED.prompt_text,
+        summary = EXCLUDED.summary,
         content_hash = EXCLUDED.content_hash,
         file_mtime = EXCLUDED.file_mtime,
         last_updated = CURRENT_TIMESTAMP,
+        search_tsv = EXCLUDED.search_tsv,
+        tag = COALESCE(prompts.tag, EXCLUDED.tag),
         backfill_status = CASE
             WHEN prompts.content_hash != EXCLUDED.content_hash THEN 'pending'
             ELSE prompts.backfill_status
         END
     """
 
+    seen_tags: set[str] = set()
     batch_data = []
     for prompt in prompts:
+        tag = tagify(prompt['title'])
+        if tag in seen_tags:
+            suffix = 2
+            while f"{tag}-{suffix}" in seen_tags:
+                suffix += 1
+            tag = f"{tag}-{suffix}"
+        seen_tags.add(tag)
+
         data = {
             'title': prompt['title'],
+            'tag': tag,
             'file_path': prompt['file_path'],
             'prompt_text': prompt['prompt_text'],
             'content_hash': prompt['content_hash'],
@@ -151,6 +193,7 @@ def insert_prompts_batch(cursor, prompts: List[Dict[str, Any]]):
             'original_link': prompt.get('original_link'),
             'notes': prompt.get('notes'),
             'last_evaluated': prompt.get('last_evaluated'),
+            'summary': prompt.get('summary'),
             'modality': prompt.get('modality', 'text'),
             'expanded_title': expand_acronyms(prompt['title']),
             'expanded_text': expand_acronyms(prompt['prompt_text']),
@@ -160,9 +203,18 @@ def insert_prompts_batch(cursor, prompts: List[Dict[str, Any]]):
     cursor.executemany(insert_sql, batch_data)
     print(f"Inserted/updated {len(batch_data)} prompts")
 
+    if not prune_orphans:
+        return
+
     vault_titles = [d['title'] for d in batch_data]
     cursor.execute(
-        "DELETE FROM prompts WHERE title != ALL(%s) RETURNING title",
+        # Scoped to source='private'. The vault owns private prompts; the
+        # demo set (source='public', from public_prompts/ via
+        # scripts/ingest_public.py) lives only in Postgres and has no vault
+        # file, so an unscoped prune treats every one of them as an orphan and
+        # deletes the lot — which is exactly what happened once.
+        "DELETE FROM prompts "
+        "WHERE source = 'private' AND title != ALL(%s) RETURNING title",
         (vault_titles,),
     )
     deleted = [row[0] for row in cursor.fetchall()]
@@ -170,3 +222,58 @@ def insert_prompts_batch(cursor, prompts: List[Dict[str, Any]]):
         print(f"Deleted {len(deleted)} orphaned prompts: {deleted}")
     else:
         print("No orphaned prompts to delete")
+
+
+def main() -> None:
+    """Vault -> DB.
+
+    This entrypoint did not exist, so the command the README documents —
+    `python -m obsidian_sync.ingest` — imported the module, defined these
+    functions, and exited without touching anything. Silent no-op: the vault
+    looked ingested and the database stayed empty.
+    """
+    import argparse
+    import psycopg2
+    from capillaries.config.paths import DB_CONFIG, PROMPTS_PATH
+
+    ap = argparse.ArgumentParser(description="Ingest Obsidian vault prompts into PostgreSQL")
+    ap.add_argument("--path", default=None,
+                    help=f"Vault prompts directory (default: {PROMPTS_PATH})")
+    ap.add_argument("--no-prune", action="store_true",
+                    help="Keep private prompts that no longer have a vault file")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="Parse and report, write nothing")
+    args = ap.parse_args()
+
+    path = Path(args.path) if args.path else PROMPTS_PATH
+    if not path.exists():
+        raise SystemExit(
+            f"No such directory: {path}\n"
+            "Set OBSIDIAN_VAULT_PATH or PROMPTS_PATH in .env, or pass --path."
+        )
+
+    prompts = load_prompts_from_obsidian(path)
+    if not prompts:
+        raise SystemExit(f"No prompts parsed from {path} — nothing to do.")
+
+    if args.dry_run:
+        print(f"Dry run: {len(prompts)} prompts parsed from {path}, nothing written.")
+        return
+
+    conn = psycopg2.connect(**DB_CONFIG)
+    try:
+        with conn.cursor() as cur:
+            insert_prompts_batch(cur, prompts, prune_orphans=not args.no_prune)
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Ingest writes raw truth only; embeddings are a derived artifact filled by
+    # a separate pass. Saying so here avoids the failure mode where a vault is
+    # ingested, search returns nothing, and the corpus looks broken.
+    print("\nPrompts are not searchable until embedded. Next:")
+    print("    PYTHONPATH=src python3 scripts/setup_db.py --embed")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,12 +1,20 @@
 ---
-intent: [build]
-task_type: [design]
-domain: [business, writing]
-primary_stage: plan
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt targets copywriters and brand managers defining voice attributes
+  for a specific company and audience. The model must generate a comprehensive style
+  guide including tone spectrums, vocabulary tables, and channel-specific examples
+  for immediate use.
 complexity_level: 3
+domain:
+- business
+- writing
+intent:
+- build
+primary_stage: plan
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- design
 ---
 
 Create a brand voice and tone guide for **{{company_name}}**, a **{{company_description}}** serving **{{target_audience}}**.

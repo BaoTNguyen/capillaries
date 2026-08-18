@@ -1,12 +1,21 @@
 ---
-intent: [decide, explore]
-task_type: [model, analyze]
-domain: [business, strategy]
-primary_stage: plan
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt assists operations leaders in forecasting staffing needs and
+  resource gaps for a team over a planning horizon. The model must create a capacity
+  plan with demand forecasts, scenario modeling, hiring timelines, and budget implications.
 complexity_level: 4
+domain:
+- business
+- strategy
+intent:
+- decide
+- explore
+primary_stage: plan
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- model
+- analyze
 ---
 
 Create a capacity plan for the **{{team_or_department}}** at **{{company_name}}** covering the next **{{planning_horizon}}**.

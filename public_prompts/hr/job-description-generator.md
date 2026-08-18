@@ -1,12 +1,19 @@
 ---
-intent: [build]
-task_type: [generate]
-domain: [business, career]
-primary_stage: execute
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt assists HR teams in creating comprehensive job listings for specific
+  roles, departments, and seniority levels. It outputs a structured description including
+  responsibilities, qualifications, and benefits, formatted for immediate posting.
 complexity_level: 2
+domain:
+- business
+- career
+intent:
+- build
+primary_stage: execute
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- generate
 ---
 
 Write a comprehensive job description for the role of **{{role_title}}** at **{{company_name}}** in the **{{department}}** department.

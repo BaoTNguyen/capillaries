@@ -1,12 +1,21 @@
 ---
-intent: [explore, build]
-task_type: [design, synthesize]
-domain: [business, product]
-primary_stage: clarify
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt assists marketing and sales teams in defining detailed buyer
+  profiles for a specific product. The model must create a single-page persona profile
+  including demographics, buying behavior, objections, and a day-in-the-life narrative.
 complexity_level: 3
+domain:
+- business
+- product
+intent:
+- explore
+- build
+primary_stage: clarify
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- design
+- synthesize
 ---
 
 Build a detailed customer persona for **{{company_name}}**'s **{{product_name}}** product.

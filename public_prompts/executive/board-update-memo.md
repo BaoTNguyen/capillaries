@@ -1,12 +1,20 @@
 ---
-intent: [communicate]
-task_type: [synthesize]
-domain: [business, strategy]
-primary_stage: execute
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt addresses executives preparing concise updates for a board of
+  directors regarding company performance. The model must draft a one-to-two-page
+  memo covering financials, operational highlights, risks, and strategic priorities,
+  using a confident and honest tone.
 complexity_level: 4
+domain:
+- business
+- strategy
+intent:
+- communicate
+primary_stage: execute
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- synthesize
 ---
 
 Write a board of directors update memo for **{{company_name}}** covering **{{time_period}}**.

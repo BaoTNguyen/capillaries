@@ -1,12 +1,19 @@
 ---
-intent: [validate]
-task_type: [analyze]
-domain: [business]
-primary_stage: clarify
+Notes: Part of the contract-negotiation skill
+Original Link: ''
+Summary: Contract analysts use this prompt to identify risk-bearing clauses such as
+  unlimited liability, broad indemnification, and IP assignment within provided contract
+  text. The model must output a detailed table of risks with plain language summaries
+  and a negotiation priority list distinguishing acceptable from unacceptable terms.
 complexity_level: 3
+domain:
+- business
+intent:
+- validate
+primary_stage: clarify
 source: public
-Original Link: ""
-Notes: "Part of the contract-negotiation skill"
+task_type:
+- analyze
 ---
 
 Analyze the following contract and extract all risk-bearing clauses:

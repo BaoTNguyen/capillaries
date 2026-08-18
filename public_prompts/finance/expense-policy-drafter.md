@@ -1,12 +1,19 @@
 ---
-intent: [build]
-task_type: [generate]
-domain: [finance, business]
-primary_stage: execute
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This template supports finance teams in creating comprehensive expense reimbursement
+  policies tailored to company size and industry. The model must draft a numbered
+  policy document covering eligibility, approval workflows, and submission processes.
 complexity_level: 2
+domain:
+- finance
+- business
+intent:
+- build
+primary_stage: execute
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- generate
 ---
 
 Draft a company expense reimbursement policy for **{{company_name}}**, a {{company_size}}-person company in the **{{industry}}** industry.

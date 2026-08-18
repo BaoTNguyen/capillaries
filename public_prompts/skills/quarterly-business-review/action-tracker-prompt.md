@@ -1,12 +1,20 @@
 ---
-intent: [automate]
-task_type: [synthesize]
-domain: [business]
-primary_stage: reflect
+Notes: Part of the quarterly-business-review skill
+Original Link: ''
+Summary: 'This prompt targets project managers converting meeting transcripts into
+  structured action items. The model must generate a SMART-compliant table with specific
+  owners and dates, followed by sections for decisions, open questions, and parking
+  lot items. Required context: [Specific, measurable action — not vague like "improve
+  X" but "Reduce X from Y to Z by doing W"], [Name], [Date], [Blocking items], [SUGGESTED].'
 complexity_level: 2
+domain:
+- business
+intent:
+- automate
+primary_stage: reflect
 source: public
-Original Link: ""
-Notes: "Part of the quarterly-business-review skill"
+task_type:
+- synthesize
 ---
 
 Convert the following meeting notes or discussion transcript into tracked action items:

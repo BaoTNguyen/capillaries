@@ -1,12 +1,19 @@
 ---
-intent: [prepare]
-task_type: [design]
-domain: [business, strategy]
-primary_stage: plan
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt serves communications teams managing high-stakes scenarios like
+  data breaches or product recalls. The model must generate an actionable playbook
+  including stakeholder matrices, holding statements, Q&A documents, and media protocols.
 complexity_level: 4
+domain:
+- business
+- strategy
+intent:
+- prepare
+primary_stage: plan
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- design
 ---
 
 Create a crisis communication plan for **{{company_name}}** to handle the following scenario:

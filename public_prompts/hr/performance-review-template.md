@@ -1,12 +1,22 @@
 ---
-intent: [communicate, reflect]
-task_type: [generate, evaluate]
-domain: [career, business]
-primary_stage: execute
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt generates structured performance reviews for employees based
+  on provided accomplishments, growth areas, and peer feedback. The model must output
+  a manager-ready document containing a summary, achievements, strengths, development
+  areas, SMART goals, and an overall rating.
 complexity_level: 3
+domain:
+- career
+- business
+intent:
+- communicate
+- reflect
+primary_stage: execute
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- generate
+- analyze
 ---
 
 Draft a performance review for **{{employee_name}}**, a **{{role_title}}** on the **{{team_name}}** team, covering the period **{{review_period}}**.

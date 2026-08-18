@@ -14,7 +14,7 @@ def find_dependent_skills(prompt_title: str, db_config: dict | None = None) -> l
     with psycopg2.connect(**config) as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("""
-                SELECT s.skill_id, s.name, s.slug, step->>'step_order' AS step_order
+                SELECT s.skill_id, s.name, s.tag, step->>'step_order' AS step_order
                 FROM skills.skills s,
                      jsonb_array_elements(s.steps) AS step
                 WHERE s.status = 'active'
@@ -23,7 +23,7 @@ def find_dependent_skills(prompt_title: str, db_config: dict | None = None) -> l
             return [dict(row) for row in cur.fetchall()]
 
 
-def find_orphaned_prompts(skill_slug: str, db_config: dict | None = None) -> list[dict]:
+def find_orphaned_prompts(skill_tag: str, db_config: dict | None = None) -> list[dict]:
     """Find prompts used only by the given skill and no other active skill."""
     config = db_config or DB_CONFIG
     with psycopg2.connect(**config) as conn:
@@ -33,17 +33,17 @@ def find_orphaned_prompts(skill_slug: str, db_config: dict | None = None) -> lis
                     SELECT step->>'prompt_id' AS prompt_id
                     FROM skills.skills,
                          jsonb_array_elements(steps) AS step
-                    WHERE slug = %s
+                    WHERE tag = %s
                 ),
                 other_skill_prompts AS (
                     SELECT DISTINCT step->>'prompt_id' AS prompt_id
                     FROM skills.skills,
                          jsonb_array_elements(steps) AS step
-                    WHERE slug != %s AND status = 'active'
+                    WHERE tag != %s AND status = 'active'
                 )
                 SELECT p.title, p.status
                 FROM skill_prompts sp
                 JOIN prompts p ON p.title = sp.prompt_id
                 WHERE sp.prompt_id NOT IN (SELECT prompt_id FROM other_skill_prompts)
-            """, (skill_slug, skill_slug))
+            """, (skill_tag, skill_tag))
             return [dict(row) for row in cur.fetchall()]
