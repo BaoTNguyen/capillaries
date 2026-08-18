@@ -16,15 +16,7 @@ from capillaries.agent.catalog import CatalogHandler, get_discover_response
 from capillaries.agent.context import normalize_agent_context, with_agent_context
 from capillaries.agent.execute import SkillExecutor
 from capillaries.agent.feedback import FeedbackHandler
-from capillaries.agent.gate import (
-    gate as run_gate,
-    MemoryFrame,
-    EphemeralMemory,
-    PersistentMemory,
-    EvergreenMemory,
-    Insight,
-    CachedRetrieval,
-)
+from capillaries.agent.gate import gate as run_gate
 from capillaries.agent.generate import generate, generate_stream
 from capillaries.agent.route import AgentRouter
 
@@ -40,7 +32,9 @@ class RouteRequest(BaseModel):
     context: dict[str, Any] | None = Field(None, description="Structured context for template filling")
     session_id: str | None = Field(None, description="For continuing previous interaction")
     recent_turns: list[str] | None = Field(None, description="Recent conversation messages for gate context")
-    memory: dict[str, Any] | None = Field(None, description="MemoryFrame from the memory project (ephemeral/persistent/evergreen tiers)")
+    # Named memory_context (not `context`, which is already the template-fill field
+    # above) to hold the MemoryFrame from the memory project without colliding.
+    memory_context: dict[str, Any] | None = Field(None, description="MemoryFrame from the memory project (ephemeral/persistent/evergreen tiers)")
     agent_context: dict[str, Any] | None = Field(None, description="Normalized agent/CLI metadata from Arteries or another adapter")
     source: str = Field(default="private", description="'private' (default) or 'public' for demo prompts")
     modality: str = Field(default="text", description="'text', 'image', 'video' — filters by output modality")
@@ -122,8 +116,24 @@ class GenerateRequest(BaseModel):
     stream: bool = Field(default=False, description="Stream the response token-by-token")
 
 
-def _build_memory_frame(raw: dict[str, Any]) -> MemoryFrame:
-    """Deserialize a JSON dict into a typed MemoryFrame."""
+def _build_context_frame(raw: dict[str, Any]) -> "MemoryFrame":
+    """Deserialize a JSON dict into a typed MemoryFrame.
+
+    The only place in capillaries that constructs the arteries contract types,
+    which is why the import sits here rather than at module scope. arteries is
+    not on PyPI and cannot be declared in pyproject; keeping the import local
+    means capillaries installs and imports standalone, and this path — reached
+    only when a client actually posts a frame — is where the requirement bites.
+    """
+    from arteries.memory_types import (
+        MemoryFrame,
+        EphemeralMemory,
+        PersistentMemory,
+        EvergreenMemory,
+        Insight,
+        CachedRetrieval,
+    )
+
     eph_raw = raw.get("ephemeral", {})
     per_raw = raw.get("persistent", {})
     evg_raw = raw.get("evergreen", {})
@@ -165,11 +175,11 @@ async def route(req: RouteRequest) -> dict | StreamingResponse:
     template_context = with_agent_context(req.context, agent_context)
 
     if not req.skip_gate:
-        memory_frame = _build_memory_frame(req.memory) if req.memory else None
+        context_frame = _build_context_frame(req.memory_context) if req.memory_context else None
         gate_decision = await run_gate(
             message=req.situation,
             recent_turns=req.recent_turns,
-            memory=memory_frame,
+            context=context_frame,
         )
         if not gate_decision.search:
             return {

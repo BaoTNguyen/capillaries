@@ -5,7 +5,7 @@ Two-stage filter that decides whether a user message warrants a prompt search.
 Stage 1: fast heuristic checks (0ms) — kills obvious skips.
 Stage 2: embedding proximity check (~40ms) — semantic corpus match.
 
-When a MemoryFrame is provided, the gate uses memory signals (topic drift,
+When a MemoryFrame is provided, the gate uses context signals (topic drift,
 cached retrievals, domain alignment, user intent) to modulate its decision.
 The memory project owns all write logic — the gate only reads the frame.
 """
@@ -15,17 +15,16 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from arteries.memory_types import (  # noqa: F401 — re-export for backward compat
-    Insight,
-    CachedRetrieval,
-    EphemeralMemory,
-    PersistentMemory,
-    EvergreenMemory,
-    MemoryFrame,
-)
+from capillaries.config import QUERY_PREFIX  # one source of truth
 
-from capillaries.config import QUERY_PREFIX  # noqa: E402 — one source of truth
+if TYPE_CHECKING:
+    # arteries owns the frame contract. The gate only annotates with these and
+    # reads attributes off whatever it is handed, so nothing here needs the
+    # classes at runtime. This module used to re-export them for api.py; api.py
+    # now imports from arteries directly, at the one call site that constructs.
+    from arteries.memory_types import MemoryFrame
 
 MAX_CHARS = 4_000
 
@@ -72,7 +71,7 @@ WORD_BAND_LOW = int(os.getenv("CAPILLARIES_WORD_BAND_LOW", "5"))
 WORD_BAND_HIGH = int(os.getenv("CAPILLARIES_WORD_BAND_HIGH", "60"))
 SPECIFICITY_THRESHOLD = float(os.getenv("CAPILLARIES_SPECIFICITY_THRESHOLD", "0.08"))
 
-# Topic drift (from the memory frame) signals the conversation moved to ground
+# Topic drift (from the context frame) signals the conversation moved to ground
 # the active domains don't cover yet. When it's high, relax the similarity bar a
 # little so a real-but-weak match can still open. Strictly additive and bounded:
 # it can only LOWER the bar, never force a search, so the sim>=threshold + band
@@ -261,8 +260,8 @@ async def _embedding_proximity(message: str, db_config: dict | None = None) -> t
         conn.close()
 
 
-def _check_memory_frame(memory: MemoryFrame, message: str) -> GateDecision | None:
-    """Memory can only SKIP here, never force a search.
+def _check_context_frame(context: MemoryFrame, message: str) -> GateDecision | None:
+    """Context can only SKIP here, never force a search.
 
     The old topic-drift and stale-context branches forced `search=True` on drift
     alone — which could retrieve for a message with no corpus match at all,
@@ -270,7 +269,7 @@ def _check_memory_frame(memory: MemoryFrame, message: str) -> GateDecision | Non
     gone. The one surviving signal is the cached-retrieval skip: if a recent
     retrieval already covers this situation, don't retrieve again.
     """
-    for cached in memory.persistent.prior_retrievals:
+    for cached in context.persistent.prior_retrievals:
         if cached.relevance > 0.75 and cached.score > 0.7:
             if _situation_overlaps(message.lower(), cached.situation):
                 return GateDecision(
@@ -312,7 +311,7 @@ def _situation_overlaps(message: str, situation: str) -> bool:
 async def gate(
     message: str,
     recent_turns: list[str] | None = None,
-    memory: MemoryFrame | None = None,
+    context: MemoryFrame | None = None,
     db_config: dict | None = None,
     threshold: float | None = None,
 ) -> GateDecision:
@@ -322,9 +321,9 @@ async def gate(
     Args:
         message: The current user message.
         recent_turns: Recent conversation messages for followup detection.
-            Ignored when memory.ephemeral.recent_messages is populated.
-        memory: MemoryFrame from the memory project. When provided, the gate
-            uses memory signals (topic drift, cached retrievals, domain
+            Ignored when context.ephemeral.recent_messages is populated.
+        context: MemoryFrame from the memory project. When provided, the gate
+            uses context signals (topic drift, cached retrievals, domain
             alignment) alongside heuristic and embedding checks.
         db_config: Database config override.
         threshold: Similarity threshold override.
@@ -333,26 +332,26 @@ async def gate(
         GateDecision with search (bool), confidence (float), and reason (str).
     """
     turns = recent_turns
-    if memory and memory.ephemeral.recent_messages:
-        turns = memory.ephemeral.recent_messages
+    if context and context.ephemeral.recent_messages:
+        turns = context.ephemeral.recent_messages
 
     heuristic_result = _heuristic_check(message, turns)
     if heuristic_result is not None:
         return heuristic_result
 
-    # Memory-based decision (takes priority over raw embedding proximity)
-    if memory:
-        memory_result = _check_memory_frame(memory, message)
-        if memory_result is not None:
-            return memory_result
+    # Context-based decision (takes priority over raw embedding proximity)
+    if context:
+        context_result = _check_context_frame(context, message)
+        if context_result is not None:
+            return context_result
 
     if threshold is None:
         threshold = SIMILARITY_THRESHOLD
-        # Active domains in persistent memory signal ongoing work — lower the bar
-        if memory and memory.persistent.active_domains:
+        # Active domains in persistent context signal ongoing work — lower the bar
+        if context and context.persistent.active_domains:
             threshold -= 0.05
         # High topic drift → new territory; relax a touch more (see DRIFT_* above)
-        if memory and memory.ephemeral.topic_drift >= DRIFT_HIGH:
+        if context and context.ephemeral.topic_drift >= DRIFT_HIGH:
             threshold -= DRIFT_RELAX
 
     try:

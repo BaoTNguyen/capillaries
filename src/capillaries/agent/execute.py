@@ -164,17 +164,24 @@ class SkillExecutor:
 
                 prompt_text = ""
                 pid = step_data["prompt_id"]
+                # Steps key prompts by UUID, not title — see skills.skills.steps.
+                # Both lookups below used to match on title, which silently
+                # matched nothing (and the variants one named a column that does
+                # not exist, raising as soon as a model was set).
                 if model:
                     cur.execute("""
                         SELECT prompt_text FROM prompt_variants
-                        WHERE prompt_title = %s AND model = %s AND is_current = TRUE
+                        WHERE prompt_id = %s::uuid AND model = %s AND is_current = TRUE
                         LIMIT 1
                     """, (pid, model))
                     variant_row = cur.fetchone()
                     if variant_row:
                         prompt_text = variant_row["prompt_text"]
                 if not prompt_text:
-                    cur.execute("SELECT prompt_text FROM prompts WHERE title = %s", (pid,))
+                    cur.execute(
+                        "SELECT prompt_text FROM prompts WHERE prompt_id = %s::uuid",
+                        (pid,),
+                    )
                     prompt_row = cur.fetchone()
                     prompt_text = prompt_row["prompt_text"] if prompt_row else ""
 

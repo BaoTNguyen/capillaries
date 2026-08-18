@@ -21,6 +21,11 @@ class AgentContext:
     session_id: str | None = None
     cwd: str | None = None
     capabilities: dict[str, Any] | None = None
+    # Join keys for the reward signal. Without them a serving_log row cannot be
+    # matched to the episode it belonged to, and the outcome join returns
+    # nothing — which is the state the log was in until these were threaded.
+    episode_id: str | None = None
+    turn_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {k: v for k, v in asdict(self).items() if v not in (None, {}, [])}
@@ -40,6 +45,8 @@ def normalize_agent_context(raw: dict[str, Any] | AgentContext | None) -> AgentC
         session_id=_text(raw, "session_id", "sessionId"),
         cwd=_text(raw, "cwd", "working_directory", "project_dir", "projectDirectory"),
         capabilities=raw.get("capabilities") if isinstance(raw.get("capabilities"), dict) else None,
+        episode_id=_text(raw, "episode_id", "episodeId"),
+        turn_id=_text(raw, "turn_id", "turnId"),
     )
 
 

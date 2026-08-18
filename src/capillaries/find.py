@@ -10,11 +10,11 @@ Usage:
 
     result = await find("build a cash flow model")
 
-    # With memory context from arteries
+    # With context from arteries
     from capillaries.find import FindResult
     from arteries.memory_types import MemoryFrame
 
-    result = await find("debug auth middleware", memory=memory_frame)
+    result = await find("debug auth middleware", context=context_frame)
 
     result.prompt_text   # ready-to-use prompt content
     result.confidence    # rerank score (higher = more relevant)
@@ -30,17 +30,23 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from capillaries.agent.context import AgentContext, normalize_agent_context
-from arteries.memory_types import MemoryFrame
-from capillaries.search.memory_filter import MemoryFilter
+from capillaries.search.context_filter import ContextFilter
+
+if TYPE_CHECKING:
+    # arteries owns this contract and is not on PyPI. Every use below is an
+    # annotation, and `from __future__ import annotations` keeps those strings
+    # at runtime — so capillaries imports fine without arteries installed, and
+    # the memory-aware path fails at the point of use instead.
+    from arteries.memory_types import MemoryFrame
 
 # Modality (prompt vs skill) is decided entirely inside PromptSearch: prompt
 # and skill candidates are retrieved into one pool and reranked in one pass,
 # so this module just trusts `response.recommendation` — it never re-decides
 # with a second, separately-scored lookup.
-MEMORY_FILTER_CANDIDATES = 5
+CONTEXT_FILTER_CANDIDATES = 5
 
 
 @dataclass
@@ -96,15 +102,16 @@ class _FindEngine:
         from capillaries.search.api import PromptSearch
 
         self._search = PromptSearch()
-        self._memory_filter = MemoryFilter()
+        self._context_filter = ContextFilter()
 
     async def find(
         self,
         situation: str,
-        memory: MemoryFrame | None = None,
+        context: MemoryFrame | None = None,
         prefer: str = "auto",
+        agent_context: AgentContext | None = None,
     ) -> FindResult:
-        domain_hints, intent_hints = self._extract_hints(situation, memory)
+        domain_hints, intent_hints = self._extract_hints(situation, context)
 
         skill_hints: dict[str, list[str]] = {}
         if domain_hints:
@@ -116,31 +123,65 @@ class _FindEngine:
         # attempts: prompt and skill candidates are retrieved into one pool
         # and reranked in one pass (see search/api.py). `prefer` lets a
         # caller force one path when it already knows which fits.
-        top_k = MEMORY_FILTER_CANDIDATES if memory else 1
+        top_k = CONTEXT_FILTER_CANDIDATES if context else 1
         resp = await self._search.search(
             situation, top_k=top_k, skill_hints=skill_hints or None, prefer=prefer,
+            query_expansion=self._build_query_expansion(context),
+            boost_prompt_ids=self._build_boost_ids(context),
+            agent_context=agent_context,
         )
 
         if resp.recommendation == "skill" and resp.skill_match:
             return self._build_skill_result(resp.skill_match)
 
-        single_result = self._build_single_result(resp, memory)
+        single_result = self._build_single_result(resp, context)
         if single_result:
             return single_result
 
         return FindResult(mode="none", confidence=0.0)
 
+    def _build_query_expansion(self, context: MemoryFrame | None) -> str | None:
+        """Recent conversation + session insight text, for a second retrieval
+        pass only (see PromptSearch.search's query_expansion) — never used
+        for reranking, so a noisy or off-topic frame can't win on its own,
+        only add candidates the reranker then judges against the real query.
+        """
+        if not context:
+            return None
+        parts = list(context.ephemeral.recent_messages[-3:])
+        parts += [
+            i.text for i in context.persistent.session_insights[:3]
+            if i.confidence >= 0.5
+        ]
+        if not parts:
+            return None
+        return " ".join(parts)[:1000]
+
+    def _build_boost_ids(self, context: MemoryFrame | None) -> list[str] | None:
+        """Prompts arteries already knows were relevant to a similar past
+        situation — injected as extra candidates (see
+        PromptSearch.search's boost_prompt_ids), not served on trust.
+        """
+        if not context:
+            return None
+        promoted = sorted(
+            (r for r in context.persistent.prior_retrievals if r.relevance >= 0.7),
+            key=lambda r: r.relevance, reverse=True,
+        )
+        ids = [r.prompt_id for r in promoted[:5]]
+        return ids or None
+
     def _extract_hints(
-        self, situation: str, memory: MemoryFrame | None
+        self, situation: str, context: MemoryFrame | None
     ) -> tuple[list[str], list[str]]:
         domain: list[str] = []
         intent: list[str] = []
 
-        if memory:
-            if memory.persistent.active_domains:
-                domain = memory.persistent.active_domains
-            if memory.evergreen.user_intent:
-                intent = memory.evergreen.user_intent
+        if context:
+            if context.persistent.active_domains:
+                domain = context.persistent.active_domains
+            if context.evergreen.user_intent:
+                intent = context.evergreen.user_intent
 
         from capillaries.agent.inference import infer_from_situation
 
@@ -152,13 +193,13 @@ class _FindEngine:
         return inference.domain, inference.intent
 
     def _build_single_result(
-        self, response, memory: MemoryFrame | None = None
+        self, response, context: MemoryFrame | None = None
     ) -> FindResult | None:
         if not response.results:
             return None
 
-        if memory:
-            filtered = self._memory_filter.apply(response.results, memory)
+        if context:
+            filtered = self._context_filter.apply(response.results, context)
             best = filtered[0]
             top = best.result
         else:
@@ -214,7 +255,7 @@ def _get_engine() -> _FindEngine:
 
 async def find(
     situation: str,
-    memory: MemoryFrame | None = None,
+    context: MemoryFrame | None = None,
     prefer: str = "auto",
     agent_context: dict[str, Any] | AgentContext | None = None,
 ) -> FindResult:
@@ -226,7 +267,7 @@ async def find(
 
     Args:
         situation: Natural language description of what the user needs.
-        memory:    MemoryFrame from arteries (optional). Used to extract
+        context:   MemoryFrame from arteries (optional). Used to extract
                    domain/intent hints from active context.
         prefer:    'auto' (default), 'single', or 'skill'.
                    'auto' retrieves both prompt and skill candidates into one
@@ -240,9 +281,11 @@ async def find(
         Caller can pass result.prompt_id to optimize.resolve.resolve_prompt_text()
         for model-specific variants when needed.
     """
-    engine = _get_engine()
-    result = await engine.find(situation, memory, prefer)
+    # Normalized before the search, not after: episode_id/turn_id ride along to
+    # the serving log, which is what makes a serving row joinable to its reward.
     normalized = normalize_agent_context(agent_context)
+    engine = _get_engine()
+    result = await engine.find(situation, context, prefer, normalized)
     if normalized:
         result.agent_context = normalized.to_dict()
     return result
@@ -250,9 +293,9 @@ async def find(
 
 def find_sync(
     situation: str,
-    memory: MemoryFrame | None = None,
+    context: MemoryFrame | None = None,
     prefer: str = "auto",
     agent_context: dict[str, Any] | AgentContext | None = None,
 ) -> FindResult:
     """Synchronous wrapper for non-async callers."""
-    return asyncio.run(find(situation, memory, prefer, agent_context))
+    return asyncio.run(find(situation, context, prefer, agent_context))

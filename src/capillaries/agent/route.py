@@ -279,7 +279,7 @@ class AgentRouter:
             "skill_id": skill_match.skill_id,
             "name": skill_match.name,
             "tag": skill_match.tag,
-            "routing_description": skill_match.routing_description,
+            "summary": skill_match.summary,
             "session_id": session_id,
             "total_steps": len(skill_match.steps),
             "steps_preview": steps_preview,
