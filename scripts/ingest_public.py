@@ -13,6 +13,8 @@ import argparse
 import hashlib
 import json
 import sys
+
+from capillaries.search.retriever import expand_acronyms
 from pathlib import Path
 
 import frontmatter
@@ -252,8 +254,10 @@ def insert_db(prompts, skills):
         # is the natural key here, so it belongs in title.
         cur.execute("""
             INSERT INTO prompts (title, tag, file_path, prompt_text, intent, task_type, domain,
-                                 source, content_hash, status)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, 'public', %s, 'active')
+                                 source, content_hash, status, search_tsv)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'public', %s, 'active',
+                    setweight(to_tsvector('english', %s), 'A') ||
+                    to_tsvector('english', %s))
             ON CONFLICT (title) DO UPDATE SET
                 prompt_text = EXCLUDED.prompt_text,
                 intent = EXCLUDED.intent,
@@ -261,6 +265,7 @@ def insert_db(prompts, skills):
                 domain = EXCLUDED.domain,
                 source = 'public',
                 content_hash = EXCLUDED.content_hash,
+                search_tsv = EXCLUDED.search_tsv,
                 tag = COALESCE(prompts.tag, EXCLUDED.tag)
         """, (
             # Department prompt filenames are already kebab-case (path.stem),
@@ -268,6 +273,11 @@ def insert_db(prompts, skills):
             p["id"], p["id"], p["file_path"], p["prompt_text"],
             p["intent"], p["task_type"], p["domain"],
             p["content_hash"],
+            # search_tsv was omitted here entirely, so all 67 public prompts sat
+            # with a NULL tsvector and the lexical channel could not see one of
+            # them. Acronyms are expanded the same way obsidian_sync/ingest.py
+            # does it, so both sources index alike.
+            expand_acronyms(p["id"]), expand_acronyms(p["prompt_text"]),
         ))
 
     seen_titles.extend(p["id"] for p in prompts)
@@ -297,8 +307,10 @@ def insert_db(prompts, skills):
 
             cur.execute("""
                 INSERT INTO prompts (title, tag, file_path, prompt_text, domain, intent,
-                                     task_type, source, content_hash, status)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, 'public', %s, 'active')
+                                     task_type, source, content_hash, status, search_tsv)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, 'public', %s, 'active',
+                        setweight(to_tsvector('english', %s), 'A') ||
+                        to_tsvector('english', %s))
                 ON CONFLICT (title) DO UPDATE SET
                     file_path        = EXCLUDED.file_path,
                     prompt_text      = EXCLUDED.prompt_text,
@@ -307,6 +319,7 @@ def insert_db(prompts, skills):
                     task_type        = EXCLUDED.task_type,
                     source           = 'public',
                     content_hash     = EXCLUDED.content_hash,
+                    search_tsv       = EXCLUDED.search_tsv,
                     last_updated     = CURRENT_TIMESTAMP,
                     tag              = COALESCE(prompts.tag, EXCLUDED.tag)
                 RETURNING prompt_id::text
@@ -314,6 +327,7 @@ def insert_db(prompts, skills):
                 title, title, f"public_prompts/skills/{skill['tag']}/{f['path']}",
                 f["content"], skill["domain"], skill["intent"], skill["task_type"],
                 content_hash,
+                expand_acronyms(title), expand_acronyms(f["content"]),
             ))
             prompt_id = cur.fetchone()[0]
             seen_titles.append(title)
