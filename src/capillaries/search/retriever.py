@@ -38,6 +38,15 @@ SPARSE_CANDIDATES = 50
 
 RRF_K = 50
 
+# RRF weights. These are NOT on the serving path — `search/api.py` retrieves
+# through `union.union_candidates_broad`, which unions both channels and lets
+# the reranker order them, with no weighting anywhere. `Retriever.search()` and
+# `_rrf_merge` below survive only as the comparison arm for benchmarks and
+# tests; nothing in production reads these two numbers.
+#
+# So don't promote them to config: a tunable that changes no behaviour is worse
+# than a constant. Delete both, along with search()/_rrf_merge, once the
+# benchmarks in bench_channels.py no longer need something to compare against.
 DENSE_WEIGHT = 0.5
 SPARSE_WEIGHT = 0.5
 
