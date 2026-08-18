@@ -174,6 +174,9 @@ async def route(req: RouteRequest) -> dict | StreamingResponse:
     agent_context = normalize_agent_context(req.agent_context)
     template_context = with_agent_context(req.context, agent_context)
 
+    # Bound before the branch: skip_gate=True skips the assignment, and the
+    # response builder below reads it either way.
+    gate_decision = None
     if not req.skip_gate:
         context_frame = _build_context_frame(req.memory_context) if req.memory_context else None
         gate_decision = await run_gate(
@@ -201,7 +204,13 @@ async def route(req: RouteRequest) -> dict | StreamingResponse:
         modality=req.modality,
     )
     response = result.to_dict()
-    response["gate"] = {"search": True, "confidence": 1.0, "reason": "gate passed"}
+
+    # Reporting a flat 1.0 here meant every served response claimed a perfect
+    # gate score, including the ones the gate never scored.
+    response["gate"] = (
+        gate_decision.to_dict() if gate_decision is not None
+        else {"search": True, "confidence": None, "reason": "gate not run"}
+    )
     if agent_context:
         response["agent_context"] = agent_context.to_dict()
 

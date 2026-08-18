@@ -135,3 +135,68 @@ def test_memoryframe_reexport_explains_itself_when_absent():
     r = _in_fresh_interpreter("import capillaries; capillaries.MemoryFrame")
     assert r.returncode != 0
     assert "arteries" in r.stderr, f"error should name arteries:\n{r.stderr}"
+
+
+# --- the confidence floor --------------------------------------------------
+#
+# find() served response.results[0] at any score. The gate in agent/gate.py is
+# reachable only from agent/api.py, so `cap find`, the MCP tools, and the
+# documented Python entrypoint all had no floor at all — while the README
+# advertised one and SKILL.md told agents to trust a threshold nobody enforced.
+
+def _stub_result(score: float):
+    from types import SimpleNamespace
+    return SimpleNamespace(
+        rerank_score=score, title="T", prompt_text="body", prompt_id="p1",
+        metadata={"domain": [], "intent": [], "task_type": []},
+    )
+
+
+def _stub_response(score: float):
+    from types import SimpleNamespace
+    return SimpleNamespace(
+        results=[_stub_result(score)], recommendation="single", skill_match=None,
+    )
+
+
+@pytest.mark.parametrize("score,mode", [(0.95, "single"), (0.31, "single"),
+                                        (0.29, "none"), (0.095, "none")])
+def test_floor_decides_mode(score, mode):
+    from capillaries.find import _FindEngine
+
+    engine = _FindEngine.__new__(_FindEngine)
+    assert engine._build_single_result(_stub_response(score)).mode == mode
+
+
+def test_rejected_score_survives_on_the_none_result():
+    """mode='none' with confidence=0.0 loses the fact that we had a near-miss."""
+    from capillaries.find import _FindEngine
+
+    engine = _FindEngine.__new__(_FindEngine)
+    assert engine._build_single_result(_stub_response(0.29)).confidence == 0.29
+
+
+def test_stepless_skill_does_not_return_bare_none():
+    """find() returned _build_skill_result(...) directly, so a skill with no
+    steps made find() itself return None — AttributeError on the next .mode."""
+    import asyncio
+    from types import SimpleNamespace
+    from capillaries.find import _FindEngine
+
+    engine = _FindEngine.__new__(_FindEngine)
+    engine._context_filter = None
+    resp = SimpleNamespace(
+        results=[_stub_result(0.9)], recommendation="skill",
+        skill_match=SimpleNamespace(steps=[], match_score=0.9),
+    )
+
+    async def fake_search(*_a, **_kw):
+        return resp
+
+    engine._search = SimpleNamespace(search=fake_search)
+    engine._build_query_expansion = lambda _c: None
+    engine._build_boost_ids = lambda _c: None
+    engine._extract_hints = lambda _s, _c: ([], [])
+
+    result = asyncio.run(engine.find("q", None, None, None))
+    assert result is not None and result.mode == "single"

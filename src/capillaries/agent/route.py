@@ -17,7 +17,7 @@ import psycopg2
 import psycopg2.extras
 
 from capillaries.agent.inference import infer_from_situation
-from capillaries.config.paths import DB_CONFIG
+from capillaries.config.paths import DB_CONFIG, MIN_CONFIDENCE
 from capillaries.search.api import PromptSearch
 
 
@@ -200,17 +200,44 @@ class AgentRouter:
             skill_hints=hints or None, prefer=prefer,
         )
 
+        # The confidence floor lives here, not in the callers. /agent/route and
+        # the MCP tools both land on this method, and the MCP path never touches
+        # agent/api.py — so a check placed there covered HTTP and left MCP
+        # serving rank 1 at any score.
         if resp.recommendation == "skill" and resp.skill_match:
-            return self._build_skill_response(resp.skill_match, situation, inference, trace_id, context)
+            skill = self._build_skill_response(resp.skill_match, situation, inference, trace_id, context)
+            if skill is None or skill.confidence >= MIN_CONFIDENCE:
+                return skill
+            return self._below_floor(skill.confidence, trace_id)
 
         single = self._build_single_response(resp, context, trace_id)
-        if single is not None and single.confidence > 0.0:
+        if single is not None and single.confidence < MIN_CONFIDENCE:
+            # `> 0.0` was the old test, which only ever rejected an exact zero.
+            return self._below_floor(single.confidence, trace_id)
+        if single is not None:
             return single
 
         return RouteResponse(
             mode="clarify",
             confidence=0.0,
             clarification_hint="The situation is too ambiguous. Try being more specific about what you're trying to do or what's going wrong.",
+            trace_id=trace_id,
+        )
+
+    def _below_floor(self, confidence: float, trace_id: str) -> RouteResponse:
+        """Something was retrieved and judged not good enough.
+
+        mode="none", the same word find() uses, so a caller does not have to
+        know which surface it reached. Distinct from "clarify", which means
+        nothing was retrieved at all — the score rides along either way.
+        """
+        return RouteResponse(
+            mode="none",
+            confidence=confidence,
+            clarification_hint=(
+                f"Nothing in the corpus scored above {MIN_CONFIDENCE} for this. "
+                "Rephrasing rarely helps; the corpus is finite."
+            ),
             trace_id=trace_id,
         )
 
