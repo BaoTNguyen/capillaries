@@ -20,6 +20,8 @@ def cmd_optimize(args: argparse.Namespace) -> None:
             min_examples=args.min_examples,
             force=args.force,
             dry_run=args.dry_run,
+            api_base=args.api_base,
+            api_key=args.api_key,
         )
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -140,22 +142,6 @@ def cmd_capture(args: argparse.Namespace) -> None:
         print(f"Captured example: {eid} (source={source})")
 
 
-def cmd_harvest(args: argparse.Namespace) -> None:
-    """Harvest golden examples from serving_log + arteries.rewards."""
-    from capillaries.optimize.harvest import harvest
-
-    result = harvest(
-        prompt_title=args.prompt_title,
-        min_reward_gap=args.min_reward_gap,
-    )
-
-    title = args.prompt_title or "(all prompts)"
-    print(f"\nHarvest: {title}")
-    print(f"  Rows considered:    {result['rows_considered']}")
-    print(f"  Examples captured:  {result['examples_captured']}")
-    print(f"  Contrastive pairs:  {result['contrastive_pairs']}")
-    print(f"  Skills skipped:     {result['skills_skipped']}")
-
 
 def cmd_examples(args: argparse.Namespace) -> None:
     """List golden examples for a prompt."""
@@ -179,13 +165,17 @@ def cmd_examples(args: argparse.Namespace) -> None:
         print()
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Prompt optimization with DSPy"
-    )
-    sub = parser.add_subparsers(dest="command", required=True)
-
-    opt = sub.add_parser("optimize", help="Run DSPy optimization on a prompt")
+def register_subcommands(
+    sub: "argparse._SubParsersAction", run_name: str = "optimize"
+) -> dict[str, "Callable[[argparse.Namespace], None]"]:
+    """Add the optimize/status/compare/capture/examples parsers onto
+    `sub` and return {command_name: handler}. Shared by this module's own
+    standalone `main()` and by `cap optimize <...>` (capillaries.cli), so the
+    argument definitions live in exactly one place. `run_name` lets the
+    caller nest this under a parent group without a stuttering "optimize
+    optimize" subcommand — `cap optimize` passes run_name="run".
+    """
+    opt = sub.add_parser(run_name, help="Run DSPy optimization on a prompt")
     opt.add_argument("prompt_title", help="Title of the prompt to optimize")
     opt.add_argument("--model", required=True, help="Target model (e.g. claude-sonnet-4-6)")
     opt.add_argument("--optimizer", default="bootstrap_few_shot",
@@ -196,6 +186,13 @@ def main() -> None:
     opt.add_argument("--force", action="store_true",
                      help="Bypass external source ratio check")
     opt.add_argument("--dry-run", action="store_true")
+    opt.add_argument("--api-base", default=None,
+                     help="OpenAI-compatible endpoint for a local model server "
+                          "(e.g. http://127.0.0.1:8001/v1). Omit for a hosted "
+                          "provider resolved by name via its env-var API key.")
+    opt.add_argument("--api-key", default=None,
+                     help="API key for --api-base (default: 'local', most local "
+                          "servers don't check it)")
 
     st = sub.add_parser("status", help="Show optimization history and variants")
     st.add_argument("prompt_title")
@@ -218,21 +215,27 @@ def main() -> None:
     ex = sub.add_parser("examples", help="List golden examples")
     ex.add_argument("prompt_title")
 
-    hv = sub.add_parser("harvest", help="Harvest golden examples from serving_log + arteries.rewards")
-    hv.add_argument("prompt_title", nargs="?", default=None,
-                     help="Restrict harvest to one prompt/skill title (default: all)")
-    hv.add_argument("--min-reward-gap", type=float, default=0.3,
-                     help="Minimum reward spread to emit a contrastive pair (default: 0.3)")
-
-    args = parser.parse_args()
-    commands = {
-        "optimize": cmd_optimize,
+    # No `harvest` subcommand: optimize/harvest.py was removed. It captured the
+    # retrieved prompt as the golden output, which teaches an optimizer to
+    # reproduce the corpus rather than rank it. Golden examples now arrive only
+    # through `capture`, until a reward-grounded builder replaces it.
+    return {
+        run_name: cmd_optimize,
         "status": cmd_status,
         "compare": cmd_compare,
         "capture": cmd_capture,
         "examples": cmd_examples,
-        "harvest": cmd_harvest,
     }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Prompt optimization with DSPy"
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+    commands = register_subcommands(sub, run_name="optimize")
+
+    args = parser.parse_args()
     commands[args.command](args)
 
 
