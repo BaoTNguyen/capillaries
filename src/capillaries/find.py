@@ -5,6 +5,9 @@ Stateless retrieval function — arteries decides *when* to call,
 this module handles *what* comes back. No LLM gate, no session
 management, no opinions about timing.
 
+There is one opinion: a confidence floor. Below MIN_CONFIDENCE the result is
+mode="none" carrying the rejected score, rather than rank 1 served regardless.
+
 Usage:
     from capillaries import find
 
@@ -33,6 +36,7 @@ from dataclasses import dataclass, field
 from typing import Any, TYPE_CHECKING
 
 from capillaries.agent.context import AgentContext, normalize_agent_context
+from capillaries.config import MIN_CONFIDENCE
 from capillaries.search.context_filter import ContextFilter
 
 if TYPE_CHECKING:
@@ -132,7 +136,12 @@ class _FindEngine:
         )
 
         if resp.recommendation == "skill" and resp.skill_match:
-            return self._build_skill_result(resp.skill_match)
+            # Assigned, not returned: a skill match with no steps (or below the
+            # floor) yields None here, and returning that handed callers a bare
+            # None instead of a FindResult — an AttributeError on `.mode`.
+            skill_result = self._build_skill_result(resp.skill_match)
+            if skill_result:
+                return skill_result
 
         single_result = self._build_single_result(resp, context)
         if single_result:
@@ -205,6 +214,12 @@ class _FindEngine:
         else:
             top = response.results[0]
 
+        # The rejected score rides along on the none-result. A caller that wants
+        # to log "we had something at 0.29" can; one that checks .mode cannot
+        # accidentally serve it.
+        if top.rerank_score < MIN_CONFIDENCE:
+            return FindResult(mode="none", confidence=top.rerank_score)
+
         return FindResult(
             mode="single",
             confidence=top.rerank_score,
@@ -221,6 +236,12 @@ class _FindEngine:
         # caller prompt_text="". PromptSearch already filters these out as
         # ineligible candidates, so this is a defensive no-op in practice.
         if not match.steps:
+            return None
+
+        # Same floor as the single path. A skill wins by out-scoring prompts,
+        # so an unfiltered weak skill match is the more likely bad serve of the
+        # two: it arrives with steps attached and looks authoritative.
+        if match.match_score < MIN_CONFIDENCE:
             return None
 
         steps = []
