@@ -222,3 +222,58 @@ def insert_prompts_batch(cursor, prompts: List[Dict[str, Any]], *, prune_orphans
         print(f"Deleted {len(deleted)} orphaned prompts: {deleted}")
     else:
         print("No orphaned prompts to delete")
+
+
+def main() -> None:
+    """Vault -> DB.
+
+    This entrypoint did not exist, so the command the README documents —
+    `python -m obsidian_sync.ingest` — imported the module, defined these
+    functions, and exited without touching anything. Silent no-op: the vault
+    looked ingested and the database stayed empty.
+    """
+    import argparse
+    import psycopg2
+    from capillaries.config.paths import DB_CONFIG, PROMPTS_PATH
+
+    ap = argparse.ArgumentParser(description="Ingest Obsidian vault prompts into PostgreSQL")
+    ap.add_argument("--path", default=None,
+                    help=f"Vault prompts directory (default: {PROMPTS_PATH})")
+    ap.add_argument("--no-prune", action="store_true",
+                    help="Keep private prompts that no longer have a vault file")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="Parse and report, write nothing")
+    args = ap.parse_args()
+
+    path = Path(args.path) if args.path else PROMPTS_PATH
+    if not path.exists():
+        raise SystemExit(
+            f"No such directory: {path}\n"
+            "Set OBSIDIAN_VAULT_PATH or PROMPTS_PATH in .env, or pass --path."
+        )
+
+    prompts = load_prompts_from_obsidian(path)
+    if not prompts:
+        raise SystemExit(f"No prompts parsed from {path} — nothing to do.")
+
+    if args.dry_run:
+        print(f"Dry run: {len(prompts)} prompts parsed from {path}, nothing written.")
+        return
+
+    conn = psycopg2.connect(**DB_CONFIG)
+    try:
+        with conn.cursor() as cur:
+            insert_prompts_batch(cur, prompts, prune_orphans=not args.no_prune)
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Ingest writes raw truth only; embeddings are a derived artifact filled by
+    # a separate pass. Saying so here avoids the failure mode where a vault is
+    # ingested, search returns nothing, and the corpus looks broken.
+    print("\nPrompts are not searchable until embedded. Next:")
+    print("    PYTHONPATH=src python3 scripts/setup_db.py --embed")
+
+
+if __name__ == "__main__":
+    main()

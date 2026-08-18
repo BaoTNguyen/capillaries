@@ -197,7 +197,7 @@ def collect_skills() -> list[dict]:
         skill = {
             "tag": meta.get("tag", skill_dir.name),
             "name": meta.get("name", skill_dir.name.replace("-", " ").title()),
-            "routing_description": meta.get("routing_description", ""),
+            "summary": meta.get("summary", ""),
             "overview": overview.strip(),
             "when_to_use": when_to_use.strip(),
             "how_to_use": how_to_use.strip(),
@@ -330,30 +330,40 @@ def insert_db(prompts, skills):
         # a foreign key onto skills.skills, so deleting a skill that has ever
         # been run raises ForeignKeyViolation.
         cur.execute("""
-            INSERT INTO skills.skills (skill_id, name, tag, routing_description, domain,
+            INSERT INTO skills.skills (skill_id, name, tag, summary, domain,
                                        intent, task_type, version, status, steps,
-                                       content_hash, source)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, 1, 'active', %s::jsonb, %s, 'public')
+                                       content_hash, source, search_tsv)
+            VALUES (%(skill_id)s, %(name)s, %(tag)s, %(summary)s, %(domain)s,
+                    %(intent)s, %(task_type)s, 1, 'active', %(steps)s::jsonb,
+                    %(content_hash)s, 'public',
+                    setweight(to_tsvector('english', %(name)s), 'A') ||
+                    setweight(to_tsvector('english', %(summary)s), 'B') ||
+                    to_tsvector('english',
+                        COALESCE(array_to_string(%(domain)s::varchar[], ' '), '') || ' ' ||
+                        COALESCE(array_to_string(%(intent)s::varchar[], ' '), '') || ' ' ||
+                        COALESCE(array_to_string(%(task_type)s::varchar[], ' '), '')
+                    ))
             ON CONFLICT (tag) DO UPDATE SET
                 name                = EXCLUDED.name,
-                routing_description = EXCLUDED.routing_description,
+                summary = EXCLUDED.summary,
                 domain              = EXCLUDED.domain,
                 intent              = EXCLUDED.intent,
                 task_type           = EXCLUDED.task_type,
                 steps               = EXCLUDED.steps,
                 content_hash        = EXCLUDED.content_hash,
                 source              = 'public',
+                search_tsv          = EXCLUDED.search_tsv,
                 last_updated        = CURRENT_TIMESTAMP,
                 version             = skills.skills.version + 1
-        """, (
-            str(uuid.uuid5(uuid.NAMESPACE_URL, f"skill:{skill['tag']}")),
-            skill["name"], skill["tag"], skill["routing_description"],
-            skill["domain"], skill["intent"], skill["task_type"],
-            json.dumps(steps_json),
-            hashlib.sha256(
-                (skill["routing_description"] + json.dumps(steps_json, sort_keys=True)).encode()
+        """, {
+            "skill_id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"skill:{skill['tag']}")),
+            "name": skill["name"], "tag": skill["tag"], "summary": skill["summary"],
+            "domain": skill["domain"], "intent": skill["intent"], "task_type": skill["task_type"],
+            "steps": json.dumps(steps_json),
+            "content_hash": hashlib.sha256(
+                (skill["summary"] + json.dumps(steps_json, sort_keys=True)).encode()
             ).hexdigest()[:16],
-        ))
+        })
         print(f"  {skill['tag']:28} {len(steps_json)} steps")
 
     # Prune public prompts that vanished from the source tree. Scoped to
