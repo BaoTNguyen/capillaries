@@ -8,7 +8,7 @@ Usage:
     skill = promoter.promote(
         chain=chain,              # Chain object from search.eval
         name="GTM Strategy Builder",
-        routing_description="Builds a go-to-market strategy document for a new product or market segment",
+        summary="Builds a go-to-market strategy document for a new product or market segment",
     )
     print(skill.skill_id, skill.tag)
 """
@@ -63,7 +63,7 @@ class SkillPromoter:
         self,
         chain: Any,                        # Chain from search.eval._generate_candidates
         name: str,
-        routing_description: str,
+        summary: str,
         tag: str | None = None,
         created_by: str = "manual",
     ) -> PromotedSkill:
@@ -73,7 +73,7 @@ class SkillPromoter:
         Args:
             chain:               Chain object from search.eval.
             name:                Human-readable skill name.
-            routing_description: One-line description used for routing/recall.
+            summary: One-line description used for routing/recall.
             tag:                URL-safe key (auto-derived from name if omitted).
             created_by:          'manual' or 'orchestrator'.
 
@@ -83,7 +83,7 @@ class SkillPromoter:
         tag = tag or _tagify(name)
 
         steps_json, taxonomy = self._build_steps(chain)
-        content_hash = _content_hash(routing_description, steps_json)
+        content_hash = _content_hash(summary, steps_json)
 
         with psycopg2.connect(**self._db_config) as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -91,35 +91,35 @@ class SkillPromoter:
                 version = self._next_version(cur, tag)
 
                 cur.execute(
-                    """
+                    f"""
                     INSERT INTO skills.skills (
-                        skill_id, name, tag, routing_description,
+                        skill_id, name, tag, summary,
                         steps,
                         domain, intent, task_type,
                         version, status, created_by,
-                        content_hash
+                        content_hash, search_tsv
                     ) VALUES (
-                        %s, %s, %s, %s,
-                        %s,
-                        %s, %s, %s,
-                        %s, 'draft', %s,
-                        %s
+                        %(skill_id)s, %(name)s, %(tag)s, %(summary)s,
+                        %(steps)s,
+                        %(domain)s, %(intent)s, %(task_type)s,
+                        %(version)s, 'draft', %(created_by)s,
+                        %(content_hash)s, {_SEARCH_TSV_SQL}
                     )
                     RETURNING skill_id, tag, version, status
                     """,
-                    (
-                        str(uuid.uuid4()),
-                        name,
-                        tag,
-                        routing_description,
-                        json.dumps(steps_json),
-                        taxonomy["domain"],
-                        taxonomy["intent"],
-                        taxonomy["task_type"],
-                        version,
-                        created_by,
-                        content_hash,
-                    ),
+                    {
+                        "skill_id": str(uuid.uuid4()),
+                        "name": name,
+                        "tag": tag,
+                        "summary": summary,
+                        "steps": json.dumps(steps_json),
+                        "domain": taxonomy["domain"],
+                        "intent": taxonomy["intent"],
+                        "task_type": taxonomy["task_type"],
+                        "version": version,
+                        "created_by": created_by,
+                        "content_hash": content_hash,
+                    },
                 )
                 row = cur.fetchone()
 
@@ -137,14 +137,14 @@ class SkillPromoter:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 if status:
                     cur.execute(
-                        "SELECT skill_id, name, tag, version, status, routing_description, "
+                        "SELECT skill_id, name, tag, version, status, summary, "
                         "total_runs, success_rate, created_at "
                         "FROM skills.skills WHERE status = %s ORDER BY created_at DESC",
                         (status,),
                     )
                 else:
                     cur.execute(
-                        "SELECT skill_id, name, tag, version, status, routing_description, "
+                        "SELECT skill_id, name, tag, version, status, summary, "
                         "total_runs, success_rate, created_at "
                         "FROM skills.skills ORDER BY created_at DESC"
                     )
@@ -153,7 +153,7 @@ class SkillPromoter:
     def create(
         self,
         name: str,
-        routing_description: str,
+        summary: str,
         steps: list[dict] | None = None,
         tag: str | None = None,
         domain: list[str] | None = None,
@@ -171,7 +171,7 @@ class SkillPromoter:
 
         Args:
             name:                Human-readable skill name.
-            routing_description: One-line description used for routing/recall.
+            summary: One-line description used for routing/recall.
             steps:               Ordered list of step dicts. Empty skill if omitted.
             tag:                Auto-derived from name if omitted.
             domain/intent/task_type: Taxonomy arrays. Auto-derived from steps if omitted.
@@ -181,37 +181,38 @@ class SkillPromoter:
 
         steps = steps or []
         steps_json, auto_taxonomy = self._build_steps_from_dicts(steps)
-        content_hash = _content_hash(routing_description, steps_json)
+        content_hash = _content_hash(summary, steps_json)
+        domain = domain or auto_taxonomy["domain"]
+        intent = intent or auto_taxonomy["intent"]
+        task_type = task_type or auto_taxonomy["task_type"]
 
         with psycopg2.connect(**self._db_config) as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 version = self._next_version(cur, tag)
                 cur.execute(
-                    """
+                    f"""
                     INSERT INTO skills.skills (
-                        skill_id, name, tag, routing_description,
+                        skill_id, name, tag, summary,
                         steps,
                         domain, intent, task_type,
                         version, status, created_by,
-                        content_hash, source
+                        content_hash, source, search_tsv
                     ) VALUES (
-                        %s, %s, %s, %s,
-                        %s,
-                        %s, %s, %s,
-                        %s, 'draft', %s,
-                        %s, %s
+                        %(skill_id)s, %(name)s, %(tag)s, %(summary)s,
+                        %(steps)s,
+                        %(domain)s, %(intent)s, %(task_type)s,
+                        %(version)s, 'draft', %(created_by)s,
+                        %(content_hash)s, %(source)s, {_SEARCH_TSV_SQL}
                     )
                     RETURNING skill_id, tag, version, status
                     """,
-                    (
-                        str(uuid.uuid4()), name, tag, routing_description,
-                        json.dumps(steps_json),
-                        domain or auto_taxonomy["domain"],
-                        intent or auto_taxonomy["intent"],
-                        task_type or auto_taxonomy["task_type"],
-                        version, created_by,
-                        content_hash, source,
-                    ),
+                    {
+                        "skill_id": str(uuid.uuid4()), "name": name, "tag": tag, "summary": summary,
+                        "steps": json.dumps(steps_json),
+                        "domain": domain, "intent": intent, "task_type": task_type,
+                        "version": version, "created_by": created_by,
+                        "content_hash": content_hash, "source": source,
+                    },
                 )
                 row = cur.fetchone()
 
@@ -254,12 +255,13 @@ class SkillPromoter:
         self,
         tag_or_id: str,
         name: str | None = None,
-        routing_description: str | None = None,
+        summary: str | None = None,
         domain: list[str] | None = None,
         intent: list[str] | None = None,
         task_type: list[str] | None = None,
         changelog: str | None = None,
         last_evaluated: str | None = None,
+        notes: str | None = None,
     ) -> None:
         """
         Update a skill's metadata fields in place.
@@ -274,12 +276,13 @@ class SkillPromoter:
 
         for field_name, value in [
             ("name", name),
-            ("routing_description", routing_description),
+            ("summary", summary),
             ("domain", domain),
             ("intent", intent),
             ("task_type", task_type),
             ("changelog", changelog),
             ("last_evaluated", last_evaluated),
+            ("notes", notes),
         ]:
             if value is not None:
                 updates.append(f"{field_name} = %s")
@@ -293,13 +296,33 @@ class SkillPromoter:
         if not skill:
             raise ValueError(f"Skill not found: {tag_or_id}")
 
-        # content_hash tracks routing_description + steps, same as
+        # content_hash tracks summary + steps, same as
         # prompts.content_hash tracks prompt_text — recompute whenever either
         # could have changed, so it stays a true drift signal, not stale.
-        new_routing = routing_description if routing_description is not None else skill["routing_description"]
-        content_hash = _content_hash(new_routing, skill["steps"])
+        new_summary = summary if summary is not None else skill["summary"]
+        content_hash = _content_hash(new_summary, skill["steps"])
         updates.append("content_hash = %s")
         params.append(content_hash)
+
+        # search_tsv depends on name/summary/taxonomy — recompute from the
+        # resolved (post-update) values whenever any of them could have
+        # changed, same reasoning as content_hash above.
+        updates.append(
+            "search_tsv = setweight(to_tsvector('english', %s), 'A') || "
+            "setweight(to_tsvector('english', %s), 'B') || "
+            "to_tsvector('english', "
+            "COALESCE(array_to_string(%s::varchar[], ' '), '') || ' ' || "
+            "COALESCE(array_to_string(%s::varchar[], ' '), '') || ' ' || "
+            "COALESCE(array_to_string(%s::varchar[], ' '), ''))"
+        )
+        params.extend([
+            name if name is not None else skill["name"],
+            new_summary,
+            domain if domain is not None else skill["domain"],
+            intent if intent is not None else skill["intent"],
+            task_type if task_type is not None else skill["task_type"],
+        ])
+
         updates.append("last_updated = CURRENT_TIMESTAMP")
 
         params.append(str(skill["skill_id"]))
@@ -323,7 +346,7 @@ class SkillPromoter:
         if not skill:
             raise ValueError(f"Skill not found: {tag_or_id}")
 
-        content_hash = _content_hash(skill["routing_description"], steps_json)
+        content_hash = _content_hash(skill["summary"], steps_json)
         with psycopg2.connect(**self._db_config) as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -437,10 +460,11 @@ class SkillPromoter:
 
 # ── A/B promotion gate (STACK_READINESS §5.3) ──────────────────────────────
 #
-# Evaluate a candidate prompt text against the current canonical text over
-# harvested golden examples (optimize/harvest.py), and promote only on a
-# strict win. Never promotes blind: a prompt with no harvested traffic
-# cannot be evaluated, so it cannot be promoted.
+# Evaluate a candidate prompt text against the current canonical text over the
+# golden_examples table, and promote only on a strict win. Never promotes
+# blind: a prompt with no examples cannot be evaluated, so it cannot be
+# promoted. Examples arrive via `cap optimize capture` — the automatic
+# harvester was deleted, so this gate is currently fed by hand.
 
 
 class _StaticPrediction:
@@ -501,7 +525,7 @@ def ab_gate(
 ) -> dict:
     """
     Evaluate `candidate_text` against the canonical prompt text for
-    `prompt_title` over harvested golden examples, and promote on a strict
+    `prompt_title` over golden examples, and promote on a strict
     win only.
 
     Args:
@@ -509,7 +533,7 @@ def ab_gate(
         candidate_text: the proposed replacement prompt text.
         metric: metric_fn(prediction, example) -> float, as in
             optimize/metrics.py. Defaults to optimize.metrics.exact_match.
-        examples: override the harvested examples (mainly for tests). Each
+        examples: override the stored examples (mainly for tests). Each
             dict needs at least {"output_text": str}. When omitted, loads
             golden_examples for this prompt from the DB.
 
@@ -582,11 +606,25 @@ def ab_gate(
 
 # ── Helpers ───────────────────────────────────────────────────────────────
 
-def _content_hash(routing_description: str, steps: list[dict]) -> str:
+# Same shape as prompts.search_tsv (obsidian_sync/ingest.py): name (A) +
+# summary (B) + taxonomy (unweighted). Expects named params name/summary/
+# domain/intent/task_type — the last three are varchar[] arrays.
+_SEARCH_TSV_SQL = """
+    setweight(to_tsvector('english', %(name)s), 'A') ||
+    setweight(to_tsvector('english', %(summary)s), 'B') ||
+    to_tsvector('english',
+        COALESCE(array_to_string(%(domain)s::varchar[], ' '), '') || ' ' ||
+        COALESCE(array_to_string(%(intent)s::varchar[], ' '), '') || ' ' ||
+        COALESCE(array_to_string(%(task_type)s::varchar[], ' '), '')
+    )
+"""
+
+
+def _content_hash(summary: str, steps: list[dict]) -> str:
     """Same shape as obsidian_sync/ingest.py's generate_content_hash for
     prompts: sha256 of the content that actually defines the skill's
     behavior, truncated to 16 hex chars."""
-    canonical = routing_description + json.dumps(steps, sort_keys=True)
+    canonical = summary + json.dumps(steps, sort_keys=True)
     return hashlib.sha256(canonical.encode()).hexdigest()[:16]
 
 
