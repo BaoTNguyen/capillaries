@@ -98,7 +98,7 @@ def _render_skill(lines: list, match) -> None:
     lines.append(f"  SKILL: {match.name}  (tag={match.tag}  v{match.version})")
     lines.append(f"  match_score={match.match_score:.4f}  "
                  f"domain={match.domain}  intent={match.intent}")
-    lines.append(f"  routing: {match.routing_description}")
+    lines.append(f"  routing: {match.summary}")
     lines.append("")
     for step in match.steps:
         lines.append(

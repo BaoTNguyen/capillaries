@@ -1,5 +1,5 @@
 """
-Memory-informed post-rerank filter.
+Context-informed post-rerank filter.
 
 Takes the top-N candidates from the cross-encoder reranker and re-scores
 them using signals from the MemoryFrame that the reranker is blind to:
@@ -10,11 +10,11 @@ This filter handles contextual fit (does this result match what we know
 about the user's current and long-term work?).
 
 Usage:
-    from capillaries.search.memory_filter import MemoryFilter
+    from capillaries.search.context_filter import ContextFilter
     from arteries.memory_types import MemoryFrame
 
-    mf = MemoryFilter()
-    filtered = mf.apply(candidates, memory_frame)
+    cf = ContextFilter()
+    filtered = cf.apply(candidates, context_frame)
     best = filtered[0]
 """
 
@@ -22,9 +22,13 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from arteries.memory_types import MemoryFrame
 from capillaries.search.reranker import RankedResult
+
+if TYPE_CHECKING:
+    # Annotation-only — frame attributes are read duck-typed at runtime.
+    from arteries.memory_types import MemoryFrame
 
 
 DOMAIN_BOOST = 0.06
@@ -37,15 +41,15 @@ PRIOR_RETRIEVAL_UNUSED_THRESHOLD = 0.4
 
 @dataclass
 class FilteredResult:
-    """RankedResult with memory adjustment applied."""
+    """RankedResult with context adjustment applied."""
 
     result: RankedResult
     final_score: float
-    memory_adjustment: float
+    context_adjustment: float
     adjustment_reasons: list[str]
 
 
-class MemoryFilter:
+class ContextFilter:
     """
     Post-rerank filter that applies MemoryFrame signals to candidate selection.
 
@@ -56,24 +60,24 @@ class MemoryFilter:
     def apply(
         self,
         candidates: list[RankedResult],
-        memory: MemoryFrame,
+        context: MemoryFrame,
     ) -> list[FilteredResult]:
         """
-        Re-score candidates using memory context and return sorted results.
+        Re-score candidates using context signals and return sorted results.
 
         Each candidate's rerank_score is adjusted by additive bonuses/penalties
         derived from the MemoryFrame. The adjustment is intentionally small —
-        memory breaks ties in the reranker's narrow band, it doesn't override
+        context breaks ties in the reranker's narrow band, it doesn't override
         strong semantic signals.
         """
         if not candidates:
             return []
 
-        active = set(d.lower() for d in memory.persistent.active_domains)
-        recurring = set(d.lower() for d in memory.evergreen.recurring_domains)
-        intents = set(i.lower() for i in memory.evergreen.user_intent)
-        insight_domains = self._extract_insight_domains(memory)
-        penalized_prompts = self._build_penalty_map(memory)
+        active = set(d.lower() for d in context.persistent.active_domains)
+        recurring = set(d.lower() for d in context.evergreen.recurring_domains)
+        intents = set(i.lower() for i in context.evergreen.user_intent)
+        insight_domains = self._extract_insight_domains(context)
+        penalized_prompts = self._build_penalty_map(context)
 
         results = []
         for candidate in candidates:
@@ -117,7 +121,7 @@ class MemoryFilter:
                 FilteredResult(
                     result=candidate,
                     final_score=candidate.rerank_score + adjustment,
-                    memory_adjustment=adjustment,
+                    context_adjustment=adjustment,
                     adjustment_reasons=reasons,
                 )
             )
@@ -125,15 +129,15 @@ class MemoryFilter:
         results.sort(key=lambda r: (r.final_score, r.result.rrf_score), reverse=True)
         return results
 
-    def _extract_insight_domains(self, memory: MemoryFrame) -> set[str]:
+    def _extract_insight_domains(self, context: MemoryFrame) -> set[str]:
         """Pull domain tags from session insights."""
         domains: set[str] = set()
-        for insight in memory.persistent.session_insights:
+        for insight in context.persistent.session_insights:
             if insight.domain:
                 domains.add(insight.domain.lower())
         return domains
 
-    def _build_penalty_map(self, memory: MemoryFrame) -> dict[str, str]:
+    def _build_penalty_map(self, context: MemoryFrame) -> dict[str, str]:
         """
         Build a map of prompt_ids that should be penalized.
 
@@ -141,7 +145,7 @@ class MemoryFilter:
         but the agent didn't use it — a signal it wasn't helpful.
         """
         penalized: dict[str, str] = {}
-        for cached in memory.persistent.prior_retrievals:
+        for cached in context.persistent.prior_retrievals:
             if cached.relevance < PRIOR_RETRIEVAL_UNUSED_THRESHOLD:
                 penalized[cached.prompt_id] = (
                     f"surfaced for '{cached.situation}' but unused "

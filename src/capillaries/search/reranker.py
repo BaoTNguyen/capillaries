@@ -142,7 +142,8 @@ class Reranker:
     Designed to be instantiated once and reused across many search calls.
 
     Args:
-        model_name: HuggingFace model ID. Defaults to ms-marco-MiniLM-L-6-v2.
+        model_name: HuggingFace model ID. Defaults to MODEL_NAME
+                    (Qwen/Qwen3-Reranker-0.6B), overridable via RERANKER_MODEL.
         device:     'cuda', 'cpu', or None (auto-detect GPU if available).
         batch_size: Pairs per forward pass. 16 is safe for 1.5B on a 3090.
     """

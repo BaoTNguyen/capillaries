@@ -109,6 +109,49 @@ async def union_candidates_broad(
     return list(by_id.values())
 
 
+def fetch_by_ids(prompt_ids: list[str]) -> list[SearchResult]:
+    """Fetch specific prompts by id, bypassing dense/lexical retrieval entirely.
+
+    For context-driven candidate injection (e.g. arteries' prior_retrievals):
+    a prompt context already knows was relevant gets a chance to compete in
+    the rerank even if this turn's raw query text wouldn't have retrieved it.
+    Still reranked against the real query like everything else — this only
+    widens the candidate pool, it doesn't grant a free pass.
+    """
+    if not prompt_ids:
+        return []
+    import psycopg2
+
+    from capillaries.config import DB_CONFIG
+
+    conn = psycopg2.connect(**DB_CONFIG)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT prompt_id::text, title, prompt_text, intent, task_type, "
+                "       domain, status, notes "
+                "FROM prompts WHERE prompt_id::text = ANY(%s) AND status = 'active'",
+                (prompt_ids,),
+            )
+            rows = cur.fetchall()
+    finally:
+        conn.close()
+
+    return [
+        SearchResult(
+            prompt_id=row[0], title=row[1], prompt_text=row[2],
+            rrf_score=0.0, dense_rank=None, sparse_rank=None,
+            dense_sim=None, sparse_sim=None,
+            metadata={
+                "intent": row[3] or [], "task_type": row[4] or [],
+                "domain": row[5] or [], "status": row[6], "notes": row[7],
+                "boosted": True,
+            },
+        )
+        for row in rows
+    ]
+
+
 def _from_row(row: dict, dense_rank=None, sparse_rank=None) -> SearchResult:
     return SearchResult(
         prompt_id=row["prompt_id"], title=row["title"],
