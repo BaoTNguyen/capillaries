@@ -221,11 +221,10 @@ workflow_eval.txt
 
 # Temporary demo prototype
 demo/
-# Arteries/marrow runtime state.
-# The hooks, config.json, and smoke.sh under .arteries/ are real configuration
-# and stay tracked. These three are per-session artifacts rewritten on every
-# turn, so tracking them means a dirty tree constantly and a conflict on every
-# branch switch — which is exactly how a checkout got blocked mid-merge.
-.arteries/current-run.json
-.arteries/decisions/
-.marrow/collections/
+# Arteries/marrow runtime state. The whole of .arteries/ is local wiring —
+# hooks, config, and per-session artifacts rewritten on every turn — and it
+# belongs to the arteries install, not to this repo. Tracking any of it meant a
+# permanently dirty tree and a conflict on every branch switch, which is how a
+# checkout got blocked mid-merge.
+.arteries/
+.marrow/
