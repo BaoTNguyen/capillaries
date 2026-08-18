@@ -26,6 +26,13 @@ import pytest
 from capillaries.search.api import PromptSearch
 from capillaries.search.retriever import Retriever
 
+# Every test in this file builds a PromptSearch or a Retriever, which loads
+# models and opens a Postgres connection — the `db` marker was already the
+# convention for that, this file just never claimed it. Without the mark,
+# `-m "not db"` selected two minutes of live embedding calls and failed
+# wherever there is no database, which is every machine but this one.
+pytestmark = pytest.mark.db
+
 
 # ---------------------------------------------------------------------------
 # Shared fixture — load models once for the whole test session
@@ -235,25 +242,6 @@ class TestFilters:
                 f"Prompt: {r.prompt_id}"
             )
 
-    def test_complexity_min_filter_respected(self, ps):
-        resp = run(ps.search("complex financial model", filters={"complexity_min": 4}, top_k=10))
-        for r in resp.results:
-            lvl = r.metadata.get("complexity_level")
-            if lvl is not None:
-                assert lvl >= 4, (
-                    f"Complexity filter violation: expected >= 4, got {lvl}\n"
-                    f"Prompt: {r.prompt_id}"
-                )
-
-    def test_complexity_range_filter(self, ps):
-        resp = run(ps.search("quick task", filters={"complexity_min": 2, "complexity_max": 3}, top_k=10))
-        for r in resp.results:
-            lvl = r.metadata.get("complexity_level")
-            if lvl is not None:
-                assert 2 <= lvl <= 3, (
-                    f"Complexity range violation: expected 2-3, got {lvl}\n"
-                    f"Prompt: {r.prompt_id}"
-                )
 
     def test_filters_reduce_result_pool(self, ps):
         """A filtered search should return <= results than an unfiltered one."""

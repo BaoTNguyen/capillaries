@@ -1,12 +1,21 @@
 ---
-intent: [improve, automate]
-task_type: [optimize, generate]
-domain: [business]
-primary_stage: execute
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt assists meeting owners in optimizing agendas for various meeting
+  types by allocating time and assigning owners. It generates an optimized agenda,
+  time management tips, a pre-meeting email draft, and a post-meeting notes template
+  with action items.
 complexity_level: 1
+domain:
+- business
+intent:
+- improve
+- automate
+primary_stage: execute
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- optimize
+- generate
 ---
 
 Create an optimized meeting agenda for: **{{meeting_title}}**.

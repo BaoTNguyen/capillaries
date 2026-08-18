@@ -1,12 +1,21 @@
 ---
-intent: [decide]
-task_type: [compare, evaluate]
-domain: [business]
-primary_stage: plan
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt assists procurement teams evaluating vendors for specific product
+  or service categories against defined requirements, budgets, and integration needs.
+  The model assesses feature fit, pricing, technical integration, stability, and references
+  for each vendor, then produces a weighted scoring matrix, a top recommendation with
+  rationale, and negotiation tips formatted as a decision document for review meetings.
 complexity_level: 3
+domain:
+- business
+intent:
+- decide
+primary_stage: plan
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- compare
+- analyze
 ---
 
 Evaluate and compare vendors for **{{product_or_service_category}}** for **{{company_name}}**.

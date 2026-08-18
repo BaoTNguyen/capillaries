@@ -1,12 +1,20 @@
 ---
-intent: [explore]
-task_type: [analyze]
-domain: [strategy, business]
-primary_stage: clarify
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: Designed for leadership teams evaluating expansion into new markets, this
+  prompt analyzes market sizing, competitive landscapes, regulatory environments,
+  and entry strategies. It produces a structured report with financial projections,
+  risk assessments, and a clear Go/No-Go recommendation.
 complexity_level: 5
+domain:
+- strategy
+- business
+intent:
+- explore
+primary_stage: clarify
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- analyze
 ---
 
 Conduct a market entry analysis for **{{company_name}}** considering expansion into **{{target_market}}**.

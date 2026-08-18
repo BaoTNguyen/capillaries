@@ -1,12 +1,20 @@
 ---
-intent: [validate]
-task_type: [evaluate]
-domain: [business]
-primary_stage: verify
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: 'This prompt generates a compliance checklist for a specific regulation applicable
+  to a company in a defined industry. The model must output a markdown checklist covering
+  data handling, reporting, employee requirements, documentation, technical controls,
+  and third-party risk, flagging items requiring external counsel. Required context:
+  [ ], [EXTERNAL].'
 complexity_level: 3
+domain:
+- business
+intent:
+- validate
+primary_stage: verify
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- analyze
 ---
 
 Generate a compliance checklist for **{{regulation_or_standard}}** applicable to **{{company_name}}** in the **{{industry}}** industry.

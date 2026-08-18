@@ -19,10 +19,11 @@ import psycopg2.extras
 from capillaries.agent.inference import infer_from_situation
 from capillaries.config.paths import DB_CONFIG
 from capillaries.search.api import PromptSearch
-from capillaries.skills.recall import SkillRecall
 
 
-SINGLE_THRESHOLD = 0.3
+# SINGLE_THRESHOLD removed — see search/api.py. Comparing a cross-encoder
+# prompt score against a skill's routing_embedding cosine is comparing two
+# scales from two models; PromptSearch now scores both with one reranker.
 
 
 @dataclass
@@ -163,16 +164,21 @@ class AgentRouter:
     def __init__(self, db_config: dict | None = None):
         self._db_config = db_config or DB_CONFIG
         self._search = PromptSearch()
-        self._skill_recall = SkillRecall(db_config=self._db_config)
 
-    async def route(self, situation: str, domain: list[str] | None = None, intent: list[str] | None = None, complexity: int | None = None, prefer: str = "auto", context: dict | None = None, session_id: str | None = None, source: str = "private", modality: str = "text") -> RouteResponse:
+    async def route(self, situation: str, domain: list[str] | None = None, intent: list[str] | None = None, prefer: str = "auto", context: dict | None = None, session_id: str | None = None, source: str = "private", modality: str = "text") -> RouteResponse:
         """
         Find the best prompt or skill for the given situation.
 
         domain/intent hints are accepted but NOT used as hard retrieval filters —
         embeddings and the cross-encoder reranker handle relevance better than
-        array overlap on taxonomy labels. Hints are still passed to skill recall
-        for soft taxonomy boosting.
+        array overlap on taxonomy labels. Hints are still passed as soft skill
+        taxonomy boosting.
+
+        prompt-vs-skill is decided by one comparison, not an order of attempts:
+        prompt and skill candidates are retrieved into one pool and reranked in
+        one pass by PromptSearch (see search/api.py) — whichever lands at rank 1
+        wins. `prefer` lets a caller force one path when it already knows which
+        fits.
         """
         trace_id = f"pf_tr_{uuid.uuid4().hex[:12]}"
 
@@ -183,33 +189,22 @@ class AgentRouter:
         if intent:
             hints["intent"] = intent
 
-        inference = infer_from_situation(situation, explicit_domain=domain, explicit_intent=intent, explicit_complexity=complexity)
-
-        if complexity is None:
-            complexity = inference.complexity
-
-        prefer_mode = _determine_prefer_mode(prefer, complexity)
+        inference = infer_from_situation(situation, explicit_domain=domain, explicit_intent=intent)
 
         search_filters: dict = {"source": source}
         if modality:
             search_filters["modality"] = modality
 
-        if prefer_mode == "skill" or (prefer_mode == "auto" and complexity >= 3):
-            skill_match = self._skill_recall.search(situation, hints)
-            if skill_match and skill_match.match_score >= 0.50:
-                return self._build_skill_response(skill_match, situation, inference, trace_id, context)
+        resp = await self._search.search(
+            situation, filters=search_filters, top_k=5,
+            skill_hints=hints or None, prefer=prefer,
+        )
 
-        if prefer_mode == "single":
-            single = await self._search_single_prompt(situation, search_filters, context)
-            if single and single.confidence >= SINGLE_THRESHOLD:
-                return single
+        if resp.recommendation == "skill" and resp.skill_match:
+            return self._build_skill_response(resp.skill_match, situation, inference, trace_id, context)
 
-        skill_match = self._skill_recall.search(situation, hints)
-        if skill_match and skill_match.match_score >= 0.50:
-            return self._build_skill_response(skill_match, situation, inference, trace_id, context)
-
-        single = await self._search_single_prompt(situation, search_filters, context)
-        if single and single.confidence > 0.0:
+        single = self._build_single_response(resp, context, trace_id)
+        if single is not None and single.confidence > 0.0:
             return single
 
         return RouteResponse(
@@ -219,18 +214,12 @@ class AgentRouter:
             trace_id=trace_id,
         )
 
-    async def _search_single_prompt(self, query: str, filters: dict, context: dict | None) -> RouteResponse:
-        """Search for a single prompt."""
-        results = await self._search.search(query, filters=filters, top_k=5)
+    def _build_single_response(self, resp, context: dict | None, trace_id: str) -> RouteResponse | None:
+        """Build a single-prompt response from an already-fetched SearchResponse."""
+        if not resp.results:
+            return None
 
-        if not results.results:
-            return RouteResponse(
-                mode="clarify",
-                confidence=0.0,
-                clarification_hint="No prompts found. Try broadening your search or adding more context.",
-            )
-
-        top = results.results[0]
+        top = resp.results[0]
         confidence = top.rerank_score
 
         prompt_text, unfilled = resolve_template_variables(top.prompt_text, context)
@@ -246,12 +235,11 @@ class AgentRouter:
                 "intent": top.metadata.get("intent", []),
                 "task_type": top.metadata.get("task_type", []),
                 "domain": top.metadata.get("domain", []),
-                "complexity_level": top.metadata.get("complexity_level"),
             },
         }
 
         alternatives = []
-        for alt in results.results[1:4]:
+        for alt in resp.results[1:4]:
             alternatives.append({
                 "prompt_id": alt.prompt_id,
                 "title": alt.title,
@@ -265,7 +253,7 @@ class AgentRouter:
             confidence=confidence,
             recommendation=recommendation,
             alternatives=alternatives,
-            trace_id=f"pf_tr_{uuid.uuid4().hex[:12]}",
+            trace_id=trace_id,
         )
 
     def _build_skill_response(self, skill_match, situation: str, inference, trace_id: str, context: dict | None = None) -> RouteResponse:
@@ -290,8 +278,8 @@ class AgentRouter:
         skill_response = {
             "skill_id": skill_match.skill_id,
             "name": skill_match.name,
-            "slug": skill_match.slug,
-            "routing_description": skill_match.routing_description,
+            "tag": skill_match.tag,
+            "summary": skill_match.summary,
             "session_id": session_id,
             "total_steps": len(skill_match.steps),
             "steps_preview": steps_preview,
@@ -324,10 +312,3 @@ class AgentRouter:
                     (session_id, skill_id, trace_id),
                 )
                 conn.commit()
-
-
-def _determine_prefer_mode(prefer: str, complexity: int) -> str:
-    """Determine the mode based on prefer flag and complexity."""
-    if prefer == "auto":
-        return "skill" if complexity >= 3 else "single"
-    return prefer

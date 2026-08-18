@@ -1,12 +1,24 @@
 ---
-intent: [reflect]
-task_type: [synthesize]
-domain: [technical, business]
-primary_stage: reflect
+Notes: Part of the incident-response skill
+Original Link: ''
+Summary: 'This prompt targets engineering teams requiring a blameless incident analysis
+  document. The model generates a structured Markdown postmortem including executive
+  summary, impact metrics, timeline, root cause analysis, and action items. Required
+  context: [number or percentage], [estimated], [which SLOs were breached, by how
+  much], [count], [Build from the timeline data provided, in chronological order],
+  [3-5 things the team did right during the response — celebrate these], [3-5 areas
+  where the response could have been faster or better], [2-3 broader takeaways that
+  apply beyond this specific incident].'
 complexity_level: 3
+domain:
+- technical
+- business
+intent:
+- reflect
+primary_stage: reflect
 source: public
-Original Link: ""
-Notes: "Part of the incident-response skill"
+task_type:
+- synthesize
 ---
 
 Create a blameless postmortem document for the following incident:

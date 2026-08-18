@@ -18,10 +18,9 @@ import httpx
 import psycopg2
 import psycopg2.extras
 
-from capillaries.config import DB_CONFIG, EMBED_URL, EMBED_MODEL
+from capillaries.config import DB_CONFIG, EMBED_URL, EMBED_MODEL, EMBED_DIM
 from capillaries.search.retriever import expand_acronyms
 
-EMBED_DIM = 768
 BATCH_SIZE = 32
 CONCURRENCY = 4
 MAX_CHARS = 4_000
@@ -136,11 +135,18 @@ async def run(reembed: bool = False) -> None:
 
 
 async def run_skills(reembed: bool = False) -> None:
-    """Embed skill routing_descriptions into skills.skills.routing_embedding."""
+    """Embed skill summarys into skills.skills.routing_embedding.
+
+    Same convention as prompts: anchor the embedded text with the skill's
+    human-readable `name` (not `skill_id` — a UUID carries no semantic
+    content and would just dilute the vector), and record
+    `embedding_version` alongside the vector so a stale model is detectable,
+    same as prompts.embedding_version.
+    """
     conn = psycopg2.connect(**DB_CONFIG)
 
     cur = conn.cursor()
-    cur.execute("""
+    cur.execute(f"""
         DO $$
         BEGIN
             IF NOT EXISTS (
@@ -148,7 +154,7 @@ async def run_skills(reembed: bool = False) -> None:
                 WHERE table_schema = 'skills' AND table_name = 'skills'
                 AND column_name = 'routing_embedding'
             ) THEN
-                ALTER TABLE skills.skills ADD COLUMN routing_embedding VECTOR(768);
+                ALTER TABLE skills.skills ADD COLUMN routing_embedding VECTOR({EMBED_DIM});
             END IF;
         END $$;
     """)
@@ -159,14 +165,14 @@ async def run_skills(reembed: bool = False) -> None:
 
     if reembed:
         cur.execute(
-            "SELECT skill_id::text, routing_description FROM skills.skills "
-            "WHERE status = 'active' AND length(trim(routing_description)) > 0"
+            "SELECT skill_id::text, name, summary FROM skills.skills "
+            "WHERE status = 'active' AND length(trim(summary)) > 0"
         )
     else:
         cur.execute(
-            "SELECT skill_id::text, routing_description FROM skills.skills "
+            "SELECT skill_id::text, name, summary FROM skills.skills "
             "WHERE status = 'active' AND routing_embedding IS NULL "
-            "AND length(trim(routing_description)) > 0"
+            "AND length(trim(summary)) > 0"
         )
 
     rows = cur.fetchall()
@@ -178,21 +184,27 @@ async def run_skills(reembed: bool = False) -> None:
         conn.close()
         return
 
-    print(f"Embedding {total} skill routing_descriptions with {EMBED_MODEL}...")
+    print(f"Embedding {total} skill summarys with {EMBED_MODEL}...")
     t0 = time.time()
 
     sem = asyncio.Semaphore(CONCURRENCY)
     async with httpx.AsyncClient() as client:
-        results = await embed_batch(client, rows, sem)
+        async def _one(skill_id: str, name: str, text: str) -> tuple[str, list[float]]:
+            async with sem:
+                vec = await get_embedding(client, text, title=name)
+                return skill_id, vec
+
+        results = await asyncio.gather(*[_one(sid, name, text) for sid, name, text in rows])
 
         psycopg2.extras.execute_batch(
             cur,
             """
             UPDATE skills.skills
-            SET routing_embedding = %s::vector
+            SET routing_embedding = %s::vector,
+                embedding_version = %s
             WHERE skill_id = %s::uuid
             """,
-            [(str(vec), pid) for pid, vec in results],
+            [(str(vec), EMBED_MODEL, sid) for sid, vec in results],
         )
         conn.commit()
 
@@ -223,7 +235,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--skills-only",
         action="store_true",
-        help="Only embed skill routing_descriptions, skip prompts",
+        help="Only embed skill summarys, skip prompts",
     )
     args = parser.parse_args()
 

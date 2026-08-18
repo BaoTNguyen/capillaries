@@ -24,7 +24,7 @@ Arteries wraps capillaries with per-project memory, heart runs coding agents thr
 
 Most "prompt library" projects are a folder of files and an embedding lookup. Capillaries is a real retrieval system:
 
-- **Hybrid retrieval, not cosine-only.** Dense (pgvector HNSW) and sparse (pg_trgm trigram BM25) run in parallel, merge via Reciprocal Rank Fusion, then a cross-encoder reranks the survivors. Lexical matches and semantic matches both survive; neither path alone decides.
+- **Hybrid retrieval, not cosine-only.** Dense (pgvector HNSW) and lexical (PostgreSQL full-text) run in parallel, their candidates are unioned rather than weighted, and a cross-encoder orders the result. No fusion ratio to tune — measured on the golden set, every ratio was either indefensible or inside the noise. Lexical and semantic matches both survive; neither path alone decides.
 - **A gate, not just a ranker.** Retrieval can return nothing. The top rerank score has to clear a threshold before a prompt comes back, so an agent asking about something your corpus doesn't cover gets silence instead of the nearest irrelevant match.
 - **Skills as first-class citizens.** A multi-step procedure with its own routing description competes against single prompts and wins when it fits better, then executes step by step with inline content — no runtime dependency on the prompts table.
 - **Per-model prompt variants.** A DSPy integration tailors a prompt to the model that will run it; `resolve_prompt_text()` picks the model-specific variant before the base text.
@@ -37,10 +37,10 @@ Most "prompt library" projects are a folder of files and an embedding lookup. Ca
 query: "build a cash flow model for a SaaS startup"
                   |
           [hybrid retrieval]
-          pgvector HNSW (dense) + pg_trgm BM25 (sparse)
+          pgvector HNSW (dense) + PostgreSQL full-text (lexical)
                   |
-          [RRF fusion]
-          50 candidates from each path, merged
+          [union]
+          both channels' candidates, deduped, no weighting
                   |
           [cross-encoder reranking]
           mxbai-rerank-base-v2 scores each (query, prompt) pair
@@ -51,7 +51,7 @@ query: "build a cash flow model for a SaaS startup"
           returns: prompt text or skill procedure
 ```
 
-Dense embeddings come from snowflake-arctic-embed-m-v2.0 (768 dimensions), served through any OpenAI-compatible endpoint. Sparse search uses PostgreSQL's pg_trgm trigram similarity. The two retrieval paths merge via Reciprocal Rank Fusion before the cross-encoder makes the final call.
+Dense embeddings come from snowflake-arctic-embed-m-v2.0 (768 dimensions), served through any OpenAI-compatible endpoint. The lexical path uses PostgreSQL full-text search. The two paths are unioned, not weighted, before the cross-encoder makes the final call.
 
 ## Interfaces
 
@@ -87,22 +87,33 @@ cap find "build a cash flow model"
 
 ```
 src/capillaries/
-  search/          retriever, reranker, RRF fusion, eval harness
+  search/
+    retriever.py     dense + broad lexical SQL against prompts
+    channels.py      the two channels as standalone, inspectable searches
+    union.py         union-then-rerank — the serving path
+    reranker.py      cross-encoder scoring
+    context_filter.py  memory-frame signals applied to candidates
+    eval.py          retrieval eval harness
+    bench_channels.py  channel-vs-channel benchmark
   agent/           routing, step execution, feedback, gate, inference
-  skills/          skill creation (promote), matching (recall), CLI
-  db/              schema definitions, embedding generation
+  skills/          skill creation (promote), matching (recall), coverage, CLI
+  db/              schema definitions, embedding generation, dim migration
   lifecycle/       auto-inactivation, cascade checks, quarterly review
   optimize/        DSPy integration for per-model prompt variants
   config/          paths, DB config, environment variables
+  chunk.py         prompt chunking + embedding backfill
   find.py          top-level retrieval API
   server.py        FastAPI HTTP service
   mcp_server.py    MCP tool definitions
   cli.py           command-line interface
 
 obsidian_sync/     bidirectional sync with an Obsidian vault
-scripts/           setup, model download, service management
+scripts/           setup, teardown, model download, service management
+eval/              labeled query sets for retrieval evaluation
 hooks/             arteries memory system integration
 ```
+
+`retriever.py` and `channels.py` both search, and that is deliberate. `channels.py` is the honest version of each channel in isolation, used for benchmarking; `union.py` serves from `retriever.py`'s broader lexical search because a first stage owes the reranker recall, not precision. The reasoning, with numbers, is in `union.py`'s docstring.
 
 ## Setup
 
@@ -121,10 +132,43 @@ psql -d capillaries -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
 
 cp .env.example .env               # edit as needed
 
-PYTHONPATH=src python scripts/setup_db.py --all
+PYTHONPATH=src python scripts/setup_db.py          # schemas and indexes
+PYTHONPATH=src python scripts/ingest_public.py --db-only   # load the corpus
+PYTHONPATH=src python scripts/setup_db.py --embed  # then vectorize it
 ```
 
+Order matters. `ingest_public.py` writes rows and nothing derived — it has no embedding step — so embedding has to come after it. Run `--embed` against an empty table and you get a database full of prompts with null vectors, where dense retrieval quietly returns nothing and no error is raised. Check with:
+
+```bash
+psql -d capillaries -c "SELECT count(*), count(embedding) FROM prompts;"
+```
+
+Both numbers should match.
+
 Or run `./scripts/setup.sh` for an interactive walkthrough. Full details in [docs/quick_start_guide.md](docs/quick_start_guide.md).
+
+### A note on arteries
+
+The `MemoryFrame` contract — the shape arteries hands down when it wants retrieval to be memory-aware — is defined in `arteries.memory_types` and imported, never copied. Arteries produces those frames, so arteries owns their definition.
+
+Capillaries imports and runs without arteries installed. Every reference to the contract is a type annotation, kept as a string by `from __future__ import annotations`, except at one place: `agent/api.py:_build_context_frame`, which constructs a frame from a posted JSON body and imports the types inside the function. Retrieval works standalone; the memory-aware path needs arteries and says so at the point of use rather than at import.
+
+The dependency isn't declared in `pyproject.toml` because the name is unclaimed on PyPI, and declaring it would resolve to a stranger's package. Install the sibling checkout if you want the memory path:
+
+```bash
+pip install -e ../arteries
+```
+
+### Tearing it down
+
+```bash
+./scripts/teardown.sh --dry-run    # print the plan, change nothing
+./scripts/teardown.sh              # confirm each step
+./scripts/teardown.sh --force      # no prompts, for CI
+./scripts/teardown.sh --models     # also drop the shared HuggingFace cache
+```
+
+Teardown reverses setup: it drops the database, deletes `.env`, removes the prompts and skills directories, uninstalls the editable package, and clears caches. It never touches tracked source or git history — this uninstalls the system, it does not delete the repo. Run `--dry-run` first; the plan it prints is exactly what the real run does.
 
 ## Running
 
@@ -142,11 +186,13 @@ python -m capillaries.mcp_server
 
 Three stages.
 
-**Hybrid retrieval.** Two searches run independently against the prompts table. The dense path encodes the query with snowflake-arctic-embed and finds the 50 nearest neighbors via pgvector's HNSW index (cosine distance). The sparse path runs a pg_trgm trigram similarity query. Both respect optional filters on domain, intent, task type, complexity, and status.
+**Hybrid retrieval.** Two searches run independently. The dense path encodes the query with snowflake-arctic-embed and finds the nearest neighbors via pgvector's HNSW index (cosine distance). The lexical path runs a PostgreSQL full-text query. Both respect optional filters on domain, intent, task type, complexity, and status.
 
-**Fusion.** Results from both paths merge using Reciprocal Rank Fusion (k=50, equal weight). One ranked list comes out.
+**Union.** Both candidate lists are concatenated and deduped by prompt ID. No weights, no ratio. This replaced Reciprocal Rank Fusion after the benchmark showed there was nothing to tune: on the clean population, 50/50 and 0.3/0.7 landed within half a point of each other, and RRF was already within 0.4 points of its own ceiling. Union recovers most of that with one fewer knob. See the header of `search/union.py` for the numbers, including where union does *not* help — recall@10 improved, recall@1 did not.
 
 **Reranking.** The cross-encoder (mxbai-rerank-base-v2) scores each (query, candidate) pair and re-sorts. The top result's score determines the response: above the threshold, the prompt is returned directly. Below it, skill recall checks for a validated skill instead.
+
+Because union improves rank 5–10 but not rank 1, and callers serve rank 1, the reranker is the next component that has to get better. Nothing downstream of it will show a gain until it does.
 
 ## Skills
 
@@ -165,7 +211,11 @@ python -m capillaries.skills.cli --edit gtm-strategy-builder
 
 A DSPy integration generates per-model prompt variants. When a prompt works well with one model but poorly with another, the optimizer produces a tailored variant stored in `prompt_variants`. At retrieval time, `resolve_prompt_text()` checks for a model-specific variant before falling back to the base text.
 
-The optimizer is grounded in real outcomes, not a proxy metric. A serving log records what got served for each query alongside the top-k candidates the ranker considered but passed over — the negatives the optimizer needs to learn ranking, not just "was the served prompt any good." `harvest.py` joins that log against the reward signal (episode-reward-weighted first, then explicit skill/classification feedback, with an LLM judge only as a fallback for prompts that have no real traffic yet) and turns it into golden examples for DSPy. A fence guard keeps an optimized variant from shipping unless it clears the base text on held-out examples, and new variants roll out behind an A/B gate rather than replacing the base outright. Optimization events tee to heart's event spine, so a variant's win or regression is visible in the same `pulse` view as everything else in the stack.
+The optimizer is meant to be grounded in real outcomes, not a proxy metric. A serving log records what got served for each query alongside the top-k candidates the ranker considered but passed over — the negatives needed to learn ranking, not just "was the served prompt any good." Each row carries the `episode_id` and `turn_id` its caller supplied via `agent_context`, which is what lets a serving be matched to the reward that followed it.
+
+The piece that turned that log into training examples is currently missing. `optimize/harvest.py` was deleted rather than fixed: it captured the retrieved prompt as the golden *output*, which trains an optimizer to reproduce the library instead of ranking it. Golden examples now enter only through `cap optimize capture`. A reward-grounded builder will replace it.
+
+What remains is the acceptance side, and it still holds: a fence guard keeps an optimized variant from shipping unless it clears the base text on held-out examples, and new variants roll out behind an A/B gate rather than replacing the base outright. Optimization events tee to heart's event spine, so a variant's win or regression is visible in the same `pulse` view as everything else in the stack.
 
 ## Obsidian sync
 

@@ -1,12 +1,20 @@
 ---
-intent: [prepare]
-task_type: [generate]
-domain: [career, business]
-primary_stage: plan
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt supports hiring managers in creating structured interview guides
+  for specific roles and seniority levels. The model generates behavioral, technical,
+  and situational questions with scoring rubrics, strong answer criteria, and red
+  flags to assess candidate fit.
 complexity_level: 2
+domain:
+- career
+- business
+intent:
+- prepare
+primary_stage: plan
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- generate
 ---
 
 Create a structured interview question set for the **{{role_title}}** position at the **{{seniority_level}}** level.

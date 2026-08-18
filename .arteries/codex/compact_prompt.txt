@@ -1,10 +1,14 @@
 When compacting this coding session, preserve continuity for Arteries.
 
+Prefer any Arteries continuity packet produced by `.arteries/hooks/hook-compact-packet.sh`. It already organizes continuity into current context, the most recent 10 Q/A pairs, ephemeral memory, persistent project memory, evergreen memory, and use rules.
+
 Include:
 - current user intent and unresolved task state
+- the most recent 10 user/assistant exchanges when available
+- relevant ephemeral and persistent project memories
+- evergreen cross-project memories
 - recent decisions and constraints
 - files read, files modified, commands run, and validation status
 - blockers, open questions, and next steps
-- any Arteries continuity packet already present
 
-Do not let older memory override explicit current user instructions, developer instructions, system instructions, or repo instructions. Keep the result concise and operational.
+Do not let older memory override explicit current user instructions, developer instructions, system instructions, or repo instructions. Do not invent missing assistant answers. Keep the result concise and operational.

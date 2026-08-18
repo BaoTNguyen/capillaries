@@ -6,19 +6,18 @@ Two directions:
   import  — vault → DB (create-or-update skills from markdown files)
 
 Each skill is stored as a single .md file:
-  <slug>.md
+  <tag>.md
 
 File format:
   ---
   name: "LLM Build & Tune Analyzer"
-  slug: llm-build-tune-analyzer
+  tag: llm-build-tune-analyzer
   version: 1
   status: active
-  routing_description: "..."
+  summary: "..."
   domain: [AI, technical]
   intent: [analyze, plan]
   task_type: [analysis, planning]
-  complexity_level: 4
   created_by: manual
   changelog: "..."
   ---
@@ -35,7 +34,7 @@ File format:
 
 Usage:
   python -m obsidian_sync.skills_vault export
-  python -m obsidian_sync.skills_vault export --slug llm-build-tune-analyzer
+  python -m obsidian_sync.skills_vault export --tag llm-build-tune-analyzer
   python -m obsidian_sync.skills_vault import
   python -m obsidian_sync.skills_vault import --file llm-build-tune-analyzer.md
 """
@@ -55,7 +54,7 @@ from capillaries.skills.promote import SkillPromoter
 # ── Export ────────────────────────────────────────────────────────────────────
 
 def export_skill(skill: dict, promoter: SkillPromoter, out_dir: Path) -> Path:
-    """Write one skill to <slug>.md. Returns the path written."""
+    """Write one skill to <tag>.md. Returns the path written."""
     from capillaries.skills.recall import SkillRecall
     recall = SkillRecall()
     steps = recall._resolve_steps(skill["steps"])
@@ -63,14 +62,13 @@ def export_skill(skill: dict, promoter: SkillPromoter, out_dir: Path) -> Path:
     # --- frontmatter ---
     meta = {
         "name":                 skill["name"],
-        "slug":                 skill["slug"],
+        "tag":                 skill["tag"],
         "version":              skill["version"],
         "status":               skill["status"],
-        "routing_description":  skill["routing_description"],
+        "summary":  skill["summary"],
         "domain":               list(skill["domain"] or []),
         "intent":               list(skill["intent"] or []),
         "task_type":            list(skill["task_type"] or []),
-        "complexity_level":     skill["complexity_level"],
         "created_by":           skill["created_by"],
         "changelog":            skill.get("changelog") or "",
     }
@@ -91,7 +89,7 @@ def export_skill(skill: dict, promoter: SkillPromoter, out_dir: Path) -> Path:
     content = f"---\n{frontmatter}\n---\n\n{body}\n"
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    dest = out_dir / f"{skill['slug']}.md"
+    dest = out_dir / f"{skill['tag']}.md"
     dest.write_text(content, encoding="utf-8")
     return dest
 
@@ -100,10 +98,10 @@ def cmd_export(args: argparse.Namespace) -> None:
     promoter = SkillPromoter()
     out_dir = SKILLS_PATH
 
-    if args.slug:
-        skill = promoter.get(args.slug)
+    if args.tag:
+        skill = promoter.get(args.tag)
         if not skill:
-            print(f"Skill not found: {args.slug}", file=sys.stderr)
+            print(f"Skill not found: {args.tag}", file=sys.stderr)
             sys.exit(1)
         skills = [skill]
     else:
@@ -186,19 +184,18 @@ def cmd_import(args: argparse.Namespace) -> None:
             print(f"skip  {path.name}: {exc}", file=sys.stderr)
             continue
 
-        slug = meta.get("slug") or path.stem
-        existing = promoter.get(slug)
+        tag = meta.get("tag") or path.stem
+        existing = promoter.get(tag)
 
         if existing is None:
             skill = promoter.create(
                 name=meta["name"],
-                routing_description=meta["routing_description"],
+                summary=meta["summary"],
                 steps=steps,
-                slug=slug,
+                tag=tag,
                 domain=meta.get("domain"),
                 intent=meta.get("intent"),
                 task_type=meta.get("task_type"),
-                complexity_level=meta.get("complexity_level"),
                 created_by=meta.get("created_by", "manual"),
             )
             action = "created"
@@ -206,21 +203,20 @@ def cmd_import(args: argparse.Namespace) -> None:
         else:
             # Update metadata and replace steps
             promoter.update_metadata(
-                slug,
+                tag,
                 name=meta.get("name"),
-                routing_description=meta.get("routing_description"),
+                summary=meta.get("summary"),
                 domain=meta.get("domain"),
                 intent=meta.get("intent"),
                 task_type=meta.get("task_type"),
-                complexity_level=meta.get("complexity_level"),
                 changelog=meta.get("changelog"),
             )
             if steps:
-                promoter.set_steps(slug, steps)
+                promoter.set_steps(tag, steps)
             action = "updated"
             skill_id = str(existing["skill_id"])
 
-        print(f"{action}  {slug}  ({skill_id})")
+        print(f"{action}  {tag}  ({skill_id})")
 
     print(f"\n{len(files)} file(s) processed from {in_dir}")
 
@@ -234,7 +230,7 @@ def main() -> None:
     sub = parser.add_subparsers(dest="command", required=True)
 
     exp = sub.add_parser("export", help="DB → vault")
-    exp.add_argument("--slug", help="Export a single skill by slug")
+    exp.add_argument("--tag", help="Export a single skill by tag")
 
     imp = sub.add_parser("import", help="vault → DB")
     imp.add_argument("--file", help="Import a single .md file by name (e.g. my-skill.md)")

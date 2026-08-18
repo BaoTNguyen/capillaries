@@ -1,12 +1,21 @@
 ---
-intent: [improve]
-task_type: [analyze, optimize]
-domain: [business]
-primary_stage: plan
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt targets operations managers seeking to optimize specific departmental
+  workflows using lean principles and the 5 Whys technique. The model must analyze
+  current state metrics and bottlenecks to produce a process improvement proposal
+  featuring before/after comparison tables, root cause analysis, and a phased implementation
+  plan with quantified impact.
 complexity_level: 3
+domain:
+- business
+intent:
+- improve
+primary_stage: plan
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- analyze
+- optimize
 ---
 
 Analyze and propose improvements to the **{{process_name}}** process at **{{company_name}}** in the **{{department}}** department.

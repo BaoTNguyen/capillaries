@@ -24,7 +24,12 @@ from fastapi import FastAPI
 from pydantic import BaseModel, Field
 from sentence_transformers import SentenceTransformer
 
-MODEL_NAME = "Snowflake/snowflake-arctic-embed-m-v2.0"
+MODEL_NAME = os.getenv("EMBED_MODEL", "Qwen/Qwen3-Embedding-0.6B")
+
+# Longest input accepted, in tokens. Chunks run ~430 tokens at the current
+# TARGET; 1024 covers the tail without paying for an 8k-token window nothing
+# uses.
+MAX_SEQ_LENGTH = 1024
 
 app = FastAPI(title="Embedding Server", version="1.0.0")
 
@@ -63,81 +68,63 @@ async def embed(req: EmbedRequest) -> EmbedResponse:
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "model": MODEL_NAME, "ready": model is not None}
+    """Report what is actually loaded, not what config claims.
 
-
-def _patch_snowflake_source() -> None:
-    """Patch Snowflake's cached HF modeling code to fix position_ids bug.
-
-    The model registers position_ids as a non-persistent buffer without a
-    device, which produces garbage index values on CUDA with torch >=2.12.
-    We patch the source to recreate position_ids on the correct device
-    inside the embeddings forward method.
+    `dim` matters to callers: the schema pins a vector width, and a model
+    serving a different one silently poisons the index.
     """
-    import glob
-    pattern = os.path.expanduser(
-        "~/.cache/huggingface/modules/transformers_modules/Snowflake/"
-        "snowflake_hyphen_arctic_hyphen_embed_hyphen_m_hyphen_v2*/*/modeling_hf_alibaba_nlp_gte.py"
-    )
-    for path in glob.glob(pattern):
-        with open(path, "r") as f:
-            src = f.read()
+    return {
+        "status": "ok" if model is not None else "not_ready",
+        "model": MODEL_NAME,
+        "ready": model is not None,
+        "dim": model.get_sentence_embedding_dimension() if model is not None else None,
+    }
 
-        marker = "# _patched_position_ids"
-        if marker in src:
-            print(f"Snowflake source already patched: {path}")
-            continue
 
-        target = "        if position_ids is None:"
-        patch = (
-            f"        {marker}\n"
-            "        self.position_ids = torch.arange(\n"
-            "            self.position_ids.size(0), device=embeddings.device\n"
-            "        )\n"
+class SelfCheckFailed(RuntimeError):
+    """The loaded model does not produce usable embeddings."""
+
+
+# Two obviously-related sentences and one unrelated one. A working embedder
+# ranks the related pair well above either unrelated pair; a broken one does
+# not, and until now nothing noticed.
+_PROBE_A = "Build a 13-week cash flow model for an early stage startup."
+_PROBE_B = "Weekly burn rate forecasting spreadsheet for a young company."
+_PROBE_C = "Watercolor painting techniques for absolute beginners."
+
+MIN_MARGIN = 0.10
+
+
+def self_check(m: SentenceTransformer) -> dict:
+    """Refuse to serve embeddings that are silently wrong.
+
+    This exists because they were. The previous model
+    (snowflake-arctic-embed-m-v2.0) ships custom remote code that breaks under
+    transformers>=5: it returned finite, perfectly reproducible vectors whose
+    geometry was meaningless. Nothing raised, nothing looked wrong, and every
+    embedding in the database was garbage — measured at 1/40 on verbatim
+    self-retrieval, where a working index scores ~34/40.
+
+    Deterministic garbage is the worst failure mode available, so the server
+    now proves the space is sane before it will answer a single request.
+    """
+    import numpy as np
+
+    vecs = m.encode([_PROBE_A, _PROBE_B, _PROBE_C], normalize_embeddings=True)
+    if not np.isfinite(vecs).all():
+        raise SelfCheckFailed("embeddings contain NaN or inf")
+
+    related = float(vecs[0] @ vecs[1])
+    unrelated = max(float(vecs[0] @ vecs[2]), float(vecs[1] @ vecs[2]))
+    margin = related - unrelated
+    if margin < MIN_MARGIN:
+        raise SelfCheckFailed(
+            f"related pair ({related:.3f}) does not clear unrelated pair "
+            f"({unrelated:.3f}) by {MIN_MARGIN}: margin {margin:.3f}. "
+            f"The embedding space is collapsed — refusing to serve."
         )
-        if target in src:
-            src = src.replace(target, patch + target, 1)
-            with open(path, "w") as f:
-                f.write(src)
-            # Clear bytecode cache so the patched source is used
-            import shutil
-            cache_dir = os.path.join(os.path.dirname(path), "__pycache__")
-            if os.path.isdir(cache_dir):
-                shutil.rmtree(cache_dir)
-            print(f"Patched Snowflake source: {path}")
-        else:
-            print(f"Warning: could not find patch target in {path}")
-
-
-def _fix_rotary_caches(m: SentenceTransformer) -> None:
-    """Recompute rotary embedding cos/sin caches after model load.
-
-    torch >=2.12 corrupts non-persistent buffers during checkpoint loading —
-    cos_cached/sin_cached end up with garbage values while inv_freq is fine.
-    """
-    for module in m.modules():
-        if type(module).__name__ in ("RotaryEmbedding", "NTKScalingRotaryEmbedding"):
-            if hasattr(module, "inv_freq") and hasattr(module, "cos_cached"):
-                module._set_cos_sin_cache(
-                    seq_len=module.max_seq_len_cached,
-                    device=module.inv_freq.device,
-                    dtype=torch.get_default_dtype(),
-                )
-
-
-def _disable_xformers(m: SentenceTransformer) -> None:
-    """Disable xformers memory-efficient attention on all sub-modules.
-
-    The Snowflake model config sets use_memory_efficient_attention=True which
-    creates xformers BlockDiagonalMask objects. These require all tensors on
-    the same CUDA device and crash on CPU. Disabling falls back to standard
-    scaled dot-product attention.
-    """
-    for module in m.modules():
-        if hasattr(module, "use_memory_efficient_attention"):
-            module.use_memory_efficient_attention = False
-        if hasattr(module, "config") and hasattr(module.config, "use_memory_efficient_attention"):
-            module.config.use_memory_efficient_attention = False
+    return {"related": round(related, 4), "unrelated": round(unrelated, 4),
+            "margin": round(margin, 4)}
 
 
 def main():
@@ -152,15 +139,23 @@ def main():
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    _patch_snowflake_source()
     print(f"Loading {MODEL_NAME} on {device}...")
-    model = SentenceTransformer(
-        MODEL_NAME, device=device, trust_remote_code=True,
-        config_kwargs={"use_memory_efficient_attention": device == "cuda"},
-    )
-    _fix_rotary_caches(model)
-    if device != "cuda":
-        _disable_xformers(model)
+    # bf16 on GPU: fp32 cost 7.8 GB for a 0.6B model and starved the reranker
+    # daemon on a box that also hosts an LLM server. bf16 holds ~2.5 GB with no
+    # measurable retrieval difference — but the corpus must be re-embedded
+    # after changing this, so queries and documents share a dtype.
+    kwargs = {"model_kwargs": {"dtype": torch.bfloat16}} if device.startswith("cuda") else {}
+    loaded = SentenceTransformer(MODEL_NAME, device=device, **kwargs)
+    loaded.max_seq_length = MAX_SEQ_LENGTH
+
+    # Prove the space is sane before publishing the model to request handlers.
+    # `model` stays None on failure, so /health reports not-ready rather than
+    # the server answering with garbage.
+    result = self_check(loaded)
+    model = loaded
+
+    print(f"Self-check passed: related {result['related']}, "
+          f"unrelated {result['unrelated']}, margin {result['margin']}")
     print(f"Model ready. Embedding dim: {model.get_sentence_embedding_dimension()}")
 
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")

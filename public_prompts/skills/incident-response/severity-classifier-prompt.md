@@ -1,12 +1,19 @@
 ---
-intent: [validate]
-task_type: [evaluate]
-domain: [technical]
-primary_stage: clarify
+Notes: Part of the incident-response skill
+Original Link: ''
+Summary: This prompt assists incident responders in classifying production outages
+  by evaluating user impact, revenue risk, and data integrity against defined severity
+  tiers. The model must output a severity level (SEV-1 to SEV-4) with specific escalation
+  requirements, communication cadence, and resolution windows.
 complexity_level: 2
+domain:
+- technical
+intent:
+- validate
+primary_stage: clarify
 source: public
-Original Link: ""
-Notes: "Part of the incident-response skill"
+task_type:
+- evaluate
 ---
 
 Assess the severity of the following production incident and recommend the appropriate response level:

@@ -57,7 +57,7 @@ class CatalogHandler:
 
     def _skills(self, cur, domain_filter: str | None = None) -> dict:
         query = """
-            SELECT skill_id, name, slug, routing_description, domain, success_rate, total_runs
+            SELECT skill_id, name, tag, summary, domain, success_rate, total_runs
             FROM skills.skills
             WHERE status = 'active'
         """
@@ -75,8 +75,8 @@ class CatalogHandler:
             "skills": [
                 {
                     "name": row["name"],
-                    "slug": row["slug"],
-                    "routing_description": row["routing_description"],
+                    "tag": row["tag"],
+                    "summary": row["summary"],
                     "domain": row["domain"] or [],
                     "success_rate": row["success_rate"],
                     "total_runs": row["total_runs"] or 0,

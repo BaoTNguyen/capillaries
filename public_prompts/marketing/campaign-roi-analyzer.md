@@ -1,12 +1,21 @@
 ---
-intent: [validate, improve]
-task_type: [analyze, evaluate]
-domain: [business, finance]
-primary_stage: verify
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt addresses marketing analysts evaluating campaign performance
+  and return on investment for a specific initiative. The model must calculate key
+  metrics, compare against industry benchmarks, and provide an executive-ready report
+  with optimization recommendations.
 complexity_level: 3
+domain:
+- business
+- finance
+intent:
+- validate
+- improve
+primary_stage: verify
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- analyze
 ---
 
 Analyze the ROI of our **{{campaign_name}}** marketing campaign run during **{{campaign_period}}** for **{{company_name}}**.

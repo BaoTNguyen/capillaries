@@ -10,11 +10,11 @@ Usage:
 
     result = await find("build a cash flow model")
 
-    # With memory context from arteries
+    # With context from arteries
     from capillaries.find import FindResult
-    from capillaries.agent.memory_types import MemoryFrame
+    from arteries.memory_types import MemoryFrame
 
-    result = await find("debug auth middleware", memory=memory_frame)
+    result = await find("debug auth middleware", context=context_frame)
 
     result.prompt_text   # ready-to-use prompt content
     result.confidence    # rerank score (higher = more relevant)
@@ -30,15 +30,23 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from capillaries.agent.context import AgentContext, normalize_agent_context
-from capillaries.agent.memory_types import MemoryFrame
-from capillaries.search.memory_filter import MemoryFilter
+from capillaries.search.context_filter import ContextFilter
 
-SINGLE_THRESHOLD = 0.3
-SKILL_THRESHOLD = 0.50
-MEMORY_FILTER_CANDIDATES = 5
+if TYPE_CHECKING:
+    # arteries owns this contract and is not on PyPI. Every use below is an
+    # annotation, and `from __future__ import annotations` keeps those strings
+    # at runtime — so capillaries imports fine without arteries installed, and
+    # the memory-aware path fails at the point of use instead.
+    from arteries.memory_types import MemoryFrame
+
+# Modality (prompt vs skill) is decided entirely inside PromptSearch: prompt
+# and skill candidates are retrieved into one pool and reranked in one pass,
+# so this module just trusts `response.recommendation` — it never re-decides
+# with a second, separately-scored lookup.
+CONTEXT_FILTER_CANDIDATES = 5
 
 
 @dataclass
@@ -54,7 +62,7 @@ class FindResult:
     # Populated when mode == 'skill'
     skill_id: str | None = None
     skill_name: str | None = None
-    skill_slug: str | None = None
+    skill_tag: str | None = None
     steps: list[dict] = field(default_factory=list)
 
     # Metadata for arteries to inspect
@@ -79,7 +87,7 @@ class FindResult:
         if self.mode == "skill":
             d["skill_id"] = self.skill_id
             d["skill_name"] = self.skill_name
-            d["skill_slug"] = self.skill_slug
+            d["skill_tag"] = self.skill_tag
             d["steps"] = self.steps
         return d
 
@@ -92,19 +100,18 @@ class _FindEngine:
 
     def __init__(self) -> None:
         from capillaries.search.api import PromptSearch
-        from capillaries.skills.recall import SkillRecall
 
         self._search = PromptSearch()
-        self._skill_recall = SkillRecall()
-        self._memory_filter = MemoryFilter()
+        self._context_filter = ContextFilter()
 
     async def find(
         self,
         situation: str,
-        memory: MemoryFrame | None = None,
+        context: MemoryFrame | None = None,
         prefer: str = "auto",
+        agent_context: AgentContext | None = None,
     ) -> FindResult:
-        domain_hints, intent_hints, complexity = self._extract_hints(situation, memory)
+        domain_hints, intent_hints = self._extract_hints(situation, context)
 
         skill_hints: dict[str, list[str]] = {}
         if domain_hints:
@@ -112,44 +119,69 @@ class _FindEngine:
         if intent_hints:
             skill_hints["intent"] = intent_hints
 
-        prefer_mode = prefer
-        if prefer_mode == "auto":
-            prefer_mode = "skill" if complexity >= 3 else "single"
+        # prompt-vs-skill is decided by one comparison, not an order of
+        # attempts: prompt and skill candidates are retrieved into one pool
+        # and reranked in one pass (see search/api.py). `prefer` lets a
+        # caller force one path when it already knows which fits.
+        top_k = CONTEXT_FILTER_CANDIDATES if context else 1
+        resp = await self._search.search(
+            situation, top_k=top_k, skill_hints=skill_hints or None, prefer=prefer,
+            query_expansion=self._build_query_expansion(context),
+            boost_prompt_ids=self._build_boost_ids(context),
+            agent_context=agent_context,
+        )
 
-        # Skill-preferred path: check skills first for complex situations
-        if prefer_mode == "skill":
-            skill_result = self._try_skill(situation, skill_hints)
-            if skill_result:
-                return skill_result
+        if resp.recommendation == "skill" and resp.skill_match:
+            return self._build_skill_result(resp.skill_match)
 
-        # Single prompt retrieval
-        single_result = await self._try_single(situation, memory)
-        if single_result and single_result.confidence >= SINGLE_THRESHOLD:
-            return single_result
-
-        # Fallback: try skill if we haven't yet
-        if prefer_mode != "skill":
-            skill_result = self._try_skill(situation, skill_hints)
-            if skill_result:
-                return skill_result
-
-        # Return best single even if below threshold, or none
-        if single_result and single_result.confidence > 0.0:
+        single_result = self._build_single_result(resp, context)
+        if single_result:
             return single_result
 
         return FindResult(mode="none", confidence=0.0)
 
+    def _build_query_expansion(self, context: MemoryFrame | None) -> str | None:
+        """Recent conversation + session insight text, for a second retrieval
+        pass only (see PromptSearch.search's query_expansion) — never used
+        for reranking, so a noisy or off-topic frame can't win on its own,
+        only add candidates the reranker then judges against the real query.
+        """
+        if not context:
+            return None
+        parts = list(context.ephemeral.recent_messages[-3:])
+        parts += [
+            i.text for i in context.persistent.session_insights[:3]
+            if i.confidence >= 0.5
+        ]
+        if not parts:
+            return None
+        return " ".join(parts)[:1000]
+
+    def _build_boost_ids(self, context: MemoryFrame | None) -> list[str] | None:
+        """Prompts arteries already knows were relevant to a similar past
+        situation — injected as extra candidates (see
+        PromptSearch.search's boost_prompt_ids), not served on trust.
+        """
+        if not context:
+            return None
+        promoted = sorted(
+            (r for r in context.persistent.prior_retrievals if r.relevance >= 0.7),
+            key=lambda r: r.relevance, reverse=True,
+        )
+        ids = [r.prompt_id for r in promoted[:5]]
+        return ids or None
+
     def _extract_hints(
-        self, situation: str, memory: MemoryFrame | None
-    ) -> tuple[list[str], list[str], int]:
+        self, situation: str, context: MemoryFrame | None
+    ) -> tuple[list[str], list[str]]:
         domain: list[str] = []
         intent: list[str] = []
 
-        if memory:
-            if memory.persistent.active_domains:
-                domain = memory.persistent.active_domains
-            if memory.evergreen.user_intent:
-                intent = memory.evergreen.user_intent
+        if context:
+            if context.persistent.active_domains:
+                domain = context.persistent.active_domains
+            if context.evergreen.user_intent:
+                intent = context.evergreen.user_intent
 
         from capillaries.agent.inference import infer_from_situation
 
@@ -158,18 +190,16 @@ class _FindEngine:
             explicit_domain=domain or None,
             explicit_intent=intent or None,
         )
-        return inference.domain, inference.intent, inference.complexity
+        return inference.domain, inference.intent
 
-    async def _try_single(
-        self, situation: str, memory: MemoryFrame | None = None
+    def _build_single_result(
+        self, response, context: MemoryFrame | None = None
     ) -> FindResult | None:
-        top_k = MEMORY_FILTER_CANDIDATES if memory else 1
-        response = await self._search.search(situation, top_k=top_k)
         if not response.results:
             return None
 
-        if memory:
-            filtered = self._memory_filter.apply(response.results, memory)
+        if context:
+            filtered = self._context_filter.apply(response.results, context)
             best = filtered[0]
             top = best.result
         else:
@@ -186,9 +216,11 @@ class _FindEngine:
             task_type=top.metadata.get("task_type", []),
         )
 
-    def _try_skill(self, situation: str, hints: dict) -> FindResult | None:
-        match = self._skill_recall.search(situation, hints)
-        if match is None or match.match_score < SKILL_THRESHOLD:
+    def _build_skill_result(self, match) -> FindResult | None:
+        # A skill with no steps has nothing to serve — returning it hands the
+        # caller prompt_text="". PromptSearch already filters these out as
+        # ineligible candidates, so this is a defensive no-op in practice.
+        if not match.steps:
             return None
 
         steps = []
@@ -206,7 +238,7 @@ class _FindEngine:
             prompt_text=match.steps[0].get("prompt_text", "") if match.steps else "",
             skill_id=match.skill_id,
             skill_name=match.name,
-            skill_slug=match.slug,
+            skill_tag=match.tag,
             steps=steps,
             domain=match.domain if hasattr(match, "domain") else [],
             intent=match.intent if hasattr(match, "intent") else [],
@@ -223,7 +255,7 @@ def _get_engine() -> _FindEngine:
 
 async def find(
     situation: str,
-    memory: MemoryFrame | None = None,
+    context: MemoryFrame | None = None,
     prefer: str = "auto",
     agent_context: dict[str, Any] | AgentContext | None = None,
 ) -> FindResult:
@@ -235,10 +267,12 @@ async def find(
 
     Args:
         situation: Natural language description of what the user needs.
-        memory:    MemoryFrame from arteries (optional). Used to extract
+        context:   MemoryFrame from arteries (optional). Used to extract
                    domain/intent hints from active context.
         prefer:    'auto' (default), 'single', or 'skill'.
-                   'auto' checks skills first for complex situations.
+                   'auto' retrieves both prompt and skill candidates into one
+                   pool and reranks them together — whichever scores highest
+                   wins.
         agent_context: Optional normalized agent/CLI metadata. It is returned
                        for telemetry and callers; retrieval remains CLI-neutral.
 
@@ -247,9 +281,11 @@ async def find(
         Caller can pass result.prompt_id to optimize.resolve.resolve_prompt_text()
         for model-specific variants when needed.
     """
-    engine = _get_engine()
-    result = await engine.find(situation, memory, prefer)
+    # Normalized before the search, not after: episode_id/turn_id ride along to
+    # the serving log, which is what makes a serving row joinable to its reward.
     normalized = normalize_agent_context(agent_context)
+    engine = _get_engine()
+    result = await engine.find(situation, context, prefer, normalized)
     if normalized:
         result.agent_context = normalized.to_dict()
     return result
@@ -257,9 +293,9 @@ async def find(
 
 def find_sync(
     situation: str,
-    memory: MemoryFrame | None = None,
+    context: MemoryFrame | None = None,
     prefer: str = "auto",
     agent_context: dict[str, Any] | AgentContext | None = None,
 ) -> FindResult:
     """Synchronous wrapper for non-async callers."""
-    return asyncio.run(find(situation, memory, prefer, agent_context))
+    return asyncio.run(find(situation, context, prefer, agent_context))

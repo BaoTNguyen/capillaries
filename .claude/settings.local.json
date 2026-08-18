@@ -16,29 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR}/hooks/arteries-activate.js\"",
-            "timeout": 5,
-            "statusMessage": "Activating arteries memory..."
-          }
-        ]
-      },
-      {
-        "matcher": "startup|resume|clear|compact",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash .arteries/hooks/activate.sh",
-            "timeout": 5,
-            "statusMessage": "Activating arteries memory..."
-          }
-        ]
-      },
-      {
-        "matcher": "startup|resume|clear|compact",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "ARTERIES_CLI=claude bash .arteries/hooks/activate.sh",
+            "command": "ARTERIES_CLI=claude bash /home/bao-tn/Coding/Projects/capillaries/.arteries/hooks/activate.sh",
             "timeout": 5,
             "statusMessage": "Activating arteries memory..."
           }
@@ -50,29 +28,61 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PROJECT_DIR}/hooks/arteries-observe.js\"",
+            "command": "ARTERIES_CLI=claude bash /home/bao-tn/Coding/Projects/capillaries/.arteries/hooks/hook-observe.sh",
             "timeout": 10,
             "statusMessage": "arteries"
           }
         ]
-      },
+      }
+    ],
+    "PreCompact": [
       {
+        "matcher": "manual|auto",
         "hooks": [
           {
             "type": "command",
-            "command": "bash .arteries/hooks/generic-observe.sh \"$CLAUDE_USER_PROMPT\"",
+            "command": "ARTERIES_CLI=claude bash /home/bao-tn/Coding/Projects/capillaries/.arteries/hooks/hook-compact-packet.sh claude-precompact",
             "timeout": 10,
-            "statusMessage": "arteries"
+            "statusMessage": "Building arteries continuity packet..."
           }
         ]
-      },
+      }
+    ],
+    "PostCompact": [
       {
+        "matcher": "manual|auto",
         "hooks": [
           {
             "type": "command",
-            "command": "ARTERIES_CLI=claude bash .arteries/hooks/generic-observe.sh \"$CLAUDE_USER_PROMPT\"",
+            "command": "ARTERIES_CLI=claude bash /home/bao-tn/Coding/Projects/capillaries/.arteries/hooks/hook-compact-packet.sh claude-postcompact",
             "timeout": 10,
-            "statusMessage": "arteries"
+            "statusMessage": "Recording arteries compact continuity..."
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ARTERIES_CLI=claude bash /home/bao-tn/Coding/Projects/capillaries/.arteries/hooks/hook-event.sh SubagentStart",
+            "timeout": 5,
+            "statusMessage": "Recording arteries subagent metadata..."
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ARTERIES_CLI=claude bash /home/bao-tn/Coding/Projects/capillaries/.arteries/hooks/hook-subagent-stop.sh",
+            "timeout": 5,
+            "statusMessage": "Capturing arteries subagent report..."
           }
         ]
       }
