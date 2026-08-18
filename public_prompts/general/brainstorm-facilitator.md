@@ -1,12 +1,19 @@
 ---
-intent: [explore]
-task_type: [generate]
-domain: [business]
-primary_stage: clarify
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt assists product managers or team leads facilitating structured
+  brainstorming sessions for specific challenges. The model must generate ideas across
+  four lenses, assess effort and impact, and produce a prioritization matrix recommending
+  the top three options.
 complexity_level: 2
+domain:
+- business
+intent:
+- explore
+primary_stage: clarify
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- generate
 ---
 
 Facilitate a structured brainstorming session for the following challenge:

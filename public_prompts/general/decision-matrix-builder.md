@@ -1,12 +1,19 @@
 ---
-intent: [decide]
-task_type: [compare]
-domain: [business]
-primary_stage: plan
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: 'This prompt assists decision-makers in evaluating multiple options against
+  weighted criteria using a structured matrix. The model must calculate weighted scores,
+  provide a recommendation with sensitivity analysis, and identify risks in a tabular
+  format. Required context: [criterion], [1-5], [1-10].'
 complexity_level: 2
+domain:
+- business
+intent:
+- decide
+primary_stage: plan
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- compare
 ---
 
 Build a weighted decision matrix to evaluate the following options:

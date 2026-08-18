@@ -1,12 +1,21 @@
 ---
-intent: [validate, improve]
-task_type: [analyze, debug]
-domain: [finance]
-primary_stage: verify
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt enables financial analysts to audit Excel-based financial models
+  for accuracy, logic, and completeness. The model performs a structural review, assumption
+  sensitivity analysis, and formula checks, outputting a severity-classified audit
+  report with a summary scorecard.
 complexity_level: 5
+domain:
+- finance
+intent:
+- validate
+- improve
+primary_stage: verify
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- analyze
+- debug
 ---
 
 Review the financial model for **{{project_or_company_name}}** and provide a comprehensive audit.

@@ -1,12 +1,20 @@
 ---
-intent: [validate]
-task_type: [analyze]
-domain: [finance, business]
-primary_stage: verify
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt serves finance teams analyzing departmental spending against
+  budgets for a defined period. The model must produce a variance report with executive
+  summaries, detailed tables, root cause analysis, and actionable recommendations
+  for budget adjustments.
 complexity_level: 3
+domain:
+- finance
+- business
+intent:
+- validate
+primary_stage: verify
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- analyze
 ---
 
 Generate a budget variance analysis report for the **{{department}}** department at **{{company_name}}** for **{{time_period}}**.

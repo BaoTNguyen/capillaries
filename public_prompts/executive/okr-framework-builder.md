@@ -1,12 +1,22 @@
 ---
-intent: [build]
-task_type: [design]
-domain: [strategy, business]
-primary_stage: plan
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: 'This prompt targets teams or companies defining Objectives and Key Results
+  for specific time periods and strategic priorities. The model generates qualitative
+  objectives with quantitative, measurable key results, including baselines, targets,
+  alignment checks, and anti-goals. Required context: [Inspiring qualitative statement],
+  [Metric], [baseline], [target], [stretch], [suggested role], [Low/Med/High], [one-line
+  rationale].'
 complexity_level: 3
+domain:
+- strategy
+- business
+intent:
+- build
+primary_stage: plan
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- design
 ---
 
 Build an OKR (Objectives and Key Results) framework for **{{team_or_company}}** for **{{time_period}}**.

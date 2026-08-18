@@ -1,12 +1,22 @@
 ---
-intent: [reflect, improve]
-task_type: [analyze, synthesize]
-domain: [technical, business]
-primary_stage: reflect
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt helps engineering teams document blameless incident postmortems
+  for technical outages. The model structures a comprehensive report including executive
+  summaries, root cause analysis using the 5 Whys, and prioritized action items for
+  preventive measures.
 complexity_level: 3
+domain:
+- technical
+- business
+intent:
+- reflect
+- improve
+primary_stage: reflect
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- analyze
+- synthesize
 ---
 
 Write a blameless incident postmortem for the **{{incident_title}}** incident at **{{company_name}}**.

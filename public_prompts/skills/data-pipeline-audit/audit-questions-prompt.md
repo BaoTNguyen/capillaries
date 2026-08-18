@@ -1,12 +1,20 @@
 ---
-intent: [evaluate]
-task_type: [audit]
-domain: [technical, business]
-primary_stage: discover
+Notes: Part of the data-pipeline-audit skill
+Original Link: ''
+Summary: This prompt serves senior data platform architects auditing data pipeline
+  infrastructure for risks and operational gaps. The model must generate prioritized
+  interview questions across six categories, tailored to the interviewee's role, with
+  notes on concerning answers for critical items.
 complexity_level: 3
+domain:
+- technical
+- business
+intent:
+- evaluate
+primary_stage: discover
 source: public
-Original Link: ""
-Notes: "Part of the data-pipeline-audit skill"
+task_type:
+- audit
 ---
 
 # Data Pipeline Audit Interview Questions

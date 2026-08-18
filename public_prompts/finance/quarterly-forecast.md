@@ -1,12 +1,22 @@
 ---
-intent: [decide, explore]
-task_type: [model, analyze]
-domain: [finance, strategy]
-primary_stage: plan
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt builds a quarterly financial forecast for a company based on
+  historical revenue, COGS, and operating expense data. The model produces revenue,
+  COGS, and OpEx forecasts, a P&L summary, cash flow implications, and scenario analysis
+  with base, upside, and downside cases.
 complexity_level: 4
+domain:
+- finance
+- strategy
+intent:
+- decide
+- explore
+primary_stage: plan
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- model
+- analyze
 ---
 
 Build a quarterly financial forecast for **{{company_name}}** for **{{forecast_quarter}}**.

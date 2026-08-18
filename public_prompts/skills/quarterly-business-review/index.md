@@ -2,7 +2,7 @@
 name: Quarterly Business Review
 tag: quarterly-business-review
 status: active
-routing_description: >
+summary: >
   Prepare and execute a quarterly business review (QBR) including financial
   variance analysis, competitive landscape assessment, executive narrative
   building, presentation structuring, and action item tracking. Use when

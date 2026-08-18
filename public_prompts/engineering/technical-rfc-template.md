@@ -1,12 +1,21 @@
 ---
-intent: [build, decide]
-task_type: [design]
-domain: [technical, strategy]
-primary_stage: plan
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt drafts a Technical Request for Comments for engineering stakeholders
+  to review proposed system changes. The model must structure the RFC with sections
+  for motivation, detailed design, alternatives, migration strategy, risks, observability,
+  and timeline, incorporating provided context variables.
 complexity_level: 4
+domain:
+- technical
+- strategy
+intent:
+- build
+- decide
+primary_stage: plan
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- design
 ---
 
 Write a Technical RFC (Request for Comments) for the proposed change: **{{proposal_title}}**.

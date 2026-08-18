@@ -1,12 +1,20 @@
 ---
-intent: [decide]
-task_type: [analyze, compare]
-domain: [technical]
-primary_stage: plan
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt targets software architects and engineering leads documenting
+  technical choices for a specific system. The model must generate a formal Architecture
+  Decision Record (ADR) including context, ranked drivers, a comparison matrix, and
+  consequences for the selected option.
 complexity_level: 3
+domain:
+- technical
+intent:
+- decide
+primary_stage: plan
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- analyze
+- compare
 ---
 
 Write an Architecture Decision Record (ADR) for the decision: **{{decision_title}}**.

@@ -1,12 +1,22 @@
 ---
-intent: [improve, decide]
-task_type: [analyze, optimize]
-domain: [technical, strategy]
-primary_stage: plan
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt helps engineering teams prioritize technical debt items for a
+  specific project based on impact, effort, and risk. The model must generate a prioritized
+  backlog, quarterly plan, business case summary, and tracking dashboard spec suitable
+  for sprint planning and leadership review.
 complexity_level: 4
+domain:
+- technical
+- strategy
+intent:
+- improve
+- decide
+primary_stage: plan
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- analyze
+- optimize
 ---
 
 Analyze and prioritize technical debt for the **{{project_name}}** project at **{{company_name}}**.
