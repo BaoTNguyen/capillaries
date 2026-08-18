@@ -57,8 +57,22 @@ def create_database_schema(cursor):
         embedding_version VARCHAR,
         embedding VECTOR(EMBED_DIM),
 
-        -- Full-text search (A-weighted title + body with acronym expansion)
+        -- Full-text search (A-weighted title + body with acronym expansion).
+        -- Written by the ingest paths, not generated: expand_acronyms() runs in
+        -- Python and a generated column cannot call it.
         search_tsv TSVECTOR,
+
+        -- Literal-token search for the exact channel (search/channels.py).
+        -- GENERATED, unlike search_tsv, for two reasons. The exact channel must
+        -- NOT expand or stem — 'serve.py' has to survive as one token, which is
+        -- the whole point of the channel — so there is nothing for Python to do.
+        -- And a derived column no ingest path can forget is the only kind that
+        -- stays correct: search_tsv is written inline by each writer, one of
+        -- them forgot, and 68 prompts sat invisible to lexical search.
+        exact_tsv TSVECTOR GENERATED ALWAYS AS (
+            to_tsvector('simple'::regconfig,
+                        coalesce(title, '') || ' ' || coalesce(prompt_text, ''))
+        ) STORED,
 
         -- Output modality
         modality VARCHAR DEFAULT 'text'
@@ -76,6 +90,21 @@ def create_database_schema(cursor):
         END $$;
     """)
     cursor.execute("ALTER TABLE prompts DROP COLUMN IF EXISTS complexity_level;")
+
+    # CREATE TABLE IF NOT EXISTS skips an existing table entirely, so a database
+    # built before exact_tsv existed never gets the column and search/channels.py
+    # raises UndefinedColumn against it. Generated columns cannot be added with
+    # IF NOT EXISTS in one statement, hence the guard.
+    cursor.execute("""
+        DO $$ BEGIN
+            ALTER TABLE prompts ADD COLUMN exact_tsv TSVECTOR
+                GENERATED ALWAYS AS (
+                    to_tsvector('simple'::regconfig,
+                                coalesce(title, '') || ' ' || coalesce(prompt_text, ''))
+                ) STORED;
+        EXCEPTION WHEN duplicate_column THEN NULL;
+        END $$;
+    """)
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS prompt_variants (
@@ -171,6 +200,7 @@ def create_database_schema(cursor):
         "CREATE INDEX IF NOT EXISTS idx_prompts_domain ON prompts USING GIN (domain);",
         "CREATE INDEX IF NOT EXISTS idx_prompts_status ON prompts (status);",
         "CREATE INDEX IF NOT EXISTS idx_prompts_search_tsv ON prompts USING GIN (search_tsv);",
+        "CREATE INDEX IF NOT EXISTS idx_prompts_exact_tsv ON prompts USING GIN (exact_tsv);",
         "CREATE INDEX IF NOT EXISTS idx_prompts_embedding ON prompts USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);",
         "CREATE INDEX IF NOT EXISTS idx_prompts_confidence ON prompts USING GIN (metadata_confidence);",
         "CREATE INDEX IF NOT EXISTS idx_prompts_backfill ON prompts (backfill_status);",
