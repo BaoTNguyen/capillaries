@@ -14,7 +14,7 @@ File format:
   tag: llm-build-tune-analyzer
   version: 1
   status: active
-  routing_description: "..."
+  summary: "..."
   domain: [AI, technical]
   intent: [analyze, plan]
   task_type: [analysis, planning]
@@ -65,7 +65,7 @@ def export_skill(skill: dict, promoter: SkillPromoter, out_dir: Path) -> Path:
         "tag":                 skill["tag"],
         "version":              skill["version"],
         "status":               skill["status"],
-        "routing_description":  skill["routing_description"],
+        "summary":  skill["summary"],
         "domain":               list(skill["domain"] or []),
         "intent":               list(skill["intent"] or []),
         "task_type":            list(skill["task_type"] or []),
@@ -190,7 +190,7 @@ def cmd_import(args: argparse.Namespace) -> None:
         if existing is None:
             skill = promoter.create(
                 name=meta["name"],
-                routing_description=meta["routing_description"],
+                summary=meta["summary"],
                 steps=steps,
                 tag=tag,
                 domain=meta.get("domain"),
@@ -205,7 +205,7 @@ def cmd_import(args: argparse.Namespace) -> None:
             promoter.update_metadata(
                 tag,
                 name=meta.get("name"),
-                routing_description=meta.get("routing_description"),
+                summary=meta.get("summary"),
                 domain=meta.get("domain"),
                 intent=meta.get("intent"),
                 task_type=meta.get("task_type"),

@@ -1,12 +1,20 @@
 ---
-intent: [evaluate]
-task_type: [data-quality]
-domain: [technical, business]
-primary_stage: evaluate
+Notes: Part of the data-pipeline-audit skill
+Original Link: ''
+Summary: This prompt supports data analysts assessing pipeline health for technical
+  and business stakeholders. The model must generate a formal report evaluating six
+  quality dimensions, listing issues with root causes, and providing a prioritized
+  recommendation scorecard.
 complexity_level: 4
+domain:
+- technical
+- business
+intent:
+- evaluate
+primary_stage: evaluate
 source: public
-Original Link: ""
-Notes: "Part of the data-pipeline-audit skill"
+task_type:
+- data-quality
 ---
 
 # Data Quality Assessment Report

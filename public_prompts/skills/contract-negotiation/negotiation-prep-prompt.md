@@ -1,12 +1,19 @@
 ---
-intent: [prepare]
-task_type: [design]
-domain: [business]
-primary_stage: plan
+Notes: Part of the contract-negotiation skill
+Original Link: ''
+Summary: Designed for negotiators preparing for contract discussions, this prompt
+  leverages BATNA analysis to structure strategy. The model must produce opening positions,
+  concession tactics, scripted responses, and a one-page cheat sheet containing key
+  numbers and walk-away points.
 complexity_level: 3
+domain:
+- business
+intent:
+- prepare
+primary_stage: plan
 source: public
-Original Link: ""
-Notes: "Part of the contract-negotiation skill"
+task_type:
+- design
 ---
 
 Prepare a negotiation strategy and talking points for the following contract discussion:

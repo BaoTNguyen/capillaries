@@ -1,12 +1,22 @@
 ---
-intent: [improve, decide]
-task_type: [analyze, optimize]
-domain: [finance, business]
-primary_stage: plan
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt targets finance leaders seeking to identify savings opportunities
+  for a specific company against industry benchmarks. The model must produce an executive
+  briefing with a prioritization matrix, implementation roadmap, and categorized savings
+  analysis.
 complexity_level: 4
+domain:
+- finance
+- business
+intent:
+- improve
+- decide
+primary_stage: plan
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- analyze
+- optimize
 ---
 
 Identify and prioritize cost reduction opportunities for **{{company_name}}** with a target savings of **${{savings_target}}** over **{{time_horizon}}**.

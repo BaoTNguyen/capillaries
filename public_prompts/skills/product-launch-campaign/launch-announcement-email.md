@@ -1,12 +1,20 @@
 ---
-intent: [create]
-task_type: [email-drafting]
-domain: [marketing, product]
-primary_stage: create
+Notes: Part of the product-launch-campaign skill
+Original Link: ''
+Summary: 'This prompt supports product marketers in drafting launch communications
+  for new products and target audiences. It generates three subject line variations,
+  preview text, and a concise email body focused on benefits and a clear call to action.
+  Required context: [brackets].'
 complexity_level: 3
+domain:
+- marketing
+- product
+intent:
+- create
+primary_stage: create
 source: public
-Original Link: ""
-Notes: "Part of the product-launch-campaign skill"
+task_type:
+- email-drafting
 ---
 
 # Launch Announcement Email

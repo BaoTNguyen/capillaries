@@ -1,12 +1,18 @@
 ---
-intent: [decide]
-task_type: [compare]
-domain: [business]
-primary_stage: plan
+Notes: Part of the contract-negotiation skill
+Original Link: ''
+Summary: This prompt helps procurement teams evaluate vendor proposals against ranked
+  priorities and specific contractual dimensions. The model must output a comparison
+  table, an overall recommendation, negotiation leverage points, and identified deal-breakers.
 complexity_level: 3
+domain:
+- business
+intent:
+- decide
+primary_stage: plan
 source: public
-Original Link: ""
-Notes: "Part of the contract-negotiation skill"
+task_type:
+- compare
 ---
 
 Compare the following vendor proposals side-by-side and produce a structured evaluation:

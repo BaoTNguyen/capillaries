@@ -1,12 +1,20 @@
 ---
-intent: [communicate]
-task_type: [generate]
-domain: [career, business]
-primary_stage: execute
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt assists managers and peers in preparing constructive feedback
+  conversations using the SBI framework. The model generates a structured dialogue
+  plan including opening statements, anticipated pushback responses, and follow-up
+  strategies to ensure empathetic and growth-oriented communication.
 complexity_level: 2
+domain:
+- career
+- business
+intent:
+- communicate
+primary_stage: execute
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- generate
 ---
 
 Help me prepare to deliver feedback in the following situation:

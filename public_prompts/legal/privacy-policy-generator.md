@@ -1,12 +1,20 @@
 ---
-intent: [build]
-task_type: [generate]
-domain: [business, technical]
-primary_stage: execute
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt generates a compliant privacy policy for companies operating
+  in specified jurisdictions with defined data practices. The model must produce a
+  ready-to-publish document covering data collection, usage, rights, and security
+  measures in clear, accessible language.
 complexity_level: 4
+domain:
+- business
+- technical
+intent:
+- build
+primary_stage: execute
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- generate
 ---
 
 Draft a privacy policy for **{{company_name}}**, a **{{company_description}}** that operates in **{{jurisdictions}}**.

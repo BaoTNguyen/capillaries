@@ -1,12 +1,21 @@
 ---
-intent: [validate, prepare]
-task_type: [analyze]
-domain: [business, strategy]
-primary_stage: verify
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt guides supply chain analysts in assessing risks for a specific
+  company across supplier, geopolitical, and logistics dimensions. The model must
+  generate an executive risk report featuring a scoring matrix, critical path analysis,
+  and mitigation strategies.
 complexity_level: 5
+domain:
+- business
+- strategy
+intent:
+- validate
+- prepare
+primary_stage: verify
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- analyze
 ---
 
 Conduct a comprehensive supply chain risk assessment for **{{company_name}}** in the **{{industry}}** industry.

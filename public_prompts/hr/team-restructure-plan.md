@@ -1,12 +1,22 @@
 ---
-intent: [decide, build]
-task_type: [design, analyze]
-domain: [business, strategy]
-primary_stage: plan
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt targets CHROs and CEOs seeking a strategic restructuring proposal
+  for a specific department. The model must generate a comprehensive document detailing
+  rationale, new org charts, role mappings, a 90-day transition plan, risk assessments,
+  communication scripts, and success metrics.
 complexity_level: 5
+domain:
+- business
+- strategy
+intent:
+- decide
+- build
+primary_stage: plan
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- design
+- analyze
 ---
 
 Design a restructuring plan for the **{{department}}** department at **{{company_name}}**.

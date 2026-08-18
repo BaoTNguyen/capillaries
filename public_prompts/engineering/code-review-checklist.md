@@ -1,12 +1,19 @@
 ---
-intent: [validate]
-task_type: [analyze]
-domain: [technical]
-primary_stage: verify
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt guides developers in reviewing pull requests for a specified
+  project against eight technical criteria, including security and performance. The
+  model must generate a structured review with file references, severity ratings,
+  and a final verdict.
 complexity_level: 2
+domain:
+- technical
+intent:
+- validate
+primary_stage: verify
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- analyze
 ---
 
 Perform a thorough code review of the following pull request for the **{{project_name}}** project.

@@ -1,12 +1,19 @@
 ---
-intent: [explore, improve]
-task_type: [analyze]
-domain: [business]
-primary_stage: verify
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt enables HR directors to analyze employee engagement survey data
+  for specific departments and time periods. The model must generate an executive
+  summary, trend analysis, and prioritized action items in a presentation-ready report.
 complexity_level: 3
+domain:
+- business
+intent:
+- explore
+- improve
+primary_stage: verify
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- analyze
 ---
 
 Analyze the results of our employee engagement survey for **{{department}}** at **{{company_name}}** covering **{{survey_period}}**.
