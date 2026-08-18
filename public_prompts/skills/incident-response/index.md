@@ -1,8 +1,8 @@
 ---
 name: Incident Response
-slug: incident-response
+tag: incident-response
 status: active
-routing_description: >
+summary: >
   Handle production incidents from initial triage through resolution and
   postmortem. Includes severity classification, stakeholder communications,
   remediation runbook generation, log timeline analysis, and blameless

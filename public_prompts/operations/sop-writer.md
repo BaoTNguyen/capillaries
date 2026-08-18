@@ -1,12 +1,21 @@
 ---
-intent: [build, automate]
-task_type: [generate]
-domain: [business]
-primary_stage: execute
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt targets process owners and compliance teams needing to formalize
+  operational workflows within specific regulatory or departmental contexts. The model
+  must generate a structured, print-ready Standard Operating Procedure document containing
+  headers, roles, step-by-step instructions with decision branches, and revision history
+  based on provided process details.
 complexity_level: 2
+domain:
+- business
+intent:
+- build
+- automate
+primary_stage: execute
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- generate
 ---
 
 Write a Standard Operating Procedure (SOP) for the **{{process_name}}** process at **{{company_name}}**.

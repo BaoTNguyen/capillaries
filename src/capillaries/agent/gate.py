@@ -5,7 +5,7 @@ Two-stage filter that decides whether a user message warrants a prompt search.
 Stage 1: fast heuristic checks (0ms) — kills obvious skips.
 Stage 2: embedding proximity check (~40ms) — semantic corpus match.
 
-When a MemoryFrame is provided, the gate uses memory signals (topic drift,
+When a MemoryFrame is provided, the gate uses context signals (topic drift,
 cached retrievals, domain alignment, user intent) to modulate its decision.
 The memory project owns all write logic — the gate only reads the frame.
 """
@@ -15,17 +15,17 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from capillaries.agent.memory_types import (  # noqa: F401 — re-export for backward compat
-    Insight,
-    CachedRetrieval,
-    EphemeralMemory,
-    PersistentMemory,
-    EvergreenMemory,
-    MemoryFrame,
-)
+from capillaries.config import QUERY_PREFIX  # one source of truth
 
-QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
+if TYPE_CHECKING:
+    # arteries owns the frame contract. The gate only annotates with these and
+    # reads attributes off whatever it is handed, so nothing here needs the
+    # classes at runtime. This module used to re-export them for api.py; api.py
+    # now imports from arteries directly, at the one call site that constructs.
+    from arteries.memory_types import MemoryFrame
+
 MAX_CHARS = 4_000
 
 # Retrieve only when a message clears BOTH signals: it has a real semantic match
@@ -46,7 +46,20 @@ MAX_CHARS = 4_000
 # since embedding can't tell "how should I do X" from "what did you do about X" —
 # so this is the one genuinely tunable knob; the word/density signals separate
 # cleanly and don't move.
-SIMILARITY_THRESHOLD = float(os.getenv("CAPILLARIES_SIMILARITY_THRESHOLD", "0.47"))
+# Re-fitted for Qwen/Qwen3-Embedding-0.6B. The old 0.47 was hand-tuned against
+# an index that was silently broken, where the "narrow gap" described above was
+# unavoidable: on the 9 labelled cases in tests/test_gate.py the classes did not
+# separate at all (the top-scoring case overall was a should-SKIP at 0.699,
+# while should-RETRIEVE peaked at 0.536). No cut could work, so the constant was
+# doing nothing honest.
+#
+# Under the re-embedded index those 9 cases separate: should-retrieve spans
+# 0.589-0.644, should-skip spans 0.375-0.587. 0.58 sits in that gap.
+#
+# Still only 9 labelled points, so treat this as weakly grounded, not solved.
+# The real replacement is the normalized (z-score / margin) decision layer,
+# which needs the eval set. Do not hand-tune this in the meantime.
+SIMILARITY_THRESHOLD = float(os.getenv("CAPILLARIES_SIMILARITY_THRESHOLD", "0.58"))
 
 # "not too simple / not too complicated" — a word-count band with a second,
 # density-based ceiling. Both ceilings earn their place: HIGH catches long
@@ -57,6 +70,14 @@ SIMILARITY_THRESHOLD = float(os.getenv("CAPILLARIES_SIMILARITY_THRESHOLD", "0.47
 WORD_BAND_LOW = int(os.getenv("CAPILLARIES_WORD_BAND_LOW", "5"))
 WORD_BAND_HIGH = int(os.getenv("CAPILLARIES_WORD_BAND_HIGH", "60"))
 SPECIFICITY_THRESHOLD = float(os.getenv("CAPILLARIES_SPECIFICITY_THRESHOLD", "0.08"))
+
+# Topic drift (from the context frame) signals the conversation moved to ground
+# the active domains don't cover yet. When it's high, relax the similarity bar a
+# little so a real-but-weak match can still open. Strictly additive and bounded:
+# it can only LOWER the bar, never force a search, so the sim>=threshold + band
+# invariant (and the "high drift, no corpus match → skip" rule) still holds.
+DRIFT_HIGH = float(os.getenv("CAPILLARIES_DRIFT_HIGH", "0.6"))
+DRIFT_RELAX = float(os.getenv("CAPILLARIES_DRIFT_RELAX", "0.03"))
 
 _SPEC_TOKEN = re.compile(r"""
       \w+/[\w./-]+                 # a/b/c.py paths
@@ -239,8 +260,8 @@ async def _embedding_proximity(message: str, db_config: dict | None = None) -> t
         conn.close()
 
 
-def _check_memory_frame(memory: MemoryFrame, message: str) -> GateDecision | None:
-    """Memory can only SKIP here, never force a search.
+def _check_context_frame(context: MemoryFrame, message: str) -> GateDecision | None:
+    """Context can only SKIP here, never force a search.
 
     The old topic-drift and stale-context branches forced `search=True` on drift
     alone — which could retrieve for a message with no corpus match at all,
@@ -248,7 +269,7 @@ def _check_memory_frame(memory: MemoryFrame, message: str) -> GateDecision | Non
     gone. The one surviving signal is the cached-retrieval skip: if a recent
     retrieval already covers this situation, don't retrieve again.
     """
-    for cached in memory.persistent.prior_retrievals:
+    for cached in context.persistent.prior_retrievals:
         if cached.relevance > 0.75 and cached.score > 0.7:
             if _situation_overlaps(message.lower(), cached.situation):
                 return GateDecision(
@@ -259,20 +280,38 @@ def _check_memory_frame(memory: MemoryFrame, message: str) -> GateDecision | Non
     return None
 
 
+# Common words carry no topic signal; counting them made short situations
+# collide with anything. Dropped before overlap is measured.
+_OVERLAP_STOPWORDS = frozenset({
+    "the", "and", "for", "with", "that", "this", "you", "your", "are", "was",
+    "how", "what", "why", "when", "should", "would", "could", "can", "get",
+    "use", "using", "from", "into", "about", "have", "has", "not", "but",
+})
+
+
 def _situation_overlaps(message: str, situation: str) -> bool:
-    """Quick lexical overlap check between current message and a cached situation."""
-    msg_words = set(re.findall(r"[a-z]{3,}", message))
-    sit_words = set(re.findall(r"[a-z]{3,}", situation.lower()))
-    if not msg_words or not sit_words:
+    """Is the current message the same situation as a cached retrieval?
+
+    The old overlap-coefficient (`shared / min(len)`) fired on any short cached
+    situation that happened to share a couple of common words. This uses Jaccard
+    over content words (stopwords removed) and requires a real floor of shared
+    terms, so paraphrased repeats still match but incidental vocabulary overlap
+    on unrelated tasks doesn't.
+    """
+    msg = {w for w in re.findall(r"[a-z]{3,}", message) if w not in _OVERLAP_STOPWORDS}
+    sit = {w for w in re.findall(r"[a-z]{3,}", situation.lower()) if w not in _OVERLAP_STOPWORDS}
+    if len(msg) < 2 or len(sit) < 2:
         return False
-    overlap = len(msg_words & sit_words) / min(len(msg_words), len(sit_words))
-    return overlap > 0.5
+    shared = msg & sit
+    if len(shared) < 2:
+        return False
+    return len(shared) / len(msg | sit) >= 0.4
 
 
 async def gate(
     message: str,
     recent_turns: list[str] | None = None,
-    memory: MemoryFrame | None = None,
+    context: MemoryFrame | None = None,
     db_config: dict | None = None,
     threshold: float | None = None,
 ) -> GateDecision:
@@ -282,9 +321,9 @@ async def gate(
     Args:
         message: The current user message.
         recent_turns: Recent conversation messages for followup detection.
-            Ignored when memory.ephemeral.recent_messages is populated.
-        memory: MemoryFrame from the memory project. When provided, the gate
-            uses memory signals (topic drift, cached retrievals, domain
+            Ignored when context.ephemeral.recent_messages is populated.
+        context: MemoryFrame from the memory project. When provided, the gate
+            uses context signals (topic drift, cached retrievals, domain
             alignment) alongside heuristic and embedding checks.
         db_config: Database config override.
         threshold: Similarity threshold override.
@@ -293,32 +332,38 @@ async def gate(
         GateDecision with search (bool), confidence (float), and reason (str).
     """
     turns = recent_turns
-    if memory and memory.ephemeral.recent_messages:
-        turns = memory.ephemeral.recent_messages
+    if context and context.ephemeral.recent_messages:
+        turns = context.ephemeral.recent_messages
 
     heuristic_result = _heuristic_check(message, turns)
     if heuristic_result is not None:
         return heuristic_result
 
-    # Memory-based decision (takes priority over raw embedding proximity)
-    if memory:
-        memory_result = _check_memory_frame(memory, message)
-        if memory_result is not None:
-            return memory_result
+    # Context-based decision (takes priority over raw embedding proximity)
+    if context:
+        context_result = _check_context_frame(context, message)
+        if context_result is not None:
+            return context_result
 
     if threshold is None:
         threshold = SIMILARITY_THRESHOLD
-        # Active domains in persistent memory signal ongoing work — lower the bar
-        if memory and memory.persistent.active_domains:
+        # Active domains in persistent context signal ongoing work — lower the bar
+        if context and context.persistent.active_domains:
             threshold -= 0.05
+        # High topic drift → new territory; relax a touch more (see DRIFT_* above)
+        if context and context.ephemeral.topic_drift >= DRIFT_HIGH:
+            threshold -= DRIFT_RELAX
 
     try:
         max_sim, closest_id = await _embedding_proximity(message, db_config)
     except Exception:
+        # Fail closed. Dense retrieval and the reranker both need this same
+        # embedding endpoint, so if we can't embed to gate, opening the gate only
+        # buys an expensive retrieval that will itself fail. Skip and say why.
         return GateDecision(
-            search=True,
+            search=False,
             confidence=0.5,
-            reason="embedding check failed, defaulting to search",
+            reason="embedding unavailable; skipped (retrieval needs it too)",
         )
 
     decision = _band_decision(

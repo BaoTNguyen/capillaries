@@ -1,12 +1,20 @@
 ---
-intent: [communicate]
-task_type: [generate]
-domain: [finance, business]
-primary_stage: execute
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt targets finance professionals managing vendor billing discrepancies
+  for specific companies and invoices. It generates a formal dispute letter, an internal
+  finance memo, and a follow-up email template using provided dispute details and
+  evidence.
 complexity_level: 1
+domain:
+- finance
+- business
+intent:
+- communicate
+primary_stage: execute
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- generate
 ---
 
 Draft a professional invoice dispute communication for **{{company_name}}** to send to **{{vendor_name}}** regarding invoice **#{{invoice_number}}**.

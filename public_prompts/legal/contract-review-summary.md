@@ -1,12 +1,19 @@
 ---
-intent: [validate]
-task_type: [analyze]
-domain: [business]
-primary_stage: verify
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt reviews a contract to produce a structured summary for non-legal
+  stakeholders. The model must outline parties, scope, financial terms, duration,
+  liability, termination triggers, and red flags, ending with recommended actions
+  in clear, non-legal language.
 complexity_level: 3
+domain:
+- business
+intent:
+- validate
+primary_stage: verify
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- analyze
 ---
 
 Review the following contract and produce a structured summary for non-legal stakeholders.

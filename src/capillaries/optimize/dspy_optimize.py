@@ -5,17 +5,49 @@ from __future__ import annotations
 import hashlib
 import uuid
 
+import dspy
 import psycopg2
 import psycopg2.extras
 
 from capillaries.config.paths import DB_CONFIG
 from capillaries.optimize.capture import ExampleCapture, _resolve_prompt_id
 from capillaries.optimize.fences import assert_fences_unchanged
-from capillaries.optimize.metrics import get_metric
+from capillaries.optimize.metrics import MIN_IMPROVEMENT, get_metric
 
 
 def _content_hash(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()[:16]
+
+
+def _build_lm(model: str, api_base: str | None = None, api_key: str | None = None) -> dspy.LM:
+    """`model` alone resolves through litellm's hosted-provider lookup (Anthropic,
+    OpenAI, ...) via env-var API keys. Any local server (llama.cpp, vLLM, ...)
+    needs an explicit `api_base` — there's no default, and no name-sniffing
+    (e.g. "contains qwen"): which model is actually listening on a given
+    endpoint is a runtime fact, not something to guess from a CLI string.
+    """
+    if api_base:
+        return dspy.LM(f"openai/{model}", api_base=api_base, api_key=api_key or "local")
+    return dspy.LM(model)
+
+
+def _embed_document_sync(title: str | None, text: str) -> list[float] | None:
+    """Recompute a prompt's document embedding the way ingest does (db/embed.py):
+    title prepended, acronyms expanded, no query prefix. Best-effort — returns
+    None if the embedding server is unreachable, so a canonical text change still
+    lands (with a refreshed search_tsv) even when the embedder is down."""
+    try:
+        import httpx
+        from capillaries.config import EMBED_URL, EMBED_MODEL
+        from capillaries.search.retriever import expand_acronyms
+        body = f"{title}\n\n{text}" if title else text
+        r = httpx.post(EMBED_URL,
+                       json={"input": expand_acronyms(body)[:4000], "model": EMBED_MODEL},
+                       timeout=60.0)
+        r.raise_for_status()
+        return r.json()["data"][0]["embedding"]
+    except Exception:
+        return None
 
 
 class PromptOptimizer:
@@ -34,11 +66,11 @@ class PromptOptimizer:
         min_examples: int = 5,
         force: bool = False,
         dry_run: bool = False,
+        api_base: str | None = None,
+        api_key: str | None = None,
         **metric_kwargs,
     ) -> dict:
         """Run DSPy optimization on a prompt for a given model."""
-        import dspy
-
         prompt_id, prompt_text = self._get_prompt(prompt_title)
 
         examples = self._load_examples(prompt_id)
@@ -71,7 +103,7 @@ class PromptOptimizer:
             for ex in examples
         ]
 
-        lm = dspy.LM(model)
+        lm = _build_lm(model, api_base=api_base, api_key=api_key)
         dspy.configure(lm=lm)
 
         module = PromptExecutor()
@@ -101,7 +133,7 @@ class PromptOptimizer:
             result["status"] = "dry_run"
             return result
 
-        if optimized_score <= baseline_score:
+        if optimized_score < baseline_score + MIN_IMPROVEMENT:
             self._log_run_complete(run_id, baseline_score, optimized_score, "no_improvement")
             result["status"] = "no_improvement"
             return result
@@ -121,9 +153,14 @@ class PromptOptimizer:
             result["error"] = f"fence violation: {e}"
             return result
 
+        # Write the model-specific variant ONLY. Do not touch the canonical:
+        # this optimization was tuned for `model`, and resolve.py serves it to
+        # that model at runtime. Overwriting prompts.prompt_text would leak one
+        # model's rewrite to every other model (they fall back to canonical) and
+        # to the retrieval embeddings — the whole reason prompt_variants exists.
+        # The model-agnostic canonical promotion path is ab_gate (promote.py).
         self._write_variant(prompt_id, model, optimized_text,
                             optimizer, run_id, optimized_score, prompt_text)
-        self._update_canonical(prompt_id, optimized_text, prompt_text)
         self._log_run_complete(run_id, baseline_score, optimized_score, "completed")
 
         result["status"] = "completed"
@@ -219,7 +256,7 @@ class PromptOptimizer:
         for ex in examples:
             try:
                 pred = module(input_text=ex.input_text, prompt_template=ex.prompt_template)
-                score = metric_fn(pred, ex)
+                score = metric_fn(ex, pred)
                 scores.append(float(score))
             except Exception:
                 scores.append(0.0)
@@ -283,13 +320,41 @@ class PromptOptimizer:
         if original_text is not None:
             assert_fences_unchanged(original_text, text)
         content_hash = _content_hash(text)
+        from capillaries.search.retriever import expand_acronyms
         with psycopg2.connect(**self._db_config) as conn:
             with conn.cursor() as cur:
+                cur.execute("SELECT title FROM prompts WHERE prompt_id = %s", (prompt_id,))
+                row = cur.fetchone()
+                title = row[0] if row else ""
+                # Rewrite prompt_text AND rebuild search_tsv in one statement,
+                # mirroring ingest (obsidian_sync/ingest.py) exactly — a stale
+                # tsv would keep sparse search matching the OLD text. intent/
+                # task_type/domain are read from the row's own columns.
                 cur.execute("""
                     UPDATE prompts
-                    SET prompt_text = %s, content_hash = %s, last_updated = CURRENT_TIMESTAMP
+                    SET prompt_text = %s,
+                        content_hash = %s,
+                        last_updated = CURRENT_TIMESTAMP,
+                        search_tsv =
+                            setweight(to_tsvector('english', %s), 'A') ||
+                            to_tsvector('english',
+                                %s || ' ' ||
+                                COALESCE(array_to_string(intent, ' '), '') || ' ' ||
+                                COALESCE(array_to_string(task_type, ' '), '') || ' ' ||
+                                COALESCE(array_to_string(domain, ' '), ''))
                     WHERE prompt_id = %s
-                """, (text, content_hash, prompt_id))
+                """, (text, content_hash, expand_acronyms(title),
+                      expand_acronyms(text), prompt_id))
+                # Dense embedding must follow the text too, or retrieval matches
+                # the old vector. Best-effort: if the embedder is down, the text +
+                # tsv still land; a later `db.embed --reembed` closes the gap.
+                vec = _embed_document_sync(title, text)
+                if vec is not None:
+                    from capillaries.config import EMBED_MODEL
+                    cur.execute(
+                        "UPDATE prompts SET embedding = %s::vector, embedding_version = %s "
+                        "WHERE prompt_id = %s",
+                        (vec, EMBED_MODEL, prompt_id))
                 conn.commit()
 
     def _log_run_start(self, run_id, prompt_id, model, optimizer,
@@ -318,15 +383,12 @@ class PromptOptimizer:
                 conn.commit()
 
 
-class PromptExecutor:
+class PromptExecutor(dspy.Module):
     """DSPy module wrapping prompt execution."""
 
     def __init__(self):
-        import dspy
+        super().__init__()
         self.generate = dspy.Predict("input_text, prompt_template -> output_text")
 
-    def __call__(self, input_text: str, prompt_template: str):
+    def forward(self, input_text: str, prompt_template: str):
         return self.generate(input_text=input_text, prompt_template=prompt_template)
-
-    def predictors(self):
-        return [self.generate]

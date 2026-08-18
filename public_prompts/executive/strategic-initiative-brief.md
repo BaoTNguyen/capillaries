@@ -1,12 +1,20 @@
 ---
-intent: [decide]
-task_type: [design]
-domain: [strategy, business]
-primary_stage: plan
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt generates an executive-ready strategic initiative brief for proposals
+  requiring investment and resource allocation. The model must produce a structured
+  document including strategic context, opportunity sizing, risk analysis, and success
+  metrics, formatted with clear headers and a concise elevator pitch.
 complexity_level: 5
+domain:
+- strategy
+- business
+intent:
+- decide
+primary_stage: plan
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- design
 ---
 
 Create a strategic initiative brief for the following proposal:

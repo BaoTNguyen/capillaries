@@ -11,7 +11,7 @@ Usage:
 """
 
 import psycopg2
-from capillaries.config.paths import DB_CONFIG
+from capillaries.config.paths import DB_CONFIG, EMBED_DIM
 
 
 def create_skills_schema(cursor) -> None:
@@ -19,18 +19,19 @@ def create_skills_schema(cursor) -> None:
 
 
 def create_skills_table(cursor) -> None:
+    # .replace() rather than an f-string: the DDL uses `'{}'` array defaults.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS skills.skills (
             skill_id    UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
 
             -- Identity
             name        VARCHAR NOT NULL,
-            slug        VARCHAR UNIQUE NOT NULL,  -- stable key across versions
+            tag        VARCHAR UNIQUE NOT NULL,  -- stable key across versions
                                                   -- e.g. 'gtm-strategy-builder'
 
             -- What this skill does, in one line.
             -- Used by the orchestrator to match a request to a skill.
-            routing_description TEXT NOT NULL,
+            summary TEXT NOT NULL,
 
             -- The ordered prompts that make up this skill.
             -- [{prompt_id, stage, step_order, rationale, pinned_hash}]
@@ -44,11 +45,16 @@ def create_skills_table(cursor) -> None:
             domain          VARCHAR[] DEFAULT '{}',
             intent          VARCHAR[] DEFAULT '{}',
             task_type       VARCHAR[] DEFAULT '{}',
-            complexity_level INTEGER CHECK (complexity_level BETWEEN 1 AND 5),
 
             -- Versioning
             version         INTEGER NOT NULL DEFAULT 1,
             changelog       TEXT,
+
+            -- Change tracking, same shape as prompts.content_hash /
+            -- last_updated: automatic, set on every write, independent of
+            -- `version` (a counter) and `last_evaluated` (a human signal).
+            content_hash    VARCHAR,
+            last_updated    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
             -- Quality (updated by aggregating skill_runs)
             success_rate    FLOAT,
@@ -59,15 +65,46 @@ def create_skills_table(cursor) -> None:
             status      VARCHAR NOT NULL DEFAULT 'draft'
                         CHECK (status IN ('draft', 'active', 'inactive')),
 
+            -- Human review signal, mirrors prompts.last_evaluated: when
+            -- someone last confirmed this skill still works, independent of
+            -- `version` (which only counts re-promotions, not review events).
+            last_evaluated DATE,
+
+            -- Freeform notes, same as prompts.notes
+            notes       TEXT,
+
             created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             created_by  VARCHAR DEFAULT 'manual',  -- 'manual' | 'orchestrator'
 
-            -- Semantic search on routing_description (snowflake-arctic-embed-m-v2.0, 768-dim)
-            routing_embedding VECTOR(768),
+            -- Data source, same convention as prompts.source
+            source      VARCHAR DEFAULT 'private',  -- 'private' | 'public'
 
-            UNIQUE (slug, version)
+            -- Semantic search on summary; width from EMBED_DIM,
+            -- same convention as prompts.embedding / embedding_version
+            routing_embedding VECTOR(EMBED_DIM),
+            embedding_version VARCHAR,
+
+            -- Lexical search, same shape as prompts.search_tsv: name (A) +
+            -- summary (B) + taxonomy (unweighted). Kept up to date by
+            -- SkillPromoter on every write, not a trigger — mirrors how
+            -- obsidian_sync/ingest.py computes prompts.search_tsv inline.
+            search_tsv  TSVECTOR,
+
+            UNIQUE (tag, version)
         );
-    """)
+    """.replace("VECTOR(EMBED_DIM)", f"VECTOR({EMBED_DIM})"))
+    # Table may already exist from before these columns were added.
+    for stmt in [
+        "ALTER TABLE skills.skills ADD COLUMN IF NOT EXISTS last_evaluated DATE;",
+        "ALTER TABLE skills.skills ADD COLUMN IF NOT EXISTS content_hash VARCHAR;",
+        "ALTER TABLE skills.skills ADD COLUMN IF NOT EXISTS last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP;",
+        "ALTER TABLE skills.skills ADD COLUMN IF NOT EXISTS source VARCHAR DEFAULT 'private';",
+        "ALTER TABLE skills.skills ADD COLUMN IF NOT EXISTS embedding_version VARCHAR;",
+        "ALTER TABLE skills.skills ADD COLUMN IF NOT EXISTS notes TEXT;",
+        "ALTER TABLE skills.skills ADD COLUMN IF NOT EXISTS search_tsv TSVECTOR;",
+    ]:
+        cursor.execute(stmt)
+    cursor.execute("ALTER TABLE skills.skills DROP COLUMN IF EXISTS complexity_level;")
 
 
 def create_skill_runs_table(cursor) -> None:
@@ -209,9 +246,9 @@ def create_materialized_views(cursor) -> None:
 
 def create_indexes(cursor) -> None:
     indexes = [
-        # Active skill lookup by slug — the most common query pattern
-        """CREATE INDEX IF NOT EXISTS idx_skills_slug_active
-           ON skills.skills (slug, version DESC)
+        # Active skill lookup by tag — the most common query pattern
+        """CREATE INDEX IF NOT EXISTS idx_skills_tag_active
+           ON skills.skills (tag, version DESC)
            WHERE status = 'active';""",
 
         # Taxonomy filtering for routing
@@ -220,11 +257,12 @@ def create_indexes(cursor) -> None:
         "CREATE INDEX IF NOT EXISTS idx_skills_task_type ON skills.skills USING GIN (task_type);",
         "CREATE INDEX IF NOT EXISTS idx_skills_status    ON skills.skills (status);",
 
-        # Full-text search on routing descriptions
-        """CREATE INDEX IF NOT EXISTS idx_skills_routing_fts
-           ON skills.skills USING GIN (to_tsvector('english', routing_description));""",
+        # Full-text search on the materialized search_tsv (name + summary +
+        # taxonomy), same shape as idx_prompts_search_tsv.
+        """CREATE INDEX IF NOT EXISTS idx_skills_search_tsv
+           ON skills.skills USING GIN (search_tsv);""",
 
-        # Semantic search on routing_description embedding
+        # Semantic search on summary embedding
         """CREATE INDEX IF NOT EXISTS idx_skills_routing_embedding
            ON skills.skills USING hnsw (routing_embedding vector_cosine_ops)
            WITH (m = 16, ef_construction = 64);""",
@@ -235,6 +273,9 @@ def create_indexes(cursor) -> None:
     ]
     for sql in indexes:
         cursor.execute(sql)
+    # Superseded by idx_skills_search_tsv (materialized column instead of an
+    # on-the-fly to_tsvector() expression index).
+    cursor.execute("DROP INDEX IF EXISTS skills.idx_skills_routing_fts;")
 
 
 def main() -> None:

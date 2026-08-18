@@ -1,12 +1,23 @@
 ---
-intent: [build]
-task_type: [generate]
-domain: [technical]
-primary_stage: execute
+Notes: Part of the incident-response skill
+Original Link: ''
+Summary: 'This prompt generates step-by-step remediation runbooks for technical incidents
+  in environments like AWS, GCP, or Kubernetes. The model produces a structured document
+  containing pre-flight checks, diagnostic commands, remediation steps with rollback
+  procedures, and verification checklists for incident responders. Required context:
+  [ ], [Action name], [exact command to run, with placeholders], [what you should
+  see if this is/isn''t the issue], [what to do instead], [exact command], [how to
+  undo this step if it makes things worse], [how to confirm this step worked], [any
+  risk associated with this step].'
 complexity_level: 3
+domain:
+- technical
+intent:
+- build
+primary_stage: execute
 source: public
-Original Link: ""
-Notes: "Part of the incident-response skill"
+task_type:
+- generate
 ---
 
 Generate a step-by-step remediation runbook for the following incident:

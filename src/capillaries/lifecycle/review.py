@@ -68,7 +68,7 @@ def review_inactive_skills(db_config: dict | None = None) -> list[dict]:
             cur.execute("""
                 SELECT
                     s.name,
-                    s.slug,
+                    s.tag,
                     s.status,
                     s.last_run_at,
                     s.total_runs,

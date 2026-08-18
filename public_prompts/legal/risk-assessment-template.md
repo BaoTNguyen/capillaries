@@ -1,12 +1,19 @@
 ---
-intent: [decide]
-task_type: [evaluate]
-domain: [business]
-primary_stage: clarify
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt guides legal and regulatory teams in assessing business initiatives
+  across regulatory, contractual, data, employment, and reputational domains. The
+  model must generate a structured risk register with likelihood and impact scores,
+  followed by a go/no-go recommendation and counsel involvement strategy.
 complexity_level: 3
+domain:
+- business
+intent:
+- decide
+primary_stage: clarify
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- analyze
 ---
 
 Conduct a legal and regulatory risk assessment for the following business initiative:

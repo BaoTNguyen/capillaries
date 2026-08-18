@@ -1,12 +1,21 @@
 ---
-intent: [reflect, improve]
-task_type: [synthesize]
-domain: [technical, business]
-primary_stage: reflect
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt facilitates a sprint retrospective for a specified team by analyzing
+  provided metrics, goals, and feedback items. The model must generate a structured
+  document containing a summary, wins, challenges with root causes, actionable items,
+  and a team health check rating.
 complexity_level: 2
+domain:
+- technical
+- business
+intent:
+- reflect
+- improve
+primary_stage: reflect
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- synthesize
 ---
 
 Facilitate and document a sprint retrospective for the **{{team_name}}** team covering **{{sprint_name}}** ({{sprint_dates}}).

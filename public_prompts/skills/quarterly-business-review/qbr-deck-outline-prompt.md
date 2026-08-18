@@ -1,12 +1,25 @@
 ---
-intent: [build]
-task_type: [design]
-domain: [business, strategy]
-primary_stage: plan
+Notes: Part of the quarterly-business-review skill
+Original Link: ''
+Summary: 'This prompt generates a slide-by-slide Quarterly Business Review outline
+  for executive audiences within a specified time slot. The model produces a structured
+  deck including financial performance, operational highlights, and risks, with key
+  messages, data requirements, and speaker notes for each slide. Required context:
+  [Specify which metrics to show, chart types, comparison periods], [Key wins, milestones,
+  customer stories], [Shipped features, roadmap progress, technical milestones], [Market
+  shifts, competitor moves, our positioning], [Top 3-5 risks with mitigation status],
+  [3-5 priorities with owners and success metrics], [Specific decisions needed, resources
+  requested, guidance sought].'
 complexity_level: 3
+domain:
+- business
+- strategy
+intent:
+- build
+primary_stage: plan
 source: public
-Original Link: ""
-Notes: "Part of the quarterly-business-review skill"
+task_type:
+- design
 ---
 
 Generate a structured QBR presentation outline for **{{company_or_team}}** for **{{quarter}}**.

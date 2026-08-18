@@ -7,6 +7,11 @@ name = "capillaries"
 version = "0.1.0"
 description = "Prompt search and management system with semantic retrieval"
 requires-python = ">=3.10"
+# arteries is required but undeclared: it isn't on PyPI, so declaring it would
+# resolve to a stranger's package. Install the sibling first:
+#   pip install -e ../arteries && pip install -e .
+# Only `arteries.memory_types` is imported — stdlib dataclasses defining the
+# MemoryFrame contract, with no psycopg2 or DB access on that path.
 dependencies = [
     "psycopg2-binary>=2.9.0",
     "python-frontmatter>=1.0.0",
@@ -23,6 +28,7 @@ dependencies = [
     "fastapi>=0.100.0",
     "uvicorn>=0.23.0",
     "mcp>=1.0.0",
+    "dspy-ai>=2.5.0",
 ]
 
 [project.optional-dependencies]

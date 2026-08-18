@@ -1,12 +1,19 @@
 ---
-intent: [build]
-task_type: [generate]
-domain: [business]
-primary_stage: execute
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt targets legal drafters or product managers creating Terms of
+  Service for a specific software product. The model must generate a structured, plain-language
+  document with numbered sections covering acceptance, IP, liability, and dispute
+  resolution, bolding key obligations.
 complexity_level: 4
+domain:
+- business
+intent:
+- build
+primary_stage: execute
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- generate
 ---
 
 Draft Terms of Service for **{{product_name}}**, a **{{product_type}}** operated by **{{company_name}}**.

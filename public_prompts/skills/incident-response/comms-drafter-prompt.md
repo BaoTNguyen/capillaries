@@ -1,12 +1,20 @@
 ---
-intent: [communicate]
-task_type: [generate]
-domain: [technical, business]
-primary_stage: execute
+Notes: Part of the incident-response skill
+Original Link: ''
+Summary: 'This prompt assists incident responders in drafting communications for engineering
+  teams, customers, executives, and support staff during an outage. The model must
+  produce tailored messages with specific tones and include a follow-up template with
+  real-time placeholders. Required context: [FILL: description].'
 complexity_level: 2
+domain:
+- technical
+- business
+intent:
+- communicate
+primary_stage: execute
 source: public
-Original Link: ""
-Notes: "Part of the incident-response skill"
+task_type:
+- generate
 ---
 
 Draft incident communications for multiple audiences:

@@ -1,12 +1,24 @@
 ---
-intent: [improve]
-task_type: [generate]
-domain: [business]
-primary_stage: execute
+Notes: Part of the contract-negotiation skill
+Original Link: ''
+Summary: 'Legal professionals use this prompt to generate negotiation strategies for
+  risky contract clauses based on specific industry context and leverage. The model
+  must provide tracked-change markup, rationale, fallback positions, and a prioritized
+  negotiation package including walk-away lines for each flagged clause. Required
+  context: [Original clause text or reference], [Quote the problematic text], [One
+  sentence on why this is problematic], [Rewritten clause with tracked-change-style
+  markup: ~~deleted text~~ and **added text**], [Why they should accept this — frame
+  it as mutual benefit, not just our demand], [If they reject the primary redline,
+  what''s the minimum acceptable alternative?].'
 complexity_level: 3
+domain:
+- business
+intent:
+- improve
+primary_stage: execute
 source: public
-Original Link: ""
-Notes: "Part of the contract-negotiation skill"
+task_type:
+- generate
 ---
 
 Generate specific redline suggestions for the following contract clauses that were flagged as risky:

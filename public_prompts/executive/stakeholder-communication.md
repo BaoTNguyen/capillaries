@@ -1,12 +1,19 @@
 ---
-intent: [communicate]
-task_type: [generate]
-domain: [business]
-primary_stage: execute
+Notes: Part of the public showcase collection
+Original Link: ''
+Summary: This prompt drafts concise stakeholder communications tailored to specific
+  audiences, tones, and key messages while avoiding corporate jargon. The model must
+  produce a ready-to-send email or message that opens with the core news, addresses
+  concerns, and outlines concrete next steps.
 complexity_level: 3
+domain:
+- business
+intent:
+- communicate
+primary_stage: execute
 source: public
-Original Link: ""
-Notes: "Part of the public showcase collection"
+task_type:
+- generate
 ---
 
 Draft a stakeholder communication for the following situation:

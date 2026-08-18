@@ -23,7 +23,7 @@ FRONTEND_PUBLIC = PROJECT_ROOT / "demo" / "frontend" / "public"
 SKILLS_DIR = PUBLIC_DIR / "skills"
 
 VALID_INTENTS = {"adapt", "automate", "build", "communicate", "decide", "explore", "improve", "learn", "prepare", "reflect", "validate"}
-VALID_TASK_TYPES = {"analyze", "compare", "debug", "evaluate", "model", "optimize", "design", "generate", "synthesize", "explain"}
+VALID_TASK_TYPES = {"analyze", "compare", "debug", "model", "optimize", "design", "generate", "synthesize", "explain"}
 VALID_DOMAINS = {"AI", "business", "career", "finance", "learning", "personal", "product", "strategy", "writing", "technical"}
 
 
@@ -56,12 +56,6 @@ def parse_prompt_file(path: Path) -> dict | None:
         domain = [domain]
     domain = [d for d in domain if d.lower() in {v.lower() for v in VALID_DOMAINS}]
 
-    complexity = meta.get("complexity_level")
-    if isinstance(complexity, int) and 1 <= complexity <= 5:
-        pass
-    else:
-        complexity = None
-
     return {
         "id": prompt_id,
         "title": prompt_id.replace("-", " ").title(),
@@ -69,7 +63,6 @@ def parse_prompt_file(path: Path) -> dict | None:
         "intent": intent,
         "task_type": task_type,
         "domain": domain,
-        "complexity_level": complexity,
         "source": "public",
         "file_path": str(path),
         "content_hash": hashlib.sha256(text.encode()).hexdigest()[:16],
@@ -189,24 +182,28 @@ def collect_skills() -> list[dict]:
         domain = meta.get("domain", [])
         if isinstance(domain, str):
             domain = [domain]
+        domain = [d for d in domain if d in VALID_DOMAINS]
+
         intent = meta.get("intent", [])
         if isinstance(intent, str):
             intent = [intent]
+        intent = [i.lower() for i in intent if i.lower() in VALID_INTENTS]
+
         task_type = meta.get("task_type", [])
         if isinstance(task_type, str):
             task_type = [task_type]
+        task_type = [t.lower() for t in task_type if t.lower() in VALID_TASK_TYPES]
 
         skill = {
-            "slug": meta.get("slug", skill_dir.name),
+            "tag": meta.get("tag", skill_dir.name),
             "name": meta.get("name", skill_dir.name.replace("-", " ").title()),
-            "routing_description": meta.get("routing_description", ""),
+            "summary": meta.get("summary", ""),
             "overview": overview.strip(),
             "when_to_use": when_to_use.strip(),
             "how_to_use": how_to_use.strip(),
             "domain": domain,
             "intent": intent,
             "task_type": task_type,
-            "complexity_level": meta.get("complexity_level"),
             "status": meta.get("status", "active"),
             "files": files,
         }
@@ -242,76 +239,142 @@ def insert_db(prompts, skills):
     conn = psycopg2.connect(**DB_CONFIG)
     cur = conn.cursor()
 
-    cur.execute("DELETE FROM prompts WHERE source = 'public'")
-    deleted = cur.rowcount
-    if deleted:
-        print(f"Cleared {deleted} existing public prompts")
+    # No up-front DELETE. Clearing and re-inserting regenerates every
+    # prompt_id, which breaks serving_log rows, golden_examples and any
+    # skills.steps written by an earlier run. Prompts are upserted on `title`
+    # below — the same natural key the vault ingest uses — and anything no
+    # longer present in the source is pruned at the end, by title.
+    seen_titles: list[str] = []
 
     for p in prompts:
+        # `title`, not `prompt_id`: the schema made prompt_id a UUID with a
+        # generated default and title the NOT NULL UNIQUE natural key. The tag
+        # is the natural key here, so it belongs in title.
         cur.execute("""
-            INSERT INTO prompts (prompt_id, file_path, prompt_text, intent, task_type, domain,
-                                 complexity_level, source, content_hash, status)
+            INSERT INTO prompts (title, tag, file_path, prompt_text, intent, task_type, domain,
+                                 source, content_hash, status)
             VALUES (%s, %s, %s, %s, %s, %s, %s, 'public', %s, 'active')
-            ON CONFLICT (prompt_id) DO UPDATE SET
+            ON CONFLICT (title) DO UPDATE SET
                 prompt_text = EXCLUDED.prompt_text,
                 intent = EXCLUDED.intent,
                 task_type = EXCLUDED.task_type,
                 domain = EXCLUDED.domain,
-                complexity_level = EXCLUDED.complexity_level,
                 source = 'public',
-                content_hash = EXCLUDED.content_hash
+                content_hash = EXCLUDED.content_hash,
+                tag = COALESCE(prompts.tag, EXCLUDED.tag)
         """, (
-            p["id"], p["file_path"], p["prompt_text"],
+            # Department prompt filenames are already kebab-case (path.stem),
+            # so title itself is tag-shaped — no separate slugify needed.
+            p["id"], p["id"], p["file_path"], p["prompt_text"],
             p["intent"], p["task_type"], p["domain"],
-            p["complexity_level"], p["content_hash"],
+            p["content_hash"],
         ))
 
-    print(f"Inserted {len(prompts)} prompts into DB")
+    seen_titles.extend(p["id"] for p in prompts)
+    print(f"Upserted {len(prompts)} department prompts")
+
+    import json
+    import uuid
 
     for skill in skills:
-        import uuid
-        skill_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"skill:{skill['slug']}"))
-
-        cur.execute("DELETE FROM skills.skills WHERE skill_id = %s", (skill_id,))
-
-        cur.execute("""
-            INSERT INTO skills.skills (skill_id, name, slug, routing_description, domain, intent,
-                                       task_type, complexity_level, version, status, steps)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 1, 'active', '[]'::jsonb)
-        """, (
-            skill_id, skill["name"], skill["slug"], skill["routing_description"],
-            skill["domain"], skill["intent"], skill["task_type"],
-            skill["complexity_level"],
-        ))
-
+        # Steps are wired exactly like prompts: `title` is the natural key, the
+        # row is upserted rather than deleted, and the real generated UUID comes
+        # back via RETURNING. The previous version stored the filename stem in
+        # `steps[].prompt_id`, which is not a UUID and joins to nothing — that
+        # is how the hand-authored skill ended up with three dead references.
         steps_json = []
         step_order = 0
         for f in skill["files"]:
-            if f["type"] == "prompt":
-                prompt_id = f["path"].replace(".md", "").replace("-prompt", "")
-                cur.execute("SELECT title FROM prompts WHERE title = %s", (prompt_id,))
-                if not cur.fetchone():
-                    cur.execute("""
-                        INSERT INTO prompts (title, file_path, prompt_text, source, content_hash, status)
-                        VALUES (%s, %s, %s, 'public', %s, 'active')
-                        ON CONFLICT (title) DO NOTHING
-                    """, (prompt_id, f["path"], f["content"], hashlib.sha256(f["content"].encode()).hexdigest()[:16]))
+            if f["type"] != "prompt" or not f["path"].endswith(".md"):
+                continue
 
-                step_order += 1
-                steps_json.append({
-                    "prompt_id": prompt_id,
-                    "step_order": step_order,
-                })
+            # Title convention matches the department prompts: the file stem
+            # with the redundant `-prompt` suffix removed.
+            title = f["path"][:-3]
+            if title.endswith("-prompt"):
+                title = title[: -len("-prompt")]
+            content_hash = hashlib.sha256(f["content"].encode()).hexdigest()[:16]
 
-        if steps_json:
-            import json
-            cur.execute(
-                "UPDATE skills.skills SET steps = %s WHERE skill_id = %s",
-                (json.dumps(steps_json), skill_id),
-            )
+            cur.execute("""
+                INSERT INTO prompts (title, tag, file_path, prompt_text, domain, intent,
+                                     task_type, source, content_hash, status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, 'public', %s, 'active')
+                ON CONFLICT (title) DO UPDATE SET
+                    file_path        = EXCLUDED.file_path,
+                    prompt_text      = EXCLUDED.prompt_text,
+                    domain           = EXCLUDED.domain,
+                    intent           = EXCLUDED.intent,
+                    task_type        = EXCLUDED.task_type,
+                    source           = 'public',
+                    content_hash     = EXCLUDED.content_hash,
+                    last_updated     = CURRENT_TIMESTAMP,
+                    tag              = COALESCE(prompts.tag, EXCLUDED.tag)
+                RETURNING prompt_id::text
+            """, (
+                title, title, f"public_prompts/skills/{skill['tag']}/{f['path']}",
+                f["content"], skill["domain"], skill["intent"], skill["task_type"],
+                content_hash,
+            ))
+            prompt_id = cur.fetchone()[0]
+            seen_titles.append(title)
+
+            step_order += 1
+            steps_json.append({
+                "prompt_id":   prompt_id,          # a real UUID, joinable to prompts
+                "step_order":  step_order,
+                "rationale":   f.get("description") or None,
+                "pinned_hash": content_hash,       # content at wiring time
+            })
+
+        # Upsert on tag rather than DELETE + INSERT: skills.skill_sessions has
+        # a foreign key onto skills.skills, so deleting a skill that has ever
+        # been run raises ForeignKeyViolation.
+        cur.execute("""
+            INSERT INTO skills.skills (skill_id, name, tag, summary, domain,
+                                       intent, task_type, version, status, steps,
+                                       content_hash, source, search_tsv)
+            VALUES (%(skill_id)s, %(name)s, %(tag)s, %(summary)s, %(domain)s,
+                    %(intent)s, %(task_type)s, 1, 'active', %(steps)s::jsonb,
+                    %(content_hash)s, 'public',
+                    setweight(to_tsvector('english', %(name)s), 'A') ||
+                    setweight(to_tsvector('english', %(summary)s), 'B') ||
+                    to_tsvector('english',
+                        COALESCE(array_to_string(%(domain)s::varchar[], ' '), '') || ' ' ||
+                        COALESCE(array_to_string(%(intent)s::varchar[], ' '), '') || ' ' ||
+                        COALESCE(array_to_string(%(task_type)s::varchar[], ' '), '')
+                    ))
+            ON CONFLICT (tag) DO UPDATE SET
+                name                = EXCLUDED.name,
+                summary = EXCLUDED.summary,
+                domain              = EXCLUDED.domain,
+                intent              = EXCLUDED.intent,
+                task_type           = EXCLUDED.task_type,
+                steps               = EXCLUDED.steps,
+                content_hash        = EXCLUDED.content_hash,
+                source              = 'public',
+                search_tsv          = EXCLUDED.search_tsv,
+                last_updated        = CURRENT_TIMESTAMP,
+                version             = skills.skills.version + 1
+        """, {
+            "skill_id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"skill:{skill['tag']}")),
+            "name": skill["name"], "tag": skill["tag"], "summary": skill["summary"],
+            "domain": skill["domain"], "intent": skill["intent"], "task_type": skill["task_type"],
+            "steps": json.dumps(steps_json),
+            "content_hash": hashlib.sha256(
+                (skill["summary"] + json.dumps(steps_json, sort_keys=True)).encode()
+            ).hexdigest()[:16],
+        })
+        print(f"  {skill['tag']:28} {len(steps_json)} steps")
+
+    # Prune public prompts that vanished from the source tree. Scoped to
+    # source='public' so vault-owned rows are never touched.
+    cur.execute("DELETE FROM prompts WHERE source = 'public' AND NOT (title = ANY(%s))",
+                (seen_titles,))
+    if cur.rowcount:
+        print(f"Pruned {cur.rowcount} public prompts no longer in the source tree")
 
     conn.commit()
-    print(f"Inserted {len(skills)} skills into DB")
+    print(f"Upserted {len(skills)} skills")
     cur.close()
     conn.close()
 

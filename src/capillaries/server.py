@@ -80,7 +80,6 @@ class SearchRequest(BaseModel):
         description=(
             "Optional metadata filters. Supported keys: "
             "domain (list[str]), intent (list[str]), task_type (list[str]), "
-            "complexity_min (int), complexity_max (int), "
             "status (str, default 'active')"
         ),
         examples=[{"domain": ["business"]}],
@@ -171,7 +170,6 @@ async def get_prompt(title: str):
         cur.execute(
             """
             SELECT title, prompt_text, intent, task_type, domain,
-                   complexity_level,
                    status, notes, original_link,
                    last_evaluated, last_updated, embedding_version
             FROM prompts

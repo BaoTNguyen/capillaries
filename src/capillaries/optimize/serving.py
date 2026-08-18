@@ -2,9 +2,12 @@
 Serving log: records what was served for a query, plus the top-k candidates
 the ranker considered but didn't necessarily serve.
 
-Prerequisite for harvest.py's ranking signal (STACK_READINESS §5.1) — without
-the candidates that *weren't* served, the optimizer can't learn ranking, only
-"was the served thing good".
+Prerequisite for any ranking signal (STACK_READINESS §5.1) — without the
+candidates that *weren't* served, an optimizer can't learn ranking, only "was
+the served thing good". harvest.py used to be the consumer; it was deleted for
+using the served prompt as its golden output, and nothing has replaced it yet.
+The log is still worth keeping: it is the record a future consumer needs, and
+it cannot be reconstructed after the fact.
 
 Best-effort by design: a serving log is observability, not correctness. If
 Postgres is down or anything else goes wrong, log_serving drops the record
@@ -62,23 +65,29 @@ def log_serving(
     served_id: str | None,
     candidates: list[dict],
     db_config: dict | None = None,
+    episode_id: str | None = None,
+    turn_id: str | None = None,
 ) -> None:
     """
     Record what was served for a query, plus the ranked candidates considered.
 
     candidates: list of {"id": ..., "score": float}, capped at MAX_CANDIDATES.
 
-    episode_id comes from $ARTERIES_EPISODE_ID (the convention arteries already
-    uses when calling into capillaries — see arteries/spool.py, actionlog.py).
-    turn_id: no env/arg convention reaches capillaries today (arteries only
-    threads ARTERIES_EPISODE_ID / ARTERIES_TASK_ID this deep), so it is left
-    null here until such a convention exists.
+    episode_id/turn_id arrive as arguments, carried down from the caller's
+    agent_context. They used to be read from $ARTERIES_EPISODE_ID alone, which
+    only ever worked for in-process callers: capillaries also runs as a
+    long-lived uvicorn and MCP server, and an HTTP client cannot set an
+    environment variable inside that process. The result was 2 of 4 482 rows
+    carrying an episode_id and zero of them joining to arteries.rewards.
+
+    The env vars remain as a fallback so in-process callers that predate the
+    argument keep working.
 
     Best-effort: never raises. DB down or any other failure -> silently drop.
     """
     try:
-        episode_id = os.environ.get("ARTERIES_EPISODE_ID")
-        turn_id = None  # see docstring — no turn-id convention reaches capillaries yet
+        episode_id = episode_id or os.environ.get("ARTERIES_EPISODE_ID")
+        turn_id = turn_id or os.environ.get("ARTERIES_TURN_ID")
 
         capped = [
             {"id": c.get("id"), "score": c.get("score")}

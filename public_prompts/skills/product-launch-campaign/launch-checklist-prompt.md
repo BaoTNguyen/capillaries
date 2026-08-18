@@ -1,12 +1,20 @@
 ---
-intent: [evaluate]
-task_type: [checklist-generation]
-domain: [marketing, product]
-primary_stage: evaluate
+Notes: Part of the product-launch-campaign skill
+Original Link: ''
+Summary: This prompt targets product launch program managers preparing for SaaS, hardware,
+  or marketplace releases. It generates a structured Go/No-Go checklist covering product
+  readiness, infrastructure, sales, marketing, support, legal, and analytics, including
+  a decision framework for launch approval.
 complexity_level: 3
+domain:
+- marketing
+- product
+intent:
+- evaluate
+primary_stage: evaluate
 source: public
-Original Link: ""
-Notes: "Part of the product-launch-campaign skill"
+task_type:
+- checklist-generation
 ---
 
 # Launch Go/No-Go Checklist
