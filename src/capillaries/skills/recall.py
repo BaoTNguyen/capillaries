@@ -1,22 +1,16 @@
 """
-Skill recall: match an incoming query to an existing validated skill.
+Skill recall: retrieve candidate skills for a query, to be reranked
+alongside prompt candidates by the caller (see search/api.py).
 
-Combines full-text search on routing_description with semantic (embedding)
-similarity for hybrid matching. Returns the best match above a confidence
-threshold, or None if no skill fits well enough.
-
-When recall succeeds, PromptSearch returns the skill's pre-validated steps
-instead of running the full retrieval + rerank pipeline.
+Combines full-text search on skills.skills.search_tsv (same mechanism as
+prompts.search_tsv — see Retriever._to_or_tsquery / _sparse_search) with
+semantic (embedding) similarity on routing_embedding.
 
 Usage:
     from capillaries.skills.recall import SkillRecall
 
     recall = SkillRecall()
-    match = recall.search("write a go-to-market strategy")
-    if match:
-        print(match.skill_id, match.match_score)
-        for step in match.steps:
-            print(step["step_order"], step["prompt_id"])
+    candidates = recall.candidates("write a go-to-market strategy")
 """
 
 from __future__ import annotations
@@ -41,12 +35,6 @@ if TYPE_CHECKING:
 
 MAX_CHARS = 4_000
 
-RECALL_THRESHOLD = 0.50
-
-# Weights for combining FTS and semantic scores
-FTS_WEIGHT = 0.4
-SEMANTIC_WEIGHT = 0.6
-
 
 @dataclass
 class SkillMatch:
@@ -55,8 +43,8 @@ class SkillMatch:
     name: str
     tag: str
     version: int
-    routing_description: str
-    match_score: float              # ts_rank — confidence this skill fits the query
+    summary: str
+    match_score: float              # cross-encoder rerank score, same scale as prompt results
     steps: list[dict]               # ordered: {prompt_id, step_order,
                                     #           rationale, prompt_text, metadata}
     domain: list[str] = field(default_factory=list)
@@ -69,7 +57,7 @@ class SkillMatch:
             "name":                self.name,
             "tag":                self.tag,
             "version":             self.version,
-            "routing_description": self.routing_description,
+            "summary": self.summary,
             "match_score":         round(self.match_score, 4),
             "domain":              self.domain,
             "intent":              self.intent,
@@ -88,8 +76,8 @@ class SkillMatch:
 
 class SkillRecall:
     """
-    Searches active skills by routing_description (FTS) and returns the
-    best match above RECALL_THRESHOLD, or None.
+    Retrieves candidate active skills for a query via hybrid FTS + semantic
+    search — a pool for the caller to rerank, not a pre-decided best match.
 
     Instantiate once and reuse — no heavy model loading, just DB queries.
     """
@@ -98,48 +86,6 @@ class SkillRecall:
         self._db_config = db_config or DB_CONFIG
 
     # ── Public API ────────────────────────────────────────────────────────
-
-    def search(
-        self,
-        query: str,
-        filters: dict[str, Any] | None = None,
-        threshold: float = RECALL_THRESHOLD,
-        model: str | None = None,
-    ) -> SkillMatch | None:
-        """
-        Find the best active skill for a query using hybrid FTS + semantic search.
-
-        Args:
-            query:     Natural language query from the caller.
-            filters:   Optional domain/intent/task_type hints to boost matching.
-            threshold: Minimum combined score to return a match.
-            model:     Active LLM model — selects per-model prompt variants.
-
-        Returns:
-            SkillMatch with resolved prompt content, or None.
-        """
-        filters = filters or {}
-
-        fts_row = self._fts_search(query, filters)
-        sem_row = self._semantic_search(query)
-
-        best = self._merge_results(fts_row, sem_row)
-        if best is None or best["match_score"] < threshold:
-            return None
-
-        steps = self._resolve_steps(best["steps"], model=model)
-        return SkillMatch(
-            skill_id=str(best["skill_id"]),
-            name=best["name"],
-            tag=best["tag"],
-            version=best["version"],
-            routing_description=best["routing_description"],
-            match_score=best["match_score"],
-            domain=list(best["domain"] or []),
-            intent=list(best["intent"] or []),
-            task_type=list(best["task_type"] or []),
-            steps=steps,
-        )
 
     def candidates(
         self,
@@ -152,33 +98,41 @@ class SkillRecall:
         prompt retrieval — a pool of candidates for the caller to rerank
         alongside prompt candidates, rather than a single pre-decided best.
 
+        FTS uses the same mechanism as prompts (search_tsv, OR-joined
+        tsquery, ts_rank_cd) — see Retriever._to_or_tsquery/_sparse_search.
+
         Each result carries metadata["kind"] = "skill" and the raw (unresolved)
         steps JSON — steps are only resolved to full prompt text for whichever
         candidate the reranker actually picks, via `_resolve_steps`.
         """
+        from capillaries.search.retriever import Retriever
+
         filters = filters or {}
-        safe_query = " ".join(query.split())
         taxonomy_boost = self._taxonomy_boost_sql(filters)
 
-        fts_sql = f"""
-            SELECT
-                skill_id, name, tag, version, routing_description,
-                steps, domain, intent, task_type,
-                ts_rank(
-                    to_tsvector('english', routing_description),
-                    plainto_tsquery('english', %s)
-                ) {taxonomy_boost} AS score
-            FROM skills.skills
-            WHERE status = 'active'
-              AND to_tsvector('english', routing_description)
-                  @@ plainto_tsquery('english', %s)
-            ORDER BY score DESC
-            LIMIT %s
-        """
         with psycopg2.connect(**self._db_config) as conn:
+            with conn.cursor() as plain_cur:
+                # _to_or_tsquery indexes the row positionally (cur.fetchone()[0]),
+                # so it needs a plain cursor — RealDictCursor rows aren't int-indexable.
+                or_terms = Retriever._to_or_tsquery(plain_cur, query)
+
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute(fts_sql, [safe_query, safe_query, per_channel])
-                fts_rows = cur.fetchall()
+                fts_rows = []
+                if or_terms:
+                    fts_sql = f"""
+                        SELECT
+                            skill_id, name, tag, version, summary,
+                            steps, domain, intent, task_type,
+                            ts_rank_cd(search_tsv, to_tsquery('english', %s), 1|4|32)
+                                {taxonomy_boost} AS score
+                        FROM skills.skills
+                        WHERE status = 'active'
+                          AND search_tsv @@ to_tsquery('english', %s)
+                        ORDER BY score DESC
+                        LIMIT %s
+                    """
+                    cur.execute(fts_sql, [or_terms, or_terms, per_channel])
+                    fts_rows = cur.fetchall()
 
         try:
             query_vec = self._embed_query(query)
@@ -190,7 +144,7 @@ class SkillRecall:
             vec_str = "[" + ",".join(map(str, query_vec)) + "]"
             sem_sql = """
                 SELECT
-                    skill_id, name, tag, version, routing_description,
+                    skill_id, name, tag, version, summary,
                     steps, domain, intent, task_type,
                     1 - (routing_embedding <=> %s::vector) AS score
                 FROM skills.skills
@@ -226,7 +180,7 @@ class SkillRecall:
         return SearchResult(
             prompt_id=str(row["skill_id"]),
             title=row["name"],
-            prompt_text=f"{row['name']}\n\n{row['routing_description']}",
+            prompt_text=f"{row['name']}\n\n{row['summary']}",
             rrf_score=0.0,
             dense_rank=dense_rank, sparse_rank=sparse_rank,
             dense_sim=dense_sim, sparse_sim=sparse_sim,
@@ -235,7 +189,7 @@ class SkillRecall:
                 "skill_id": str(row["skill_id"]),
                 "tag": row["tag"],
                 "version": row["version"],
-                "routing_description": row["routing_description"],
+                "summary": row["summary"],
                 "domain": list(row["domain"] or []),
                 "intent": list(row["intent"] or []),
                 "task_type": list(row["task_type"] or []),
@@ -288,70 +242,6 @@ class SkillRecall:
 
     # ── Internals ─────────────────────────────────────────────────────────
 
-    def _fts_search(
-        self, query: str, filters: dict[str, Any]
-    ) -> dict | None:
-        """
-        Full-text search on routing_description.
-        Taxonomy overlap boosts the score by up to 0.2.
-        """
-        # Sanitize query for plainto_tsquery (handles special chars safely)
-        safe_query = " ".join(query.split())
-
-        taxonomy_boost = self._taxonomy_boost_sql(filters)
-
-        sql = f"""
-            SELECT
-                skill_id, name, tag, version, routing_description,
-                steps, domain, intent, task_type,
-                ts_rank(
-                    to_tsvector('english', routing_description),
-                    plainto_tsquery('english', %s)
-                ) {taxonomy_boost} AS match_score
-            FROM skills.skills
-            WHERE status = 'active'
-              AND to_tsvector('english', routing_description)
-                  @@ plainto_tsquery('english', %s)
-            ORDER BY match_score DESC
-            LIMIT 1
-        """
-        with psycopg2.connect(**self._db_config) as conn:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute(sql, [safe_query, safe_query])
-                row = cur.fetchone()
-                return dict(row) if row else None
-
-    def _semantic_search(self, query: str) -> dict | None:
-        """
-        Embed the query and find the nearest skill by cosine similarity
-        on skills.skills.routing_embedding.
-        """
-        try:
-            query_vec = self._embed_query(query)
-        except Exception:
-            return None
-
-        if query_vec is None:
-            return None
-
-        sql = """
-            SELECT
-                skill_id, name, tag, version, routing_description,
-                steps, domain, intent, task_type,
-                1 - (routing_embedding <=> %s::vector) AS semantic_sim
-            FROM skills.skills
-            WHERE status = 'active'
-              AND routing_embedding IS NOT NULL
-            ORDER BY routing_embedding <=> %s::vector
-            LIMIT 1
-        """
-        vec_str = "[" + ",".join(map(str, query_vec)) + "]"
-        with psycopg2.connect(**self._db_config) as conn:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute(sql, [vec_str, vec_str])
-                row = cur.fetchone()
-                return dict(row) if row else None
-
     def _embed_query(self, text: str) -> list[float] | None:
         """Synchronously embed a query via the embedding server."""
         resp = httpx.post(
@@ -362,41 +252,6 @@ class SkillRecall:
         if resp.status_code != 200:
             return None
         return resp.json()["data"][0]["embedding"]
-
-    @staticmethod
-    def _merge_results(fts_row: dict | None, sem_row: dict | None) -> dict | None:
-        """
-        Combine FTS and semantic results into a single best match.
-
-        If both found the same skill, blend scores.
-        If they found different skills, pick the one with the higher weighted score.
-        """
-        if fts_row is None and sem_row is None:
-            return None
-
-        if fts_row is None:
-            sem_row["match_score"] = sem_row["semantic_sim"] * SEMANTIC_WEIGHT
-            return sem_row
-
-        if sem_row is None:
-            return fts_row
-
-        fts_id = str(fts_row["skill_id"])
-        sem_id = str(sem_row["skill_id"])
-        fts_score = fts_row["match_score"]
-        sem_score = sem_row["semantic_sim"]
-
-        if fts_id == sem_id:
-            fts_row["match_score"] = fts_score * FTS_WEIGHT + sem_score * SEMANTIC_WEIGHT
-            return fts_row
-
-        fts_weighted = fts_score * FTS_WEIGHT
-        sem_weighted = sem_score * SEMANTIC_WEIGHT
-        if fts_weighted >= sem_weighted:
-            fts_row["match_score"] = fts_weighted
-            return fts_row
-        sem_row["match_score"] = sem_weighted
-        return sem_row
 
     def _taxonomy_boost_sql(self, filters: dict[str, Any]) -> str:
         """
@@ -439,30 +294,36 @@ class SkillRecall:
 
         with psycopg2.connect(**self._db_config) as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                # Steps carry prompt UUIDs, so both lookups match on prompt_id.
+                # They used to match on title against a UUID, which returned
+                # nothing without erroring — every step fell back to empty text.
+                # Keys are str()-ed because psycopg2 hands back uuid.UUID while
+                # step["prompt_id"] is a string from JSON.
                 cur.execute(
                     """
-                    SELECT title, prompt_text, domain, intent, task_type,
-                           content_hash
+                    SELECT prompt_id, title, prompt_text, domain, intent,
+                           task_type, content_hash
                     FROM prompts
-                    WHERE title = ANY(%s)
+                    WHERE prompt_id = ANY(%s::uuid[])
                     """,
                     (prompt_ids,),
                 )
-                prompt_data = {row["title"]: dict(row) for row in cur.fetchall()}
+                prompt_data = {str(row["prompt_id"]): dict(row)
+                               for row in cur.fetchall()}
 
                 variant_texts: dict[str, str] = {}
                 if model:
                     cur.execute(
                         """
-                        SELECT prompt_title, prompt_text
+                        SELECT prompt_id, prompt_text
                         FROM prompt_variants
-                        WHERE prompt_title = ANY(%s)
+                        WHERE prompt_id = ANY(%s::uuid[])
                           AND model = %s
                           AND is_current = TRUE
                         """,
                         (prompt_ids, model),
                     )
-                    variant_texts = {row["prompt_title"]: row["prompt_text"]
+                    variant_texts = {str(row["prompt_id"]): row["prompt_text"]
                                      for row in cur.fetchall()}
 
         resolved = []

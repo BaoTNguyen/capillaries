@@ -48,7 +48,7 @@ def _print_skill(skill: dict, verbose: bool = True) -> None:
     print(f"\n  [{skill['status']:10}]  v{skill['version']}  {skill['tag']}")
     print(f"  Name    : {skill['name']}")
     print(f"  ID      : {skill['skill_id']}")
-    print(f"  Routing : {skill['routing_description']}")
+    print(f"  Summary : {skill['summary']}")
     print(f"  Domain  : {skill.get('domain', [])}  |  Intent: {skill.get('intent', [])}  |  Type: {skill.get('task_type', [])}")
     print(f"  Runs    : {runs}  |  Success: {rate}")
     if verbose and steps:
@@ -148,7 +148,7 @@ def run_create() -> None:
     tag_input = input(f"  Tag [{tag_suggestion}]: ").strip()
     tag = tag_input or tag_suggestion
 
-    routing = _prompt_field("Routing description (one line — what triggers this skill)", required=True)
+    summary = _prompt_field("Summary (one line — what triggers this skill)", required=True)
     domain = _prompt_list("Domain (comma-separated, e.g. AI, technical)")
     intent = _prompt_list("Intent (comma-separated, e.g. analyze, plan)")
     task_type = _prompt_list("Task type (comma-separated, e.g. analysis, planning)")
@@ -159,7 +159,7 @@ def run_create() -> None:
     print(f"\n{'─'*60}")
     print(f"  Name    : {name}")
     print(f"  Tag    : {tag}")
-    print(f"  Routing : {routing}")
+    print(f"  Summary : {summary}")
     print(f"  Domain  : {domain}  Intent: {intent}  Type: {task_type}")
     print(f"  Steps   : {len(steps)}")
     for s in steps:
@@ -172,7 +172,7 @@ def run_create() -> None:
 
     skill = promoter.create(
         name=name, tag=tag,
-        routing_description=routing,
+        summary=summary,
         steps=steps,
         domain=domain or None,
         intent=intent or None,
@@ -198,22 +198,24 @@ def run_edit(tag_or_id: str) -> None:
     print("Press Enter to keep the current value.\n")
 
     name = _prompt_field("Name", current=skill["name"])
-    routing = _prompt_field("Routing description", current=skill["routing_description"])
+    summary = _prompt_field("Summary", current=skill["summary"])
     domain = _prompt_list("Domain", current=skill.get("domain"))
     intent = _prompt_list("Intent", current=skill.get("intent"))
     task_type = _prompt_list("Task type", current=skill.get("task_type"))
     changelog = input("  Changelog note (what changed): ").strip() or None
     last_evaluated = input(f"  Last evaluated (YYYY-MM-DD) [{skill.get('last_evaluated') or ''}]: ").strip() or None
+    notes = input(f"  Notes [{skill.get('notes') or ''}]: ").strip() or None
 
     promoter.update_metadata(
         tag_or_id,
         name=name,
-        routing_description=routing,
+        summary=summary,
         domain=domain or None,
         intent=intent or None,
         task_type=task_type or None,
         changelog=changelog,
         last_evaluated=last_evaluated,
+        notes=notes,
     )
     print("  Metadata updated.")
 
@@ -377,12 +379,12 @@ async def run_promote(query: str, filters: dict, top_k: int) -> None:
     tag_suggestion = _tagify(name)
     tag_input = input(f"  Tag [{tag_suggestion}]: ").strip()
     tag = tag_input or tag_suggestion
-    routing = _prompt_field("Routing description", current=query, required=True)
+    summary = _prompt_field("Summary", current=query, required=True)
 
     promoter = SkillPromoter()
     skill = promoter.create(
         name=name, tag=tag,
-        routing_description=routing,
+        summary=summary,
         steps=steps,
     )
     print(f"\nSkill saved.")
