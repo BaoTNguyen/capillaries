@@ -226,14 +226,27 @@ def mark_low_confidence_prompts(cursor):
     cursor.execute(stats_sql)
     stats = cursor.fetchone()
 
+    total = stats[0]
     print("Database Statistics:")
-    print(f"Total prompts: {stats[0]}")
-    print(f"Need classification: {stats[1]} ({stats[1]/stats[0]*100:.1f}%)")
-    print(f"Low confidence: {stats[2]} ({stats[2]/stats[0]*100:.1f}%)")
-    print(f"Have intent: {stats[3]} ({stats[3]/stats[0]*100:.1f}%)")
-    print(f"Have task_type: {stats[4]} ({stats[4]/stats[0]*100:.1f}%)")
-    print(f"Have domain: {stats[5]} ({stats[5]/stats[0]*100:.1f}%)")
-    print(f"Have original_link: {stats[6]} ({stats[6]/stats[0]*100:.1f}%)")
+    print(f"Total prompts: {total}")
+
+    # An empty prompts table is the normal state on a fresh install — this
+    # function runs from setup_db.py before anything has been ingested. Dividing
+    # for a percentage here used to raise ZeroDivisionError and take schema
+    # creation down with it, so a first-time setup failed at the last step.
+    if not total:
+        print("(no prompts yet — run scripts/ingest_public.py, then setup_db.py --embed)")
+        return
+
+    for label, value in (
+        ("Need classification", stats[1]),
+        ("Low confidence",      stats[2]),
+        ("Have intent",         stats[3]),
+        ("Have task_type",      stats[4]),
+        ("Have domain",         stats[5]),
+        ("Have original_link",  stats[6]),
+    ):
+        print(f"{label}: {value} ({value / total * 100:.1f}%)")
 
 def main():
     """Create prompts schema and analyze metadata confidence."""

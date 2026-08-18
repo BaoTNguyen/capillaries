@@ -31,7 +31,7 @@ def create_skills_table(cursor) -> None:
 
             -- What this skill does, in one line.
             -- Used by the orchestrator to match a request to a skill.
-            routing_description TEXT NOT NULL,
+            summary TEXT NOT NULL,
 
             -- The ordered prompts that make up this skill.
             -- [{prompt_id, stage, step_order, rationale, pinned_hash}]
@@ -70,16 +70,25 @@ def create_skills_table(cursor) -> None:
             -- `version` (which only counts re-promotions, not review events).
             last_evaluated DATE,
 
+            -- Freeform notes, same as prompts.notes
+            notes       TEXT,
+
             created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             created_by  VARCHAR DEFAULT 'manual',  -- 'manual' | 'orchestrator'
 
             -- Data source, same convention as prompts.source
             source      VARCHAR DEFAULT 'private',  -- 'private' | 'public'
 
-            -- Semantic search on routing_description; width from EMBED_DIM,
+            -- Semantic search on summary; width from EMBED_DIM,
             -- same convention as prompts.embedding / embedding_version
             routing_embedding VECTOR(EMBED_DIM),
             embedding_version VARCHAR,
+
+            -- Lexical search, same shape as prompts.search_tsv: name (A) +
+            -- summary (B) + taxonomy (unweighted). Kept up to date by
+            -- SkillPromoter on every write, not a trigger — mirrors how
+            -- obsidian_sync/ingest.py computes prompts.search_tsv inline.
+            search_tsv  TSVECTOR,
 
             UNIQUE (tag, version)
         );
@@ -91,6 +100,8 @@ def create_skills_table(cursor) -> None:
         "ALTER TABLE skills.skills ADD COLUMN IF NOT EXISTS last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP;",
         "ALTER TABLE skills.skills ADD COLUMN IF NOT EXISTS source VARCHAR DEFAULT 'private';",
         "ALTER TABLE skills.skills ADD COLUMN IF NOT EXISTS embedding_version VARCHAR;",
+        "ALTER TABLE skills.skills ADD COLUMN IF NOT EXISTS notes TEXT;",
+        "ALTER TABLE skills.skills ADD COLUMN IF NOT EXISTS search_tsv TSVECTOR;",
     ]:
         cursor.execute(stmt)
     cursor.execute("ALTER TABLE skills.skills DROP COLUMN IF EXISTS complexity_level;")
@@ -246,11 +257,12 @@ def create_indexes(cursor) -> None:
         "CREATE INDEX IF NOT EXISTS idx_skills_task_type ON skills.skills USING GIN (task_type);",
         "CREATE INDEX IF NOT EXISTS idx_skills_status    ON skills.skills (status);",
 
-        # Full-text search on routing descriptions
-        """CREATE INDEX IF NOT EXISTS idx_skills_routing_fts
-           ON skills.skills USING GIN (to_tsvector('english', routing_description));""",
+        # Full-text search on the materialized search_tsv (name + summary +
+        # taxonomy), same shape as idx_prompts_search_tsv.
+        """CREATE INDEX IF NOT EXISTS idx_skills_search_tsv
+           ON skills.skills USING GIN (search_tsv);""",
 
-        # Semantic search on routing_description embedding
+        # Semantic search on summary embedding
         """CREATE INDEX IF NOT EXISTS idx_skills_routing_embedding
            ON skills.skills USING hnsw (routing_embedding vector_cosine_ops)
            WITH (m = 16, ef_construction = 64);""",
@@ -261,6 +273,9 @@ def create_indexes(cursor) -> None:
     ]
     for sql in indexes:
         cursor.execute(sql)
+    # Superseded by idx_skills_search_tsv (materialized column instead of an
+    # on-the-fly to_tsvector() expression index).
+    cursor.execute("DROP INDEX IF EXISTS skills.idx_skills_routing_fts;")
 
 
 def main() -> None:
