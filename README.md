@@ -26,7 +26,7 @@ Most "prompt library" projects are a folder of files and an embedding lookup. Ca
 
 - **Hybrid retrieval, not cosine-only.** Dense (pgvector HNSW) and lexical (PostgreSQL full-text) run in parallel, their candidates are unioned rather than weighted, and a cross-encoder orders the result. No fusion ratio to tune — measured on the golden set, every ratio was either indefensible or inside the noise. Lexical and semantic matches both survive; neither path alone decides.
 - **A gate, not just a ranker.** Retrieval can return nothing. The top rerank score has to clear a threshold before a prompt comes back, so an agent asking about something your corpus doesn't cover gets silence instead of the nearest irrelevant match.
-- **Skills as first-class citizens.** A multi-step procedure with its own routing description competes against single prompts and wins when it fits better, then executes step by step with inline content — no runtime dependency on the prompts table.
+- **Skills as first-class citizens.** A multi-step procedure with its own routing description competes against single prompts and wins when it fits better, then executes step by step, resolving each step's prompt from the `prompts` table by UUID at run time.
 - **Per-model prompt variants.** A DSPy integration tailors a prompt to the model that will run it; `resolve_prompt_text()` picks the model-specific variant before the base text.
 - **It ages the corpus.** Unused prompts and skills auto-inactivate, cascade checks warn when something still references them, and stale content gets flagged for quarterly review. The library curates itself instead of growing forever.
 - **Four ways in, one engine.** MCP tools, an HTTP API, a Python function, and a CLI all resolve to the same `find()` — bring whatever client you already have.
@@ -43,7 +43,7 @@ query: "build a cash flow model for a SaaS startup"
           both channels' candidates, deduped, no weighting
                   |
           [cross-encoder reranking]
-          mxbai-rerank-base-v2 scores each (query, prompt) pair
+          Qwen3-Reranker-0.6B scores each (query, prompt) pair
                   |
           [skill recall]
           checks skills.skills for a validated procedure match
@@ -51,7 +51,7 @@ query: "build a cash flow model for a SaaS startup"
           returns: prompt text or skill procedure
 ```
 
-Dense embeddings come from snowflake-arctic-embed-m-v2.0 (768 dimensions), served through any OpenAI-compatible endpoint. The lexical path uses PostgreSQL full-text search. The two paths are unioned, not weighted, before the cross-encoder makes the final call.
+Dense embeddings come from Qwen3-Embedding-0.6B (1024 dimensions), served through any OpenAI-compatible endpoint. The lexical path uses PostgreSQL full-text search. The two paths are unioned, not weighted, before the cross-encoder makes the final call.
 
 ## Interfaces
 
@@ -108,7 +108,7 @@ src/capillaries/
   cli.py           command-line interface
 
 obsidian_sync/     bidirectional sync with an Obsidian vault
-scripts/           setup, teardown, model download, service management
+scripts/           setup, teardown, ingest, model download, service management
 eval/              labeled query sets for retrieval evaluation
 hooks/             arteries memory system integration
 ```
@@ -132,20 +132,27 @@ psql -d capillaries -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
 
 cp .env.example .env               # edit as needed
 
-PYTHONPATH=src python scripts/setup_db.py          # schemas and indexes
+PYTHONPATH=src python scripts/setup_db.py                  # schemas and indexes
 PYTHONPATH=src python scripts/ingest_public.py --db-only   # load the corpus
-PYTHONPATH=src python scripts/setup_db.py --embed  # then vectorize it
+PYTHONPATH=. python -m obsidian_sync.ingest                # + your vault, if any
+PYTHONPATH=src python scripts/setup_db.py --embed          # then vectorize it
+PYTHONPATH=src python -m capillaries.chunk --backfill      # and chunk it
 ```
 
-Order matters. `ingest_public.py` writes rows and nothing derived — it has no embedding step — so embedding has to come after it. Run `--embed` against an empty table and you get a database full of prompts with null vectors, where dense retrieval quietly returns nothing and no error is raised. Check with:
+Order matters, and two of these steps are easy to skip into a database that looks fine and retrieves nothing.
+
+`ingest_public.py` writes rows and nothing derived — no embedding step — so embedding has to come after it. Run `--embed` against an empty table and you get prompts with null vectors: dense retrieval returns nothing, no error is raised.
+
+The chunk backfill is the one people miss. Dense retrieval reads `prompt_chunks`, not `prompts` (`search/channels.py:vector_search`), so a corpus with perfectly good `prompts.embedding` values and an empty chunk table has no dense channel at all — lexical carries every query and nobody notices until recall is measured. Check both:
 
 ```bash
 psql -d capillaries -c "SELECT count(*), count(embedding) FROM prompts;"
+psql -d capillaries -c "SELECT count(*), count(embedding) FROM prompt_chunks;"
 ```
 
-Both numbers should match.
+Each pair should match, and the chunk count should be several times the prompt count.
 
-Or run `./scripts/setup.sh` for an interactive walkthrough. Full details in [docs/quick_start_guide.md](docs/quick_start_guide.md).
+Or run `./scripts/setup.sh`, which does all of this in order and ends by running a live `find()` against what it built. Full details in [docs/quick_start_guide.md](docs/quick_start_guide.md).
 
 ### A note on arteries
 
@@ -170,6 +177,8 @@ pip install -e ../arteries
 
 Teardown reverses setup: it drops the database, deletes `.env`, removes the prompts and skills directories, uninstalls the editable package, and clears caches. It never touches tracked source or git history — this uninstalls the system, it does not delete the repo. Run `--dry-run` first; the plan it prints is exactly what the real run does.
 
+Two guards exist because their absence cost a corpus. The database name is read from `.env` and never defaulted, so a second run after `.env` is gone refuses rather than dropping whatever is named `capillaries`. And every drop is preceded by a mandatory `pg_dump -Fc` into `~/.capillaries/backups/`; if the dump fails, the drop does not happen. `--no-backup` opts out and says plainly that it is unrecoverable.
+
 ## Running
 
 ```bash
@@ -186,11 +195,11 @@ python -m capillaries.mcp_server
 
 Three stages.
 
-**Hybrid retrieval.** Two searches run independently. The dense path encodes the query with snowflake-arctic-embed and finds the nearest neighbors via pgvector's HNSW index (cosine distance). The lexical path runs a PostgreSQL full-text query. Both respect optional filters on domain, intent, task type, complexity, and status.
+**Hybrid retrieval.** Two searches run independently. The dense path encodes the query with Qwen3-Embedding and finds the nearest neighbors via pgvector's HNSW index over `prompt_chunks` (cosine distance). The lexical path runs a PostgreSQL full-text query. Both respect optional filters on domain, intent, task type, complexity, and status.
 
 **Union.** Both candidate lists are concatenated and deduped by prompt ID. No weights, no ratio. This replaced Reciprocal Rank Fusion after the benchmark showed there was nothing to tune: on the clean population, 50/50 and 0.3/0.7 landed within half a point of each other, and RRF was already within 0.4 points of its own ceiling. Union recovers most of that with one fewer knob. See the header of `search/union.py` for the numbers, including where union does *not* help — recall@10 improved, recall@1 did not.
 
-**Reranking.** The cross-encoder (mxbai-rerank-base-v2) scores each (query, candidate) pair and re-sorts. The top result's score determines the response: above the threshold, the prompt is returned directly. Below it, skill recall checks for a validated skill instead.
+**Reranking.** The cross-encoder (Qwen3-Reranker-0.6B) scores each (query, candidate) pair and re-sorts. Its raw logits are sigmoid-normalized, which is what makes the gate threshold mean anything: the previous reranker put every top-1 score between 0.95 and 1.00, so no cutoff could separate a good match from a bad one. The top result's score determines the response: above the threshold, the prompt is returned directly. Below it, skill recall checks for a validated skill instead.
 
 Because union improves rank 5–10 but not rank 1, and callers serve rank 1, the reranker is the next component that has to get better. Nothing downstream of it will show a gain until it does.
 
@@ -198,7 +207,7 @@ Because union improves rank 5–10 but not rank 1, and callers serve rank 1, the
 
 Skills live in a `skills` schema in the same PostgreSQL database. Each has a routing description (one line that tells the system when to use it), a procedure (the full text of what to do), and optional steps for multi-step execution.
 
-A step carries its own inline content. It may reference a prompt via `prompt_id` for provenance, but it does not depend on the prompts table at runtime.
+A step is a pointer, not a copy: `{prompt_id, rationale, step_order, pinned_hash}`. `execute_step` looks the text up in `prompts` by UUID, checking `prompt_variants` first when a model is named. That means editing a prompt changes every skill that uses it — which is the point, and also why `pinned_hash` records the text a step was validated against.
 
 ```bash
 python -m capillaries.skills.cli --create
@@ -213,7 +222,9 @@ A DSPy integration generates per-model prompt variants. When a prompt works well
 
 The optimizer is meant to be grounded in real outcomes, not a proxy metric. A serving log records what got served for each query alongside the top-k candidates the ranker considered but passed over — the negatives needed to learn ranking, not just "was the served prompt any good." Each row carries the `episode_id` and `turn_id` its caller supplied via `agent_context`, which is what lets a serving be matched to the reward that followed it.
 
-The piece that turned that log into training examples is currently missing. `optimize/harvest.py` was deleted rather than fixed: it captured the retrieved prompt as the golden *output*, which trains an optimizer to reproduce the library instead of ranking it. Golden examples now enter only through `cap optimize capture`. A reward-grounded builder will replace it.
+The piece that turned that log into training examples is currently missing. `optimize/harvest.py` was deleted rather than fixed: it captured the retrieved prompt as the golden *output*, which trains an optimizer to reproduce the library instead of ranking it. Golden examples now enter only through `cap optimize capture`.
+
+Its replacement lives in marrow, not here, under `marrow/capillaries_opt/` — the label format spec, a pooled-judgment harness, and an HMAC membership oracle for the holdout. Marrow owns training for the whole stack, and a holdout it can enumerate is not a holdout. Labels key on prompt **title** rather than `prompt_id`, because `prompt_id` is `gen_random_uuid()` and does not survive a rebuild of the corpus.
 
 What remains is the acceptance side, and it still holds: a fence guard keeps an optimized variant from shipping unless it clears the base text on held-out examples, and new variants roll out behind an A/B gate rather than replacing the base outright. Optimization events tee to heart's event spine, so a variant's win or regression is visible in the same `pulse` view as everything else in the stack.
 
@@ -241,7 +252,9 @@ Prompts and skills that go unused get auto-inactivated. The lifecycle module tra
 | `DB_HOST` | `/var/run/postgresql` | PostgreSQL host |
 | `DB_NAME` | `capillaries` | Database name |
 | `EMBED_URL` | `http://127.0.0.1:8003/v1/embeddings` | Embedding endpoint |
-| `EMBED_MODEL` | `snowflake-arctic-embed-m-v2.0` | Embedding model |
+| `EMBED_MODEL` | `Qwen/Qwen3-Embedding-0.6B` | Embedding model |
+| `EMBED_DIM` | `1024` | Vector width; must match the schema |
+| `RERANKER_MODEL` | `Qwen/Qwen3-Reranker-0.6B` | Cross-encoder |
 | `OBSIDIAN_VAULT_PATH` | unset | Obsidian vault root |
 | `ARTERIES_ROOT` | unset | Arteries memory project (optional) |
 
