@@ -2,7 +2,7 @@
 Score a skill by how much of it the prompt retrieval already found.
 
 The old path gave skills their own retrieval stack: an embedding over a
-one-line `routing_description`, its own threshold, its own scale. That asks six
+one-line `summary`, its own threshold, its own scale. That asks six
 one-line documents to compete with 1 025 richly-indexed prompts, and it forced
 a comparison between two scores from two different models.
 
