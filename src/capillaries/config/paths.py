@@ -57,6 +57,24 @@ EMBED_MODEL = os.getenv("EMBED_MODEL", "Qwen/Qwen3-Embedding-0.6B")
 # four places; they all read from here so a model change is one edit.
 EMBED_DIM = int(os.getenv("EMBED_DIM", "1024"))
 
+# The rerank score below which rank 1 is not worth serving.
+#
+# 0.3 is not a new number: skills/capillaries/SKILL.md already tells every agent
+# "below 0.3 the match is weak — tell the user nothing relevant was found".
+# Until 2026-08-18 only the prose said so. Every retrieval surface returned
+# rank 1 at whatever it scored, so "Are there any remaining issues here?" came
+# back as a confident single prompt at 0.095.
+#
+# It lives here rather than in find.py because four surfaces need it and two of
+# them cannot import each other: find(), agent/route.py (which serves both
+# /agent/route and the MCP tools), and the CLI on top of find().
+#
+# This is a floor, not a fix. On this corpus "Set up tier A so I can start
+# labeling" retrieves "Email & Message Triage System Deep Work" at 0.80 —
+# matching "tier A" against "TIER 1/2/3". No threshold catches that without
+# suppressing everything real. The reranker is the actual problem.
+MIN_CONFIDENCE = float(os.getenv("CAPILLARIES_MIN_CONFIDENCE", "0.3"))
+
 # Prepended to queries only — documents are embedded raw. Asymmetric retrieval
 # models each want their own convention, so this belongs with the model name
 # rather than copied into every call site.
