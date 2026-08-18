@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import uuid
 
+import dspy
 import psycopg2
 import psycopg2.extras
 
@@ -16,6 +17,18 @@ from capillaries.optimize.metrics import MIN_IMPROVEMENT, get_metric
 
 def _content_hash(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()[:16]
+
+
+def _build_lm(model: str, api_base: str | None = None, api_key: str | None = None) -> dspy.LM:
+    """`model` alone resolves through litellm's hosted-provider lookup (Anthropic,
+    OpenAI, ...) via env-var API keys. Any local server (llama.cpp, vLLM, ...)
+    needs an explicit `api_base` — there's no default, and no name-sniffing
+    (e.g. "contains qwen"): which model is actually listening on a given
+    endpoint is a runtime fact, not something to guess from a CLI string.
+    """
+    if api_base:
+        return dspy.LM(f"openai/{model}", api_base=api_base, api_key=api_key or "local")
+    return dspy.LM(model)
 
 
 def _embed_document_sync(title: str | None, text: str) -> list[float] | None:
@@ -53,11 +66,11 @@ class PromptOptimizer:
         min_examples: int = 5,
         force: bool = False,
         dry_run: bool = False,
+        api_base: str | None = None,
+        api_key: str | None = None,
         **metric_kwargs,
     ) -> dict:
         """Run DSPy optimization on a prompt for a given model."""
-        import dspy
-
         prompt_id, prompt_text = self._get_prompt(prompt_title)
 
         examples = self._load_examples(prompt_id)
@@ -90,7 +103,7 @@ class PromptOptimizer:
             for ex in examples
         ]
 
-        lm = dspy.LM(model)
+        lm = _build_lm(model, api_base=api_base, api_key=api_key)
         dspy.configure(lm=lm)
 
         module = PromptExecutor()
@@ -243,7 +256,7 @@ class PromptOptimizer:
         for ex in examples:
             try:
                 pred = module(input_text=ex.input_text, prompt_template=ex.prompt_template)
-                score = metric_fn(pred, ex)
+                score = metric_fn(ex, pred)
                 scores.append(float(score))
             except Exception:
                 scores.append(0.0)
@@ -370,15 +383,12 @@ class PromptOptimizer:
                 conn.commit()
 
 
-class PromptExecutor:
+class PromptExecutor(dspy.Module):
     """DSPy module wrapping prompt execution."""
 
     def __init__(self):
-        import dspy
+        super().__init__()
         self.generate = dspy.Predict("input_text, prompt_template -> output_text")
 
-    def __call__(self, input_text: str, prompt_template: str):
+    def forward(self, input_text: str, prompt_template: str):
         return self.generate(input_text=input_text, prompt_template=prompt_template)
-
-    def predictors(self):
-        return [self.generate]
