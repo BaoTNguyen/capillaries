@@ -19,6 +19,8 @@ from pathlib import Path
 
 import frontmatter
 
+from capillaries.search.retriever import expand_acronyms
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # Case A, non-public skills eligible for DSPy optimization. Hardcoded, not
@@ -52,19 +54,24 @@ def ingest() -> None:
         # row keeps a vector of the previous text — retrieval matching on
         # content that is no longer there, with nothing to signal it.
         cur.execute("""
-            INSERT INTO prompts (title, tag, file_path, prompt_text, source, content_hash, status)
-            VALUES (%s, %s, %s, %s, 'own', %s, 'active')
+            INSERT INTO prompts (title, tag, file_path, prompt_text, source, content_hash,
+                                 status, search_tsv)
+            VALUES (%s, %s, %s, %s, 'own', %s, 'active',
+                    setweight(to_tsvector('english', %s), 'A') ||
+                    to_tsvector('english', %s))
             ON CONFLICT (title) DO UPDATE SET
                 prompt_text  = EXCLUDED.prompt_text,
                 content_hash = EXCLUDED.content_hash,
                 last_updated = CURRENT_TIMESTAMP,
+                search_tsv   = EXCLUDED.search_tsv,
                 embedding = CASE
                     WHEN prompts.content_hash IS DISTINCT FROM EXCLUDED.content_hash
                     THEN NULL ELSE prompts.embedding END,
                 embedding_version = CASE
                     WHEN prompts.content_hash IS DISTINCT FROM EXCLUDED.content_hash
                     THEN NULL ELSE prompts.embedding_version END
-        """, (title, title, str(path.relative_to(PROJECT_ROOT)), text, content_hash))
+        """, (title, title, str(path.relative_to(PROJECT_ROOT)), text, content_hash,
+              expand_acronyms(title), expand_acronyms(text)))
         seen_titles.append(title)
         print(f"  {title} <- {path.relative_to(PROJECT_ROOT)}")
 
