@@ -159,8 +159,8 @@ def _stub_response(score: float):
     )
 
 
-@pytest.mark.parametrize("score,mode", [(0.95, "single"), (0.31, "single"),
-                                        (0.29, "none"), (0.095, "none")])
+@pytest.mark.parametrize("score,mode", [(0.95, "single"), (0.81, "single"),
+                                        (0.79, "none"), (0.095, "none")])
 def test_floor_decides_mode(score, mode):
     from capillaries.find import _FindEngine
 
@@ -173,7 +173,7 @@ def test_rejected_score_survives_on_the_none_result():
     from capillaries.find import _FindEngine
 
     engine = _FindEngine.__new__(_FindEngine)
-    assert engine._build_single_result(_stub_response(0.29)).confidence == 0.29
+    assert engine._build_single_result(_stub_response(0.79)).confidence == 0.79
 
 
 def test_stepless_skill_does_not_return_bare_none():
