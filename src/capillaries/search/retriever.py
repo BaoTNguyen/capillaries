@@ -63,6 +63,8 @@ class SearchResult:
     sparse_rank: int | None       # rank in sparse results (1-based), None if not retrieved
     dense_sim: float | None       # cosine similarity (0–1)
     sparse_sim: float | None      # pg_trgm similarity (0–1)
+    matched_chunk_id: str | None = None
+    matched_chunk_text: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -269,7 +271,7 @@ class Retriever:
         sql = f"""
             SELECT
                 prompt_id::text, title,
-                prompt_text,
+                prompt_text, summary,
                 intent, task_type, domain,
                 status, notes,
                 1 - (embedding <=> %s::vector) AS dense_sim
@@ -320,7 +322,7 @@ class Retriever:
         sql = f"""
             SELECT
                 prompt_id::text, title,
-                prompt_text,
+                prompt_text, summary,
                 intent, task_type, domain,
                 status, notes,
                 ts_rank_cd(search_tsv, to_tsquery('english', %s), 1|4|32) AS sparse_sim
@@ -381,6 +383,7 @@ class Retriever:
                     dense_sim=row.get("dense_sim") if dr else None,
                     sparse_sim=row.get("sparse_sim") if sr else None,
                     metadata={
+                        "summary": row.get("summary") or "",
                         "intent": row.get("intent") or [],
                         "task_type": row.get("task_type") or [],
                         "domain": row.get("domain") or [],
@@ -454,7 +457,7 @@ class Retriever:
         try:
             cur = conn.cursor()
             sql = f"""
-                SELECT prompt_id::text, title, prompt_text,
+                SELECT prompt_id::text, title, prompt_text, summary,
                        intent, task_type, domain,
                        status, notes
                 FROM prompts
@@ -476,6 +479,7 @@ class Retriever:
                 dense_sim=None,
                 sparse_sim=None,
                 metadata={
+                    "summary": r.get("summary") or "",
                     "intent": r.get("intent") or [],
                     "task_type": r.get("task_type") or [],
                     "domain": r.get("domain") or [],
