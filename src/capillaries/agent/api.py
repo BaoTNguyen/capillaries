@@ -16,7 +16,6 @@ from capillaries.agent.catalog import CatalogHandler, get_discover_response
 from capillaries.agent.context import normalize_agent_context, with_agent_context
 from capillaries.agent.execute import SkillExecutor
 from capillaries.agent.feedback import FeedbackHandler
-from capillaries.agent.gate import gate as run_gate
 from capillaries.agent.generate import generate, generate_stream
 from capillaries.agent.route import AgentRouter
 
@@ -31,14 +30,12 @@ class RouteRequest(BaseModel):
     prefer: str = Field(default="auto", description="'single', 'skill', or 'auto'")
     context: dict[str, Any] | None = Field(None, description="Structured context for template filling")
     session_id: str | None = Field(None, description="For continuing previous interaction")
-    recent_turns: list[str] | None = Field(None, description="Recent conversation messages for gate context")
     # Named memory_context (not `context`, which is already the template-fill field
     # above) to hold the MemoryFrame from the memory project without colliding.
     memory_context: dict[str, Any] | None = Field(None, description="MemoryFrame from the memory project (ephemeral/persistent/evergreen tiers)")
     agent_context: dict[str, Any] | None = Field(None, description="Normalized agent/CLI metadata from Arteries or another adapter")
     source: str = Field(default="private", description="'private' (default) or 'public' for demo prompts")
     modality: str = Field(default="text", description="'text', 'image', 'video' — filters by output modality")
-    skip_gate: bool = Field(default=False, description="Bypass the gate and always search")
     execute: bool = Field(default=False, description="Run the retrieved prompt through an LLM and return the completion")
     model: str | None = Field(None, description="LLM model override for execution")
     stream: bool = Field(default=False, description="Stream the LLM response (only with execute=True)")
@@ -164,9 +161,7 @@ def _build_context_frame(raw: dict[str, Any]) -> "MemoryFrame":
 @router.post("/route", response_model=None)
 async def route(req: RouteRequest) -> dict | StreamingResponse:
     """
-    Primary entry point for agents. Runs a gate check first to decide whether
-    the situation warrants a prompt search. If the gate says skip, returns
-    immediately with mode="none".
+    Compatibility endpoint over the shared ``find()`` retrieval path.
 
     With execute=True, the retrieved prompt is also run through an LLM and
     the completion is included in the response (or streamed).
@@ -174,25 +169,8 @@ async def route(req: RouteRequest) -> dict | StreamingResponse:
     agent_context = normalize_agent_context(req.agent_context)
     template_context = with_agent_context(req.context, agent_context)
 
-    # Bound before the branch: skip_gate=True skips the assignment, and the
-    # response builder below reads it either way.
-    gate_decision = None
-    if not req.skip_gate:
-        context_frame = _build_context_frame(req.memory_context) if req.memory_context else None
-        gate_decision = await run_gate(
-            message=req.situation,
-            recent_turns=req.recent_turns,
-            context=context_frame,
-        )
-        if not gate_decision.search:
-            return {
-                "mode": "none",
-                "confidence": gate_decision.confidence,
-                "reason": gate_decision.reason,
-                "gate": gate_decision.to_dict(),
-            }
-
     agent_router = _get_router()
+    context_frame = _build_context_frame(req.memory_context) if req.memory_context else None
     result = await agent_router.route(
         situation=req.situation,
         domain=req.domain,
@@ -202,15 +180,9 @@ async def route(req: RouteRequest) -> dict | StreamingResponse:
         session_id=req.session_id,
         source=req.source,
         modality=req.modality,
+        memory_context=context_frame,
     )
     response = result.to_dict()
-
-    # Reporting a flat 1.0 here meant every served response claimed a perfect
-    # gate score, including the ones the gate never scored.
-    response["gate"] = (
-        gate_decision.to_dict() if gate_decision is not None
-        else {"search": True, "confidence": None, "reason": "gate not run"}
-    )
     if agent_context:
         response["agent_context"] = agent_context.to_dict()
 

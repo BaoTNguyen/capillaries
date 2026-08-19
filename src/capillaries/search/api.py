@@ -41,6 +41,7 @@ Filters (all optional):
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -52,6 +53,15 @@ from capillaries.skills.recall import SkillRecall, SkillMatch
 RETRIEVAL_CANDIDATES = 20
 SKILL_CANDIDATES = 10
 EXPANSION_CANDIDATES = 10
+IMAGE_GEN_PREFIX = "image gen"
+_IMAGE_GENERATION_QUERY = re.compile(
+    r"\b(?:generate|render|produce|edit|animate)\s+"
+    r"(?:(?:an?|the)\s+)?(?:[a-z-]+\s+){0,3}"
+    r"(?:image|images|video|videos|visual|visuals|animation|animations)\b"
+    r"|\b(?:image|images|video|videos|visual|visuals|animation|animations)\s+"
+    r"(?:generation|generating|rendering|editing|animation)\b",
+    re.IGNORECASE,
+)
 
 # SINGLE_THRESHOLD is gone. It compared a cross-encoder relevance score for a
 # prompt (0-1, one model) against the decision "should a skill be served
@@ -88,6 +98,16 @@ class SearchResponse:
         if self.recommendation == "skill" and self.skill_match:
             d["skill"] = self.skill_match.to_dict()
         return d
+
+
+def _filter_image_gen_candidates(query: str, candidates: list) -> list:
+    """Keep Image Gen workflows out of non-generative image/video requests."""
+    if _IMAGE_GENERATION_QUERY.search(query):
+        return candidates
+    return [
+        candidate for candidate in candidates
+        if not candidate.title.lower().startswith(IMAGE_GEN_PREFIX)
+    ]
 
 
 class PromptSearch:
@@ -191,6 +211,8 @@ class PromptSearch:
                 seen = {c.prompt_id for c in prompt_candidates}
                 boosted = fetch_by_ids(boost_prompt_ids)
                 prompt_candidates += [c for c in boosted if c.prompt_id not in seen]
+
+        prompt_candidates = _filter_image_gen_candidates(query, prompt_candidates)
 
         skill_candidates: list = []
         if self.recall is not None and prefer != "single":
