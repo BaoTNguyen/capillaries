@@ -29,6 +29,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from capillaries.config import DB_CONFIG
+from capillaries.find import _get_engine
 from capillaries.search.api import PromptSearch
 from capillaries.agent.api import router as agent_router
 
@@ -46,7 +47,10 @@ async def lifespan(app: FastAPI):
     # /rerank/scores endpoint that it serves.
     os.environ["CAPILLARIES_NO_REMOTE"] = "1"
     print("Loading PromptSearch (cross-encoder + retriever)...")
-    _search = PromptSearch()
+    # /agent/route delegates to find(), whose singleton owns a PromptSearch.
+    # Share it with /search so serving one endpoint never loads a second
+    # cross-encoder into GPU memory.
+    _search = _get_engine()._search
     # the model loads lazily now, so pull it in here rather than making the
     # first request pay for it — arriving warm is the point of the daemon
     _search.reranker.warm()
