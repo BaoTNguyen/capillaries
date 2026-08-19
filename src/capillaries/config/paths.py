@@ -59,8 +59,8 @@ EMBED_DIM = int(os.getenv("EMBED_DIM", "1024"))
 
 # The rerank score below which rank 1 is not worth serving.
 #
-# 0.3 is not a new number: skills/capillaries/SKILL.md already tells every agent
-# "below 0.3 the match is weak — tell the user nothing relevant was found".
+# The serving floor is deliberately high while automatic injection is driven by
+# retrieval alone. It is configurable for replay and calibration work.
 # Until 2026-08-18 only the prose said so. Every retrieval surface returned
 # rank 1 at whatever it scored, so "Are there any remaining issues here?" came
 # back as a confident single prompt at 0.095.
@@ -69,11 +69,10 @@ EMBED_DIM = int(os.getenv("EMBED_DIM", "1024"))
 # them cannot import each other: find(), agent/route.py (which serves both
 # /agent/route and the MCP tools), and the CLI on top of find().
 #
-# This is a floor, not a fix. On this corpus "Set up tier A so I can start
-# labeling" retrieves "Email & Message Triage System Deep Work" at 0.80 —
-# matching "tier A" against "TIER 1/2/3". No threshold catches that without
-# suppressing everything real. The reranker is the actual problem.
-MIN_CONFIDENCE = float(os.getenv("CAPILLARIES_MIN_CONFIDENCE", "0.3"))
+# This is a floor, not a fix. It blocks the observed "Set up tier A" false
+# positive at 0.704, but high-scoring adjacent matches still need labels before
+# the reranker can make a calibrated appropriateness decision.
+MIN_CONFIDENCE = float(os.getenv("CAPILLARIES_MIN_CONFIDENCE", "0.8"))
 
 # Prepended to queries only — documents are embedded raw. Asymmetric retrieval
 # models each want their own convention, so this belongs with the model name
