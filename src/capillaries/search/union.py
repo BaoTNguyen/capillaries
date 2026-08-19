@@ -62,11 +62,9 @@ async def union_candidates_broad(
     channel returns nothing — properties worth more than a single query on a
     benchmark this small.
 
-    NOTE: both of these read `prompts`, not `prompt_chunks` — dense scores
-    `prompts.embedding` (one vector per whole prompt) and lexical scores
-    `prompts.search_tsv`. The chunk index built in chunk.py is still not in the
-    serving path. Putting it there is a separate change and needs its own
-    before/after.
+    Dense retrieval reads `prompt_chunks` and retains each parent's best
+    matching passage for the reranker. Lexical retrieval remains document-level
+    because its terms can legitimately occur in different prompt sections.
     """
     import asyncio
 
@@ -95,6 +93,7 @@ async def union_candidates_broad(
             prompt_id=h.prompt_id, title=h.title, prompt_text="",
             rrf_score=0.0, dense_rank=rank, sparse_rank=None,
             dense_sim=h.score, sparse_sim=None,
+            matched_chunk_id=h.chunk_id,
         )
     _fill_text(by_id)
 
@@ -128,7 +127,7 @@ def fetch_by_ids(prompt_ids: list[str]) -> list[SearchResult]:
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT prompt_id::text, title, prompt_text, intent, task_type, "
+                "SELECT prompt_id::text, title, prompt_text, summary, intent, task_type, "
                 "       domain, status, notes "
                 "FROM prompts WHERE prompt_id::text = ANY(%s) AND status = 'active'",
                 (prompt_ids,),
@@ -143,8 +142,9 @@ def fetch_by_ids(prompt_ids: list[str]) -> list[SearchResult]:
             rrf_score=0.0, dense_rank=None, sparse_rank=None,
             dense_sim=None, sparse_sim=None,
             metadata={
-                "intent": row[3] or [], "task_type": row[4] or [],
-                "domain": row[5] or [], "status": row[6], "notes": row[7],
+                "summary": row[3] or "",
+                "intent": row[4] or [], "task_type": row[5] or [],
+                "domain": row[6] or [], "status": row[7], "notes": row[8],
                 "boosted": True,
             },
         )
@@ -159,6 +159,7 @@ def _from_row(row: dict, dense_rank=None, sparse_rank=None) -> SearchResult:
         dense_rank=dense_rank, sparse_rank=sparse_rank,
         dense_sim=row.get("dense_sim"), sparse_sim=row.get("sparse_sim"),
         metadata={
+            "summary": row.get("summary") or "",
             "intent": row.get("intent") or [],
             "task_type": row.get("task_type") or [],
             "domain": row.get("domain") or [],
@@ -189,6 +190,7 @@ def union_candidates(
             prompt_id=h.prompt_id, title=h.title, prompt_text="",
             rrf_score=0.0, dense_rank=rank, sparse_rank=None,
             dense_sim=h.score, sparse_sim=None,
+            matched_chunk_id=h.chunk_id,
         )
     for rank, h in enumerate(lex, 1):
         existing = by_id.get(h.prompt_id)
@@ -223,7 +225,7 @@ def _fill_text(by_id: dict[str, SearchResult]) -> None:
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT prompt_id::text, title, prompt_text, intent, task_type, "
+                "SELECT prompt_id::text, title, prompt_text, summary, intent, task_type, "
                 "       domain, status, notes "
                 "FROM prompts WHERE prompt_id::text = ANY(%s)",
                 (list(by_id),),
@@ -233,9 +235,22 @@ def _fill_text(by_id: dict[str, SearchResult]) -> None:
                 r.title = row[1]
                 r.prompt_text = row[2]
                 r.metadata = {
-                    "intent": row[3] or [], "task_type": row[4] or [],
-                    "domain": row[5] or [],
-                    "status": row[6], "notes": row[7],
+                    "summary": row[3] or "",
+                    "intent": row[4] or [], "task_type": row[5] or [],
+                    "domain": row[6] or [],
+                    "status": row[7], "notes": row[8],
                 }
+            chunk_ids = [r.matched_chunk_id for r in by_id.values()
+                         if r.matched_chunk_id]
+            if chunk_ids:
+                cur.execute(
+                    "SELECT chunk_id::text, chunk_text FROM prompt_chunks "
+                    "WHERE chunk_id::text = ANY(%s)",
+                    (chunk_ids,),
+                )
+                chunks = dict(cur.fetchall())
+                for result in by_id.values():
+                    if result.matched_chunk_id:
+                        result.matched_chunk_text = chunks.get(result.matched_chunk_id)
     finally:
         conn.close()

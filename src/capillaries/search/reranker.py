@@ -46,18 +46,47 @@ MODEL_NAME = os.getenv("RERANKER_MODEL", "Qwen/Qwen3-Reranker-0.6B")
 # sigmoid spans [0.04, 0.99] and can actually express doubt.
 NORMALIZE_SCORES = True
 
-# 2000 chars ~ 500 tokens. Was 512 *characters*, which fed the model a quarter
+# 4000 chars ~ 1000 tokens. Was 512 *characters*, which fed the model a quarter
 # of a median chunk — a leftover from a 512-token model this file no longer
 # loads. Qwen3-Reranker handles 32k positions, so this is a safety rail, not a
 # model limit.
-MAX_DOC_CHARS = 2_000
+MAX_DOC_CHARS = 4_000
 MAX_QUERY_CHARS = 500
+
+
+def _rerank_document(candidate: SearchResult) -> str:
+    """Build the candidate representation the cross-encoder judges."""
+    metadata = candidate.metadata
+    parts = [f"Title: {candidate.title}"]
+    summary = str(metadata.get("summary") or "").strip()
+    if summary and summary not in candidate.prompt_text:
+        parts.append(f"Summary: {summary}")
+    for key, label in (
+        ("domain", "Domain"),
+        ("intent", "Intent"),
+        ("task_type", "Task type"),
+    ):
+        values = metadata.get(key) or []
+        if isinstance(values, str):
+            values = [values]
+        if values:
+            parts.append(f"{label}: {', '.join(str(value) for value in values)}")
+    prefix = "\n".join(parts) + "\n\nPrompt:\n"
+    # Dense retrieval chose this passage in chunk embedding space. Preserve it
+    # for the cross-encoder rather than replacing it with the prompt opening.
+    # Chunks are bounded at index time; only lexical-only candidates need the
+    # document fallback and its safety budget.
+    if candidate.matched_chunk_text:
+        return prefix + candidate.matched_chunk_text
+    return prefix + candidate.prompt_text[:max(0, MAX_DOC_CHARS - len(prefix))]
+
 
 # Daemon scoring. CAPILLARIES_URL points at a running `capillaries.server`;
 # CAPILLARIES_NO_REMOTE is set by that server on itself so it never calls back
 # into its own endpoint.
 DAEMON_URL = os.getenv("CAPILLARIES_URL", "http://127.0.0.1:8000")
 _daemon_up: bool | None = None  # None = not yet probed, False = probed and absent
+REMOTE_BATCH_SIZE = 20
 
 
 def _remote_scores(pairs: list[tuple[str, str]]) -> list[float] | None:
@@ -71,13 +100,17 @@ def _remote_scores(pairs: list[tuple[str, str]]) -> list[float] | None:
         return None
     try:
         import httpx
-        r = httpx.post(f"{DAEMON_URL}/rerank/scores",
-                       json={"pairs": [list(p) for p in pairs]},
-                       timeout=httpx.Timeout(30.0, connect=0.5))
-        r.raise_for_status()
-        scores = r.json()["scores"]
-        if len(scores) != len(pairs):
-            raise ValueError("daemon returned the wrong number of scores")
+        scores = []
+        for start in range(0, len(pairs), REMOTE_BATCH_SIZE):
+            batch = pairs[start:start + REMOTE_BATCH_SIZE]
+            r = httpx.post(f"{DAEMON_URL}/rerank/scores",
+                           json={"pairs": [list(p) for p in batch]},
+                           timeout=httpx.Timeout(30.0, connect=0.5))
+            r.raise_for_status()
+            batch_scores = r.json()["scores"]
+            if len(batch_scores) != len(batch):
+                raise ValueError("daemon returned the wrong number of scores")
+            scores.extend(batch_scores)
         _daemon_up = True
         return [float(s) for s in scores]
     except Exception:
@@ -253,7 +286,7 @@ class Reranker:
             return []
 
         q = query[:MAX_QUERY_CHARS]
-        pairs = [(q, c.prompt_text[:MAX_DOC_CHARS]) for c in candidates]
+        pairs = [(q, _rerank_document(c)) for c in candidates]
         raw_scores = self._predict(pairs)
 
         ranked = []

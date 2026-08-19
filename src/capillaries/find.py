@@ -67,6 +67,7 @@ class FindResult:
     skill_id: str | None = None
     skill_name: str | None = None
     skill_tag: str | None = None
+    skill_summary: str | None = None
     steps: list[dict] = field(default_factory=list)
 
     # Metadata for arteries to inspect
@@ -114,14 +115,21 @@ class _FindEngine:
         context: MemoryFrame | None = None,
         prefer: str = "auto",
         agent_context: AgentContext | None = None,
+        filters: dict[str, Any] | None = None,
+        skill_hints: dict[str, list[str]] | None = None,
     ) -> FindResult:
         domain_hints, intent_hints = self._extract_hints(situation, context)
 
-        skill_hints: dict[str, list[str]] = {}
+        inferred_skill_hints: dict[str, list[str]] = {}
         if domain_hints:
-            skill_hints["domain"] = domain_hints
+            inferred_skill_hints["domain"] = domain_hints
         if intent_hints:
-            skill_hints["intent"] = intent_hints
+            inferred_skill_hints["intent"] = intent_hints
+        if skill_hints:
+            for key, values in skill_hints.items():
+                inferred_skill_hints[key] = list(dict.fromkeys(
+                    inferred_skill_hints.get(key, []) + values
+                ))
 
         # prompt-vs-skill is decided by one comparison, not an order of
         # attempts: prompt and skill candidates are retrieved into one pool
@@ -129,7 +137,8 @@ class _FindEngine:
         # caller force one path when it already knows which fits.
         top_k = CONTEXT_FILTER_CANDIDATES if context else 1
         resp = await self._search.search(
-            situation, top_k=top_k, skill_hints=skill_hints or None, prefer=prefer,
+            situation, filters=filters, top_k=top_k,
+            skill_hints=inferred_skill_hints or None, prefer=prefer,
             query_expansion=self._build_query_expansion(context),
             boost_prompt_ids=self._build_boost_ids(context),
             agent_context=agent_context,
@@ -260,6 +269,7 @@ class _FindEngine:
             skill_id=match.skill_id,
             skill_name=match.name,
             skill_tag=match.tag,
+            skill_summary=match.summary,
             steps=steps,
             domain=match.domain if hasattr(match, "domain") else [],
             intent=match.intent if hasattr(match, "intent") else [],
@@ -279,6 +289,8 @@ async def find(
     context: MemoryFrame | None = None,
     prefer: str = "auto",
     agent_context: dict[str, Any] | AgentContext | None = None,
+    filters: dict[str, Any] | None = None,
+    skill_hints: dict[str, list[str]] | None = None,
 ) -> FindResult:
     """
     Find the best prompt or skill for a situation.
@@ -306,7 +318,9 @@ async def find(
     # the serving log, which is what makes a serving row joinable to its reward.
     normalized = normalize_agent_context(agent_context)
     engine = _get_engine()
-    result = await engine.find(situation, context, prefer, normalized)
+    result = await engine.find(
+        situation, context, prefer, normalized, filters, skill_hints,
+    )
     if normalized:
         result.agent_context = normalized.to_dict()
     return result
@@ -317,6 +331,8 @@ def find_sync(
     context: MemoryFrame | None = None,
     prefer: str = "auto",
     agent_context: dict[str, Any] | AgentContext | None = None,
+    filters: dict[str, Any] | None = None,
+    skill_hints: dict[str, list[str]] | None = None,
 ) -> FindResult:
     """Synchronous wrapper for non-async callers."""
-    return asyncio.run(find(situation, context, prefer, agent_context))
+    return asyncio.run(find(situation, context, prefer, agent_context, filters, skill_hints))
