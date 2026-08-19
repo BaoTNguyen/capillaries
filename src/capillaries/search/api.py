@@ -41,6 +41,7 @@ Filters (all optional):
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -53,6 +54,7 @@ from capillaries.skills.recall import SkillRecall, SkillMatch
 RETRIEVAL_CANDIDATES = 20
 SKILL_CANDIDATES = 10
 EXPANSION_CANDIDATES = 10
+RERANKER_BATCH_SIZE = int(os.getenv("CAPILLARIES_RERANKER_BATCH_SIZE", "32"))
 IMAGE_GEN_PREFIX = "image gen"
 _IMAGE_GENERATION_QUERY = re.compile(
     r"\b(?:generate|render|produce|edit|animate)\s+"
@@ -122,7 +124,7 @@ class PromptSearch:
     def __init__(
         self,
         retrieval_candidates: int = RETRIEVAL_CANDIDATES,
-        reranker_batch_size: int = 32,
+        reranker_batch_size: int = RERANKER_BATCH_SIZE,
         skill_recall: bool = True,
         rerank_only: bool = False,
     ) -> None:
