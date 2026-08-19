@@ -67,7 +67,9 @@ case "$cmd" in
       -x 220 -y 50 \
       "cd '$PROJECT_DIR' && \
        PYTHONPATH='$PROJECT_DIR/src' \
-       uvicorn capillaries.server:app \
+       RERANKER_DEVICE="${RERANKER_DEVICE:-cuda:0}" \
+       CAPILLARIES_RERANKER_BATCH_SIZE="${CAPILLARIES_RERANKER_BATCH_SIZE:-4}" \
+       '$PROJECT_DIR/.venv/bin/python' -m uvicorn capillaries.server:app \
          --host 127.0.0.1 \
          --port $PORT \
          --log-level info; \
