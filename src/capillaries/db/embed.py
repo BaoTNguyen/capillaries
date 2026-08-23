@@ -122,9 +122,10 @@ async def run(reembed: bool = False) -> None:
     print("Building HNSW index (m=16, ef_construction=64)...")
     cur.execute(
         """
-        CREATE INDEX IF NOT EXISTS idx_prompts_embedding
+        CREATE INDEX IF NOT EXISTS idx_prompts_embedding_active
         ON prompts USING hnsw (embedding vector_cosine_ops)
         WITH (m = 16, ef_construction = 64)
+        WHERE status = 'active'
         """
     )
     conn.commit()
@@ -166,12 +167,16 @@ async def run_skills(reembed: bool = False) -> None:
     if reembed:
         cur.execute(
             "SELECT skill_id::text, name, summary FROM skills.skills "
-            "WHERE status = 'active' AND length(trim(summary)) > 0"
+            "WHERE length(trim(summary)) > 0"
         )
     else:
         cur.execute(
+            # Status-blind, matching the prompts pass above. Embeddings are
+            # derived from content, not from lifecycle: filtering here meant an
+            # inactive skill could never be embedded, so reactivating one left
+            # it permanently invisible to the semantic channel.
             "SELECT skill_id::text, name, summary FROM skills.skills "
-            "WHERE status = 'active' AND routing_embedding IS NULL "
+            "WHERE routing_embedding IS NULL "
             "AND length(trim(summary)) > 0"
         )
 
@@ -179,7 +184,7 @@ async def run_skills(reembed: bool = False) -> None:
     total = len(rows)
 
     if total == 0:
-        print("All active skills already have embeddings.")
+        print("All skills already have embeddings.")
         cur.close()
         conn.close()
         return
@@ -213,9 +218,10 @@ async def run_skills(reembed: bool = False) -> None:
     print("Building skills HNSW index...")
     cur.execute(
         """
-        CREATE INDEX IF NOT EXISTS idx_skills_routing_embedding
+        CREATE INDEX IF NOT EXISTS idx_skills_routing_embedding_active
         ON skills.skills USING hnsw (routing_embedding vector_cosine_ops)
         WITH (m = 16, ef_construction = 64)
+        WHERE status = 'active'
         """
     )
     conn.commit()
