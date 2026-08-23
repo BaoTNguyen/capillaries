@@ -218,10 +218,14 @@ def _build_filter_clause(filters: dict[str, Any]) -> tuple[str, list]:
         domain         list[str]  — any-of match on domain array column
         intent         list[str]  — any-of match
         task_type      list[str]  — any-of match
-        status         str        — default 'active'
+
+    Eligibility is not a filter callers get to choose. Retrieval serves active
+    prompts only; a draft or inactive one is ineligible however good its score.
+    NULL status (rows older than the column default) is ineligible too — the
+    comparison fails closed, which is the side to fail on.
     """
-    clauses: list[str] = ["status = %s"]
-    params: list = [filters.get("status", "active")]
+    clauses: list[str] = ["status = 'active'"]
+    params: list = []
 
     for col in ("domain", "intent", "task_type"):
         vals = filters.get(col)
@@ -267,6 +271,12 @@ class Retriever:
         n: int,
     ) -> list[dict]:
         """Return top-n results by cosine similarity using pgvector HNSW."""
+        # hnsw.ef_search caps how many tuples the index walk yields, and the
+        # status/domain filters are applied *after* that walk. Left at the
+        # default 40, a LIMIT 50 returned 40 rows on a corpus with nothing
+        # filtered out at all. Size the walk above the ask so filtered rows
+        # come out of slack instead of out of the result set.
+        cur.execute("SET LOCAL hnsw.ef_search = %s", (max(2 * n, 100),))
         vec_str = "[" + ",".join(map(str, query_vec)) + "]"
         sql = f"""
             SELECT
