@@ -74,8 +74,8 @@ class ContextFilter:
             return []
 
         active = set(d.lower() for d in context.persistent.active_domains)
-        recurring = set(d.lower() for d in context.evergreen.recurring_domains)
-        intents = set(i.lower() for i in context.evergreen.user_intent)
+        recurring = set(d.lower() for d in context.scope.recurring_domains)
+        intents = set(i.lower() for i in context.scope.user_intent)
         insight_domains = self._extract_insight_domains(context)
         penalized_prompts = self._build_penalty_map(context)
 
