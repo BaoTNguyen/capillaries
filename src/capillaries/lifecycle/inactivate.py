@@ -56,8 +56,8 @@ def inactivate_stale_prompts(
             cur.execute("""
                 SELECT count(*) FROM prompts
                 WHERE status = 'active'
-                  AND title NOT IN (
-                      SELECT DISTINCT prompt_id FROM skills.agent_feedback
+                  AND prompt_id::text NOT IN (
+                      SELECT DISTINCT prompt_id::text FROM skills.agent_feedback
                       WHERE prompt_id IS NOT NULL
                         AND created_at > NOW() - INTERVAL '6 months'
                         AND outcome != 'skipped'
@@ -69,8 +69,8 @@ def inactivate_stale_prompts(
                 cur.execute("""
                     SELECT title FROM prompts
                     WHERE status = 'active'
-                      AND title NOT IN (
-                          SELECT DISTINCT prompt_id FROM skills.agent_feedback
+                      AND prompt_id::text NOT IN (
+                          SELECT DISTINCT prompt_id::text FROM skills.agent_feedback
                           WHERE prompt_id IS NOT NULL
                             AND created_at > NOW() - INTERVAL '6 months'
                             AND outcome != 'skipped'
@@ -81,8 +81,8 @@ def inactivate_stale_prompts(
             cur.execute("""
                 UPDATE prompts SET status = 'inactive'
                 WHERE status = 'active'
-                  AND title NOT IN (
-                      SELECT DISTINCT prompt_id FROM skills.agent_feedback
+                  AND prompt_id::text NOT IN (
+                      SELECT DISTINCT prompt_id::text FROM skills.agent_feedback
                       WHERE prompt_id IS NOT NULL
                         AND created_at > NOW() - INTERVAL '6 months'
                         AND outcome != 'skipped'

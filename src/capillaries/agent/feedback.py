@@ -38,8 +38,15 @@ class FeedbackHandler:
         inferred_domain: list[str] | None = None,
         inferred_stage: str | None = None,
     ) -> dict:
-        """Submit agent feedback."""
+        """Submit agent feedback.
+
+        *prompt_id* may be a prompt UUID or a title. Callers get a UUID back
+        from find()/route(), but the MCP surface has always accepted either
+        and the column used to store either -- so it is normalised here rather
+        than rejected, and stored as the UUID.
+        """
         feedback_id = str(uuid.uuid4())
+        prompt_id = self._as_prompt_uuid(prompt_id)
 
         with psycopg2.connect(**self._db_config) as conn:
             with conn.cursor() as cur:
@@ -78,6 +85,22 @@ class FeedbackHandler:
                 conn.commit()
 
         return {"acknowledged": True, "feedback_id": feedback_id}
+
+    def _as_prompt_uuid(self, value: str | None) -> str | None:
+        """Resolve a title to its prompt_id; pass a UUID through unchanged."""
+        if not value:
+            return None
+        try:
+            uuid.UUID(str(value))
+            return str(value)
+        except (ValueError, AttributeError, TypeError):
+            pass
+        with psycopg2.connect(**self._db_config) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT prompt_id::text FROM prompts WHERE title = %s", (value,))
+                row = cur.fetchone()
+        # Unresolvable: store nothing rather than a value no join can match.
+        return row[0] if row else None
 
     def _update_skill_success_rate(self, cur, skill_id: str) -> None:
         """Update skill success rate from recent feedback."""

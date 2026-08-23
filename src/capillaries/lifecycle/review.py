@@ -24,24 +24,24 @@ def review_inactive_prompts(db_config: dict | None = None) -> list[dict]:
                     (
                         SELECT MAX(af.created_at)
                         FROM skills.agent_feedback af
-                        WHERE af.prompt_id = p.title
+                        WHERE af.prompt_id = p.prompt_id
                     ) AS last_direct_use,
                     (
                         SELECT COUNT(*)
                         FROM skills.agent_feedback af
-                        WHERE af.prompt_id = p.title AND af.outcome != 'skipped'
+                        WHERE af.prompt_id = p.prompt_id AND af.outcome != 'skipped'
                     ) AS total_runs,
                     (
                         SELECT pqp.success_rate
                         FROM prompt_quality_prior pqp
-                        WHERE pqp.prompt_id = p.title
+                        WHERE pqp.prompt_id = p.prompt_id
                     ) AS success_rate,
                     (
                         SELECT COUNT(*)
                         FROM skills.skills s,
                              jsonb_array_elements(s.steps) AS step
                         WHERE s.status = 'active'
-                          AND step->>'prompt_id' = p.title
+                          AND step->>'prompt_id' = p.prompt_id::text
                     ) AS active_skill_count,
                     (
                         SELECT COUNT(*)
@@ -77,7 +77,7 @@ def review_inactive_skills(db_config: dict | None = None) -> list[dict]:
                     (
                         SELECT COUNT(*)
                         FROM jsonb_array_elements(s.steps) AS step
-                        JOIN prompts p ON p.title = step->>'prompt_id'
+                        JOIN prompts p ON p.prompt_id::text = step->>'prompt_id'
                         WHERE p.status = 'inactive'
                     ) AS inactive_prompt_count
                 FROM skills.skills s
