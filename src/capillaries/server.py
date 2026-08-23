@@ -177,7 +177,7 @@ async def get_prompt(title: str):
                    status, notes, original_link,
                    last_evaluated, last_updated, embedding_version
             FROM prompts
-            WHERE title = %s
+            WHERE title = %s AND status = 'active'
             """,
             [title],
         )

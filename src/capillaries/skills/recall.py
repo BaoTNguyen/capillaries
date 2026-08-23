@@ -155,6 +155,10 @@ class SkillRecall:
             """
             with psycopg2.connect(**self._db_config) as conn:
                 with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                    # See retriever._dense_search: ef_search caps the index
+                    # walk and status is filtered after it.
+                    cur.execute("SET LOCAL hnsw.ef_search = %s",
+                                (max(2 * per_channel, 100),))
                     cur.execute(sem_sql, [vec_str, vec_str, per_channel])
                     sem_rows = cur.fetchall()
 
@@ -305,6 +309,7 @@ class SkillRecall:
                            task_type, content_hash
                     FROM prompts
                     WHERE prompt_id = ANY(%s::uuid[])
+                      AND status = 'active'
                     """,
                     (prompt_ids,),
                 )
