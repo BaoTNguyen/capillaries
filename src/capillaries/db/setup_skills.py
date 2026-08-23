@@ -316,6 +316,22 @@ def add_missing_columns(cursor) -> None:
     # model on step 4, changed total_steps underneath a running session.
     cursor.execute("ALTER TABLE skills.skill_sessions ADD COLUMN IF NOT EXISTS model VARCHAR;")
     cursor.execute("ALTER TABLE skills.skill_sessions ADD COLUMN IF NOT EXISTS steps JSONB;")
+    # Unstemmed literal channel, mirroring prompts.exact_tsv. search_tsv is
+    # 'english' and stems, so a skill named after a tool or a code symbol
+    # cannot be matched literally. GENERATED, so no writer can forget it --
+    # which is exactly how prompts.search_tsv left 68 rows invisible.
+    cursor.execute("""
+        DO $$ BEGIN
+            ALTER TABLE skills.skills ADD COLUMN exact_tsv TSVECTOR
+                GENERATED ALWAYS AS (
+                    to_tsvector('simple'::regconfig,
+                                coalesce(name, '') || ' ' ||
+                                coalesce(summary, '') || ' ' ||
+                                coalesce(routing_text, ''))
+                ) STORED;
+        EXCEPTION WHEN duplicate_column THEN NULL;
+        END $$;
+    """)
 
 
 def create_indexes(cursor) -> None:
@@ -331,6 +347,8 @@ def create_indexes(cursor) -> None:
         "CREATE INDEX IF NOT EXISTS idx_skills_task_type ON skills.skills USING GIN (task_type);",
         "CREATE INDEX IF NOT EXISTS idx_skills_status    ON skills.skills (status);",
         "CREATE INDEX IF NOT EXISTS idx_skills_modality  ON skills.skills (modality);",
+        """CREATE INDEX IF NOT EXISTS idx_skills_exact_tsv
+           ON skills.skills USING GIN (exact_tsv);""",
 
         # Full-text search on the materialized search_tsv (name + summary +
         # taxonomy), same shape as idx_prompts_search_tsv.

@@ -32,6 +32,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# capillaries.optimize imports dspy at module scope. It was never declared,
+# so the optimizer and its tests failed on every clean checkout.
+optimizer = [
+    "dspy-ai>=2.5.0",
+]
 lightweight = [
     "sentence-transformers>=2.2.0",
     "annoy>=1.17.0",

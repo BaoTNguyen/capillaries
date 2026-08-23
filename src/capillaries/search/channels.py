@@ -161,7 +161,9 @@ def _filter_sql(filters: dict | None) -> tuple[str, list]:
     an inactive or out-of-domain prompt with a great score is still ineligible.
     """
     from capillaries.search.retriever import _build_filter_clause
-    clause, params = _build_filter_clause(filters or {})
+    # Qualified: both queries below join prompts as `p`, and prompt_chunks now
+    # has a status column of its own, so a bare `status` is ambiguous.
+    clause, params = _build_filter_clause(filters or {}, alias="p.")
     return clause, params
 
 
@@ -253,7 +255,10 @@ def vector_search(
                1 - (c.embedding <=> %s::vector) AS score
         FROM prompt_chunks c
         JOIN prompts p USING (prompt_id)
-        WHERE c.embedding IS NOT NULL AND {clause}
+        -- c.status is what makes the partial chunk index usable; the p.*
+        -- clause still carries taxonomy, and its own status check is a cheap
+        -- backstop if the sync trigger ever lags.
+        WHERE c.embedding IS NOT NULL AND c.status = 'active' AND {clause}
         ORDER BY c.embedding <=> %s::vector
         LIMIT %s
     """
