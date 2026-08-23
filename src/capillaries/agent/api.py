@@ -32,7 +32,7 @@ class RouteRequest(BaseModel):
     session_id: str | None = Field(None, description="For continuing previous interaction")
     # Named memory_context (not `context`, which is already the template-fill field
     # above) to hold the MemoryFrame from the memory project without colliding.
-    memory_context: dict[str, Any] | None = Field(None, description="MemoryFrame from the memory project (ephemeral/persistent/evergreen tiers)")
+    memory_context: dict[str, Any] | None = Field(None, description="MemoryFrame from the memory project (ephemeral/persistent/scope tiers)")
     agent_context: dict[str, Any] | None = Field(None, description="Normalized agent/CLI metadata from Arteries or another adapter")
     source: str = Field(default="private", description="'private' (default) or 'public' for demo prompts")
     modality: str = Field(default="text", description="'text', 'image', 'video' — filters by output modality")
@@ -126,14 +126,14 @@ def _build_context_frame(raw: dict[str, Any]) -> "MemoryFrame":
         MemoryFrame,
         EphemeralMemory,
         PersistentMemory,
-        EvergreenMemory,
+        ScopeMemory,
         Insight,
         CachedRetrieval,
     )
 
     eph_raw = raw.get("ephemeral", {})
     per_raw = raw.get("persistent", {})
-    evg_raw = raw.get("evergreen", {})
+    scope_raw = raw.get("scope", {})
 
     ephemeral = EphemeralMemory(
         recent_messages=eph_raw.get("recent_messages", []),
@@ -147,15 +147,15 @@ def _build_context_frame(raw: dict[str, Any]) -> "MemoryFrame":
         active_domains=per_raw.get("active_domains", []),
     )
 
-    evergreen = EvergreenMemory(
-        user_intent=evg_raw.get("user_intent", []),
-        recurring_domains=evg_raw.get("recurring_domains", []),
-        ground_truth_insights=[Insight(**i) for i in evg_raw.get("ground_truth_insights", [])],
-        last_retrieval_ts=evg_raw.get("last_retrieval_ts"),
-        retrieval_confidence=evg_raw.get("retrieval_confidence"),
+    scope = ScopeMemory(
+        user_intent=scope_raw.get("user_intent", []),
+        recurring_domains=scope_raw.get("recurring_domains", []),
+        sibling_insights=[Insight(**i) for i in scope_raw.get("sibling_insights", [])],
+        last_retrieval_ts=scope_raw.get("last_retrieval_ts"),
+        retrieval_confidence=scope_raw.get("retrieval_confidence"),
     )
 
-    return MemoryFrame(ephemeral=ephemeral, persistent=persistent, evergreen=evergreen)
+    return MemoryFrame(ephemeral=ephemeral, persistent=persistent, scope=scope)
 
 
 @router.post("/route", response_model=None)
