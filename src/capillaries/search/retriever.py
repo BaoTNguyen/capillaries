@@ -210,7 +210,7 @@ async def embed_query(text: str) -> list[float]:
 
 # --- SQL helpers ---------------------------------------------------------
 
-def _build_filter_clause(filters: dict[str, Any]) -> tuple[str, list]:
+def _build_filter_clause(filters: dict[str, Any], alias: str = "") -> tuple[str, list]:
     """
     Build a WHERE clause fragment and parameter list from a filters dict.
 
@@ -219,26 +219,30 @@ def _build_filter_clause(filters: dict[str, Any]) -> tuple[str, list]:
         intent         list[str]  — any-of match
         task_type      list[str]  — any-of match
 
+    *alias* qualifies every column ("p." etc). Required wherever the query
+    joins another table that also has a `status` column -- prompt_chunks does
+    now, and an unqualified `status` there is ambiguous, not merely unclear.
+
     Eligibility is not a filter callers get to choose. Retrieval serves active
     prompts only; a draft or inactive one is ineligible however good its score.
     NULL status (rows older than the column default) is ineligible too — the
     comparison fails closed, which is the side to fail on.
     """
-    clauses: list[str] = ["status = 'active'"]
+    clauses: list[str] = [f"{alias}status = 'active'"]
     params: list = []
 
     for col in ("domain", "intent", "task_type"):
         vals = filters.get(col)
         if vals:
-            clauses.append(f"{col} && %s::varchar[]")
+            clauses.append(f"{alias}{col} && %s::varchar[]")
             params.append(vals)
 
     if filters.get("source"):
-        clauses.append("source = %s")
+        clauses.append(f"{alias}source = %s")
         params.append(filters["source"])
 
     if filters.get("modality"):
-        clauses.append("modality = %s")
+        clauses.append(f"{alias}modality = %s")
         params.append(filters["modality"])
 
     return " AND ".join(clauses), params

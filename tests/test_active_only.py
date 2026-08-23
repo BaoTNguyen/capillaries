@@ -32,7 +32,12 @@ def test_other_filters_still_work():
 
 
 def test_channels_inherits_the_same_clause():
-    assert _filter_sql({}) == _build_filter_clause({})
+    """Channels qualifies with "p." — prompt_chunks has its own status column
+    now, so an unqualified one is ambiguous in the join — but it must still be
+    the same builder, not a second copy that can drift."""
+    assert _filter_sql({}) == _build_filter_clause({}, alias="p.")
+    clause, _ = _filter_sql({})
+    assert "p.status = 'active'" in clause
 
 
 def test_every_retrieval_sql_filters_status():
@@ -73,3 +78,38 @@ def test_inactivation_refuses_to_wipe_the_corpus():
         return
     # If usage data exists and the pass is small, that is the healthy case.
     # Either way it must never silently retire the whole corpus.
+
+
+def test_chunk_status_stays_in_sync_with_its_prompt():
+    """prompt_chunks.status is denormalised so the chunk index can be partial.
+    A trigger owns it — application code writes status from ingest, from
+    lifecycle/inactivate.py, and by hand, and would forget one."""
+    import psycopg2
+
+    from capillaries.config.paths import DB_CONFIG
+
+    conn = psycopg2.connect(**DB_CONFIG)
+    conn.autocommit = True
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT p.prompt_id FROM prompts p JOIN prompt_chunks c USING (prompt_id) "
+            "WHERE p.status = 'active' LIMIT 1"
+        )
+        row = cur.fetchone()
+        if row is None:
+            return
+        pid = row[0]
+
+        def statuses():
+            cur.execute("SELECT DISTINCT status FROM prompt_chunks WHERE prompt_id = %s", (pid,))
+            return {r[0] for r in cur.fetchall()}
+
+        try:
+            cur.execute("UPDATE prompts SET status = 'inactive' WHERE prompt_id = %s", (pid,))
+            assert statuses() == {"inactive"}, "trigger did not propagate inactivation"
+        finally:
+            cur.execute("UPDATE prompts SET status = 'active' WHERE prompt_id = %s", (pid,))
+        assert statuses() == {"active"}, "trigger did not propagate reactivation"
+    finally:
+        conn.close()
