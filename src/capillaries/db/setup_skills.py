@@ -263,9 +263,12 @@ def create_indexes(cursor) -> None:
            ON skills.skills USING GIN (search_tsv);""",
 
         # Semantic search on summary embedding
-        """CREATE INDEX IF NOT EXISTS idx_skills_routing_embedding
+        # Partial, matching idx_prompts_embedding_active — recall.py only ever
+        # queries active skills, so inactive ones have no business in the graph.
+        """CREATE INDEX IF NOT EXISTS idx_skills_routing_embedding_active
            ON skills.skills USING hnsw (routing_embedding vector_cosine_ops)
-           WITH (m = 16, ef_construction = 64);""",
+           WITH (m = 16, ef_construction = 64)
+           WHERE status = 'active';""",
 
         # Run history per skill
         """CREATE INDEX IF NOT EXISTS idx_skill_runs_skill

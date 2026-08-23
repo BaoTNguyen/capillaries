@@ -201,7 +201,13 @@ def create_database_schema(cursor):
         "CREATE INDEX IF NOT EXISTS idx_prompts_status ON prompts (status);",
         "CREATE INDEX IF NOT EXISTS idx_prompts_search_tsv ON prompts USING GIN (search_tsv);",
         "CREATE INDEX IF NOT EXISTS idx_prompts_exact_tsv ON prompts USING GIN (exact_tsv);",
-        "CREATE INDEX IF NOT EXISTS idx_prompts_embedding ON prompts USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);",
+        # Partial, on purpose. Retrieval only ever asks for active prompts, and
+        # a full index makes the planner walk inactive rows and discard them
+        # after the fact — measured at 25% active, a LIMIT 50 came back with 22.
+        # Restricting the graph to what can actually be returned fixes that and
+        # is faster besides. Postgres maintains membership on every UPDATE, so
+        # inactivating and reactivating take effect immediately; no rebuild.
+        "CREATE INDEX IF NOT EXISTS idx_prompts_embedding_active ON prompts USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64) WHERE status = 'active';",
         "CREATE INDEX IF NOT EXISTS idx_prompts_confidence ON prompts USING GIN (metadata_confidence);",
         "CREATE INDEX IF NOT EXISTS idx_prompts_backfill ON prompts (backfill_status);",
         "CREATE INDEX IF NOT EXISTS idx_variants_prompt_model ON prompt_variants (prompt_id, model) WHERE is_current = TRUE;",
