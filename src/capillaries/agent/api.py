@@ -123,17 +123,18 @@ def _build_context_frame(raw: dict[str, Any]) -> "MemoryFrame":
     only when a client actually posts a frame — is where the requirement bites.
     """
     from arteries.memory_types import (
-        MemoryFrame,
-        EphemeralMemory,
-        PersistentMemory,
-        ScopeMemory,
-        Insight,
         CachedRetrieval,
+        EphemeralMemory,
+        Insight,
+        MemoryFrame,
+        PersistentMemory,
     )
+
+    from capillaries.agent import frame_compat
 
     eph_raw = raw.get("ephemeral", {})
     per_raw = raw.get("persistent", {})
-    scope_raw = raw.get("scope", {})
+    scope_raw = raw.get("scope") or raw.get("evergreen") or {}
 
     ephemeral = EphemeralMemory(
         recent_messages=eph_raw.get("recent_messages", []),
@@ -147,15 +148,13 @@ def _build_context_frame(raw: dict[str, Any]) -> "MemoryFrame":
         active_domains=per_raw.get("active_domains", []),
     )
 
-    scope = ScopeMemory(
-        user_intent=scope_raw.get("user_intent", []),
-        recurring_domains=scope_raw.get("recurring_domains", []),
-        sibling_insights=[Insight(**i) for i in scope_raw.get("sibling_insights", [])],
-        last_retrieval_ts=scope_raw.get("last_retrieval_ts"),
-        retrieval_confidence=scope_raw.get("retrieval_confidence"),
-    )
-
-    return MemoryFrame(ephemeral=ephemeral, persistent=persistent, scope=scope)
+    # Third tier under whichever name this arteries uses -- see frame_compat.
+    scope = frame_compat.build_scope_tier(scope_raw)
+    return MemoryFrame(**{
+        "ephemeral": ephemeral,
+        "persistent": persistent,
+        frame_compat.frame_kwarg_name(): scope,
+    })
 
 
 @router.post("/route", response_model=None)

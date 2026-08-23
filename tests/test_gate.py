@@ -201,13 +201,17 @@ class TestMemoryNoLongerForcesSearch:
         # sibling checkout is installed.
         pytest.importorskip("arteries.memory_types")
         from arteries.memory_types import (
-            MemoryFrame, EphemeralMemory, PersistentMemory, EvergreenMemory,
+            EphemeralMemory, MemoryFrame, PersistentMemory,
         )
-        frame = MemoryFrame(
-            ephemeral=EphemeralMemory(topic_drift=0.9, turn_count=9),
-            persistent=PersistentMemory(),
-            evergreen=EvergreenMemory(),
-        )
+
+        # The third tier is `evergreen` on older arteries and `scope` on newer.
+        # frame_compat keeps this test working against either sibling checkout.
+        from capillaries.agent import frame_compat
+        frame = MemoryFrame(**{
+            "ephemeral": EphemeralMemory(topic_drift=0.9, turn_count=9),
+            "persistent": PersistentMemory(),
+            frame_compat.frame_kwarg_name(): frame_compat.scope_memory_class()(),
+        })
         # a message with no plausible corpus match — drift is high, but the old
         # code would (wrongly) force search on drift alone. Stub the embedding so
         # this stays hermetic.
