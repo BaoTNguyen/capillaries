@@ -24,6 +24,7 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from capillaries.agent import frame_compat
 from capillaries.search.reranker import RankedResult
 
 if TYPE_CHECKING:
@@ -74,8 +75,8 @@ class ContextFilter:
             return []
 
         active = set(d.lower() for d in context.persistent.active_domains)
-        recurring = set(d.lower() for d in context.scope.recurring_domains)
-        intents = set(i.lower() for i in context.scope.user_intent)
+        recurring = {d.lower() for d in frame_compat.recurring_domains(context)}
+        intents = {i.lower() for i in frame_compat.user_intent(context)}
         insight_domains = self._extract_insight_domains(context)
         penalized_prompts = self._build_penalty_map(context)
 

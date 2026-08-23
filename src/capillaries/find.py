@@ -199,8 +199,11 @@ class _FindEngine:
         if context:
             if context.persistent.active_domains:
                 domain = context.persistent.active_domains
-            if context.evergreen.user_intent:
-                intent = context.evergreen.user_intent
+            from capillaries.agent import frame_compat
+
+            intents = frame_compat.user_intent(context)
+            if intents:
+                intent = intents
 
         from capillaries.agent.inference import infer_from_situation
 
