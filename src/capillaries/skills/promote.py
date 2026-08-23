@@ -354,6 +354,113 @@ class SkillPromoter:
                     params,
                 )
 
+    # ── Per-model variants ────────────────────────────────────────────────
+
+    def set_variant(
+        self,
+        tag_or_id: str,
+        model: str,
+        steps: list[dict],
+        optimizer: str = "manual",
+        metric_score: float | None = None,
+        notes: str | None = None,
+    ) -> str:
+        """Store an alternative step chain for one model.
+
+        Varies the shape of the chain, not the text of any step -- a model
+        that needs the workflow broken into six granular steps gets six where
+        a stronger one gets three. prompt_variants still supplies each step's
+        text on top of whichever chain is chosen.
+
+        Supersedes any existing current variant for this (skill, model)
+        rather than deleting it, so a regression can be compared against what
+        it replaced.
+
+        Returns the new variant_id.
+        """
+        if not steps:
+            raise ValueError("A variant with no steps is not a variant; use clear_variant()")
+
+        skill = self.get(tag_or_id)
+        if not skill:
+            raise ValueError(f"Skill not found: {tag_or_id}")
+
+        steps_json, _ = self._build_steps_from_dicts(steps)
+
+        with psycopg2.connect(**self._db_config) as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                # Every step must point at a prompt that exists and is
+                # servable. An unresolvable step yields prompt_text="" at run
+                # time, and a chain assembled for a weaker model is exactly
+                # where that would go unnoticed.
+                ids = [st["prompt_id"] for st in steps_json if st.get("prompt_id")]
+                cur.execute(
+                    "SELECT prompt_id::text AS pid FROM prompts "
+                    "WHERE prompt_id::text = ANY(%s) AND status = 'active'",
+                    (ids,),
+                )
+                found = {r["pid"] for r in cur.fetchall()}
+                missing = [i for i in ids if i not in found]
+                if missing:
+                    raise ValueError(
+                        f"variant references prompts that are missing or inactive: {missing}"
+                    )
+
+                cur.execute(
+                    "UPDATE skills.skill_variants SET is_current = FALSE "
+                    "WHERE skill_id = %s AND model = %s AND is_current",
+                    (str(skill["skill_id"]), model),
+                )
+                cur.execute(
+                    """
+                    INSERT INTO skills.skill_variants
+                        (skill_id, model, steps, content_hash, optimizer,
+                         metric_score, notes, is_current)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE)
+                    RETURNING variant_id::text AS variant_id
+                    """,
+                    (str(skill["skill_id"]), model, json.dumps(steps_json),
+                     _content_hash(skill["summary"], steps_json), optimizer,
+                     metric_score, notes),
+                )
+                variant_id = cur.fetchone()["variant_id"]
+                conn.commit()
+                return variant_id
+
+    def clear_variant(self, tag_or_id: str, model: str) -> bool:
+        """Retire this model's variant so it falls back to the base chain."""
+        skill = self.get(tag_or_id)
+        if not skill:
+            raise ValueError(f"Skill not found: {tag_or_id}")
+        with psycopg2.connect(**self._db_config) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE skills.skill_variants SET is_current = FALSE "
+                    "WHERE skill_id = %s AND model = %s AND is_current",
+                    (str(skill["skill_id"]), model),
+                )
+                cleared = cur.rowcount > 0
+                conn.commit()
+                return cleared
+
+    def list_variants(self, tag_or_id: str, current_only: bool = True) -> list[dict]:
+        """Variants for a skill, newest first."""
+        skill = self.get(tag_or_id)
+        if not skill:
+            raise ValueError(f"Skill not found: {tag_or_id}")
+        sql = (
+            "SELECT variant_id::text, model, steps, content_hash, optimizer, "
+            "       metric_score, notes, created_at, is_current "
+            "FROM skills.skill_variants WHERE skill_id = %s"
+        )
+        if current_only:
+            sql += " AND is_current"
+        sql += " ORDER BY created_at DESC"
+        with psycopg2.connect(**self._db_config) as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(sql, (str(skill["skill_id"]),))
+                return [dict(r) for r in cur.fetchall()]
+
     def set_steps(self, tag_or_id: str, steps: list[dict]) -> None:
         """
         Replace all steps for a skill.

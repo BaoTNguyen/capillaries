@@ -331,7 +331,8 @@ class PromptSearch:
         skill candidates in the pool never pay for step resolution.
         """
         meta = winner.metadata
-        steps = self.recall._resolve_steps(meta["steps"], model=model)
+        steps = self.recall._resolve_steps(
+            meta["steps"], model=model, skill_id=meta["skill_id"])
         return SkillMatch(
             skill_id=meta["skill_id"],
             name=winner.title,
