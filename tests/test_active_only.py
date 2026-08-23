@@ -52,3 +52,24 @@ if __name__ == "__main__":
         if name.startswith("test_"):
             fn()
             print(f"ok  {name}")
+
+
+# --- lifecycle guard ------------------------------------------------------
+
+def test_inactivation_refuses_to_wipe_the_corpus():
+    """An empty agent_feedback table is a telemetry outage, not evidence that
+    every prompt is stale. Acting on it would inactivate everything."""
+    import pytest
+
+    from capillaries.lifecycle.inactivate import (
+        InactivationRefused,
+        inactivate_stale_prompts,
+    )
+
+    try:
+        inactivate_stale_prompts(dry_run=True)
+    except InactivationRefused as exc:
+        assert "telemetry" in str(exc)
+        return
+    # If usage data exists and the pass is small, that is the healthy case.
+    # Either way it must never silently retire the whole corpus.

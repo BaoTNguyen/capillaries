@@ -18,6 +18,19 @@ from pathlib import Path
 
 import psycopg2
 
+import importlib.util
+
+import pytest
+
+# ab_gate imports optimize.dspy_optimize, which imports dspy. It is not a
+# declared dependency, so those three failed on every clean checkout and
+# "the suite is green" stopped meaning anything. Scoped to the class that
+# needs it -- FenceTests and ServingLogTests do not.
+_needs_dspy = pytest.mark.skipif(
+    importlib.util.find_spec("dspy") is None,
+    reason="optimizer extra not installed (dspy)",
+)
+
 from capillaries.config.paths import DB_CONFIG
 from capillaries.optimize.fences import assert_fences_unchanged, split_fences
 
@@ -204,6 +217,7 @@ class ServingLogTests(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 @unittest.skipUnless(DB_UP, "Postgres not reachable")
+@_needs_dspy
 class AbGateTests(unittest.TestCase):
     PROMPT_TITLE_WIN = "m6-test-ab-win"
     PROMPT_TITLE_LOSE = "m6-test-ab-lose"
