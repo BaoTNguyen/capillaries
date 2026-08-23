@@ -239,7 +239,11 @@ def create_agent_feedback_table(cursor) -> None:
 
             -- What was recommended
             mode            VARCHAR NOT NULL,  -- 'single', 'skill', 'chain'
-            prompt_id       VARCHAR,           -- for single-prompt recommendations
+            -- UUID, not VARCHAR. As VARCHAR this accepted both a title and a
+            -- prompt_id, so different callers stored different things and every
+            -- query that joined it picked a side and silently matched nothing.
+            -- The type is the only thing that stops a fourth instance.
+            prompt_id       UUID,              -- for single-prompt recommendations
             skill_id        UUID,              -- for skill recommendations
 
             -- Agent's assessment
@@ -316,6 +320,23 @@ def add_missing_columns(cursor) -> None:
     # model on step 4, changed total_steps underneath a running session.
     cursor.execute("ALTER TABLE skills.skill_sessions ADD COLUMN IF NOT EXISTS model VARCHAR;")
     cursor.execute("ALTER TABLE skills.skill_sessions ADD COLUMN IF NOT EXISTS steps JSONB;")
+    # prompt_id VARCHAR -> UUID. prompt_quality_prior selects the column, and
+    # Postgres will not retype a column a view depends on, so the view is
+    # dropped and rebuilt around it. Only the type is caught-and-skipped (it is
+    # idempotent); a genuine failure is left to raise rather than swallowed.
+    cursor.execute("""
+        SELECT data_type FROM information_schema.columns
+        WHERE table_schema = 'skills' AND table_name = 'agent_feedback'
+          AND column_name = 'prompt_id'
+    """)
+    row = cursor.fetchone()
+    if row and row[0] != "uuid":
+        cursor.execute("DROP MATERIALIZED VIEW IF EXISTS prompt_quality_prior;")
+        cursor.execute(
+            "ALTER TABLE skills.agent_feedback "
+            "ALTER COLUMN prompt_id TYPE UUID USING NULLIF(prompt_id, '')::uuid;"
+        )
+        create_materialized_views(cursor)
     # Unstemmed literal channel, mirroring prompts.exact_tsv. search_tsv is
     # 'english' and stems, so a skill named after a tool or a code symbol
     # cannot be matched literally. GENERATED, so no writer can forget it --
