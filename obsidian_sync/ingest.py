@@ -165,6 +165,14 @@ def insert_prompts_batch(cursor, prompts: List[Dict[str, Any]], *, prune_orphans
         backfill_status = CASE
             WHEN prompts.content_hash != EXCLUDED.content_hash THEN 'pending'
             ELSE prompts.backfill_status
+        END,
+        -- Drop the vector when the text behind it changes. embed.py's
+        -- incremental pass looks for `embedding IS NULL`, so a prompt edited
+        -- in place kept its old embedding forever and only a full --reembed
+        -- (all 1026) would fix it. Now the cheap pass picks it up.
+        embedding = CASE
+            WHEN prompts.content_hash != EXCLUDED.content_hash THEN NULL
+            ELSE prompts.embedding
         END
     """
 

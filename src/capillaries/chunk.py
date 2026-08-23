@@ -354,8 +354,13 @@ def backfill(dry: bool = False, db_config: dict | None = None) -> dict:
     cur.execute("UPDATE prompt_chunks SET exact_tsv = to_tsvector('simple', chunk_text)")
     conn.commit()
 
-    print("\nBuilding HNSW index...")
-    cur.execute(INDEXES[-1])
+    # The backfill DELETEs every row and reinserts, so the index already
+    # exists and INDEXES[-1] (CREATE ... IF NOT EXISTS) was a silent no-op —
+    # the graph got built one insert at a time, which is both slower and a
+    # worse graph than one bulk pass. REINDEX forces the bulk build.
+    print("\nRebuilding HNSW index...")
+    cur.execute(INDEXES[-1])          # first run: the index does not exist yet
+    cur.execute("REINDEX INDEX idx_chunks_embedding")
     conn.commit()
 
     cur.close()

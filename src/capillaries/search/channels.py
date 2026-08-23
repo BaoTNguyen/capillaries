@@ -260,6 +260,9 @@ def vector_search(
     conn = psycopg2.connect(**(db_config or DB_CONFIG))
     try:
         with conn.cursor() as cur:
+            # See retriever._dense_search — ef_search caps the walk, filters
+            # come after it, so the walk has to be wider than CANDIDATES.
+            cur.execute("SET LOCAL hnsw.ef_search = %s", (max(2 * CANDIDATES, 100),))
             cur.execute(sql, [vec] + fparams + [vec, CANDIDATES])
             rows = cur.fetchall()
     finally:
