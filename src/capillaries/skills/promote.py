@@ -304,6 +304,12 @@ class SkillPromoter:
         updates.append("content_hash = %s")
         params.append(content_hash)
 
+        # routing_embedding is derived from the summary, so a summary edit
+        # invalidates it. embed.py's incremental pass looks for NULL, which is
+        # the only way it will ever revisit this row.
+        if summary is not None and summary != skill["summary"]:
+            updates.append("routing_embedding = NULL")
+
         # search_tsv depends on name/summary/taxonomy — recompute from the
         # resolved (post-update) values whenever any of them could have
         # changed, same reasoning as content_hash above.

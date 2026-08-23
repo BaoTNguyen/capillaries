@@ -56,8 +56,13 @@ def setup_schemas() -> None:
 
 
 async def run_embed() -> None:
-    from capillaries.db.embed import run
+    # Both, deliberately. This used to call run() alone, so every documented
+    # setup path embedded 1026 prompts and zero skills — and skill recall's
+    # semantic channel (WHERE routing_embedding IS NOT NULL) silently matched
+    # nothing for as long as that was true.
+    from capillaries.db.embed import run, run_skills
     await run()
+    await run_skills()
 
 
 async def run_classify() -> None:
@@ -71,7 +76,7 @@ async def main() -> None:
     parser = argparse.ArgumentParser(
         description="Set up the capillaries database (schemas, embeddings, classification)."
     )
-    parser.add_argument("--embed", action="store_true", help="Generate embeddings for prompts missing them")
+    parser.add_argument("--embed", action="store_true", help="Generate embeddings for prompts and skills missing them")
     parser.add_argument("--classify", action="store_true", help="Run batch LLM classification on pending prompts")
     parser.add_argument("--all", action="store_true", help="Schemas + embed + classify")
     args = parser.parse_args()
