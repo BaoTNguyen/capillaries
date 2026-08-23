@@ -131,6 +131,8 @@ class PromptSearch:
         self.retriever = Retriever()
         self.reranker = Reranker(batch_size=reranker_batch_size)
         self.recall = SkillRecall() if skill_recall else None
+        from capillaries.search.context_filter import ContextFilter
+        self._context_filter = ContextFilter()
         self._retrieval_candidates = retrieval_candidates
         self._rerank_only = rerank_only
 
@@ -145,6 +147,7 @@ class PromptSearch:
         query_expansion: str | None = None,
         boost_prompt_ids: list[str] | None = None,
         agent_context: Any | None = None,
+        context: Any | None = None,
     ) -> SearchResponse:
         """
         Find the most relevant prompt or skill for a query.
@@ -172,6 +175,9 @@ class PromptSearch:
                          or not, is still scored against `query` alone. This
                          only widens what the reranker gets to see; it can't
                          make a bad candidate look relevant.
+            context:     Optional MemoryFrame. Reorders the reranked pool via
+                         ContextFilter before the prompt-vs-skill decision, so
+                         both tiers see the same context signals.
             boost_prompt_ids: Optional prompt ids (e.g. arteries'
                          prior_retrievals) injected directly into the candidate
                          pool, bypassing retrieval entirely. Same rule: still
@@ -225,6 +231,17 @@ class PromptSearch:
 
         all_candidates = prompt_candidates + skill_candidates
         ranked = self.reranker.rerank(query, all_candidates, top_k=top_k + len(skill_candidates))
+
+        # Context applies to the POOL, not to the prompt branch of it. This
+        # used to run in find.py inside _build_single_result, and
+        # _build_skill_result returned before ever reaching it — so a winning
+        # skill was decided with the MemoryFrame ignored. Both tiers already
+        # share one reranked list, so reordering it here covers both.
+        #
+        # Reorders only. rerank_score is left untouched because the confidence
+        # floor is a statement about semantic match, not about context.
+        if context is not None:
+            ranked = [f.result for f in self._context_filter.apply(ranked, context)]
 
         total = len(all_candidates)
 
