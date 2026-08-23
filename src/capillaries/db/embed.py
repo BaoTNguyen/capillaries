@@ -166,8 +166,11 @@ async def run_skills(reembed: bool = False) -> None:
 
     if reembed:
         cur.execute(
-            "SELECT skill_id::text, name, summary FROM skills.skills "
-            "WHERE length(trim(summary)) > 0"
+            # COALESCE, not routing_text alone: rows written before the
+            # column existed still embed off their summary rather than
+            # silently dropping out of the semantic channel.
+            "SELECT skill_id::text, name, COALESCE(NULLIF(routing_text, ''), summary) "
+            "FROM skills.skills WHERE length(trim(COALESCE(routing_text, summary))) > 0"
         )
     else:
         cur.execute(
@@ -175,9 +178,9 @@ async def run_skills(reembed: bool = False) -> None:
             # derived from content, not from lifecycle: filtering here meant an
             # inactive skill could never be embedded, so reactivating one left
             # it permanently invisible to the semantic channel.
-            "SELECT skill_id::text, name, summary FROM skills.skills "
-            "WHERE routing_embedding IS NULL "
-            "AND length(trim(summary)) > 0"
+            "SELECT skill_id::text, name, COALESCE(NULLIF(routing_text, ''), summary) "
+            "FROM skills.skills WHERE routing_embedding IS NULL "
+            "AND length(trim(COALESCE(routing_text, summary))) > 0"
         )
 
     rows = cur.fetchall()

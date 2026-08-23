@@ -26,6 +26,7 @@ from capillaries.db.setup_skills import (
     create_skills_schema,
     create_skills_table,
     create_skill_runs_table,
+    add_missing_columns as add_skills_columns,
     create_indexes as create_skills_indexes,
 )
 
@@ -43,6 +44,7 @@ def setup_schemas() -> None:
     create_skills_schema(cur)
     create_skills_table(cur)
     create_skill_runs_table(cur)
+    add_skills_columns(cur)
     create_skills_indexes(cur)
     conn.commit()
 

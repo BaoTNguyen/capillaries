@@ -108,7 +108,7 @@ class SkillRecall:
         from capillaries.search.retriever import Retriever
 
         filters = filters or {}
-        taxonomy_boost = self._taxonomy_boost_sql(filters)
+        where, fparams = self._filter_sql(filters)
 
         with psycopg2.connect(**self._db_config) as conn:
             with conn.cursor() as plain_cur:
@@ -121,17 +121,17 @@ class SkillRecall:
                 if or_terms:
                     fts_sql = f"""
                         SELECT
-                            skill_id, name, tag, version, summary,
+                            skill_id, name, tag, version, summary, routing_text,
                             steps, domain, intent, task_type,
                             ts_rank_cd(search_tsv, to_tsquery('english', %s), 1|4|32)
-                                {taxonomy_boost} AS score
+                                AS score
                         FROM skills.skills
-                        WHERE status = 'active'
+                        WHERE {where}
                           AND search_tsv @@ to_tsquery('english', %s)
                         ORDER BY score DESC
                         LIMIT %s
                     """
-                    cur.execute(fts_sql, [or_terms, or_terms, per_channel])
+                    cur.execute(fts_sql, [or_terms] + fparams + [or_terms, per_channel])
                     fts_rows = cur.fetchall()
 
         try:
@@ -142,13 +142,13 @@ class SkillRecall:
         sem_rows: list[dict] = []
         if query_vec is not None:
             vec_str = "[" + ",".join(map(str, query_vec)) + "]"
-            sem_sql = """
+            sem_sql = f"""
                 SELECT
-                    skill_id, name, tag, version, summary,
+                    skill_id, name, tag, version, summary, routing_text,
                     steps, domain, intent, task_type,
                     1 - (routing_embedding <=> %s::vector) AS score
                 FROM skills.skills
-                WHERE status = 'active'
+                WHERE {where}
                   AND routing_embedding IS NOT NULL
                 ORDER BY routing_embedding <=> %s::vector
                 LIMIT %s
@@ -159,7 +159,7 @@ class SkillRecall:
                     # walk and status is filtered after it.
                     cur.execute("SET LOCAL hnsw.ef_search = %s",
                                 (max(2 * per_channel, 100),))
-                    cur.execute(sem_sql, [vec_str, vec_str, per_channel])
+                    cur.execute(sem_sql, [vec_str] + fparams + [vec_str, per_channel])
                     sem_rows = cur.fetchall()
 
         by_id: dict[str, SearchResult] = {}
@@ -184,7 +184,10 @@ class SkillRecall:
         return SearchResult(
             prompt_id=str(row["skill_id"]),
             title=row["name"],
-            prompt_text=f"{row['name']}\n\n{row['summary']}",
+            # The cross-encoder scores this. A bare name+summary asks ~300
+            # chars to compete with full prompt bodies; routing_text carries
+            # the step titles and rationales as well.
+            prompt_text=row.get("routing_text") or f"{row['name']}\n\n{row['summary']}",
             rrf_score=0.0,
             dense_rank=dense_rank, sparse_rank=sparse_rank,
             dense_sim=dense_sim, sparse_sim=sparse_sim,
@@ -257,26 +260,38 @@ class SkillRecall:
             return None
         return resp.json()["data"][0]["embedding"]
 
-    def _taxonomy_boost_sql(self, filters: dict[str, Any]) -> str:
+    @staticmethod
+    def _filter_sql(filters: dict[str, Any] | None) -> tuple[str, list]:
+        """Eligibility, not a score bonus.
+
+        These were a +0.05 boost per matching dimension, applied to the
+        lexical channel only — the semantic one had no taxonomy clause at
+        all. Prompts have always treated the same keys as a hard WHERE
+        (search/retriever.py), so an out-of-domain prompt could not be
+        returned while an out-of-domain skill could, and the two compete in
+        one reranked pool.
+
+        It matters more as the corpus grows: skill candidates are capped at
+        SKILL_CANDIDATES, so ineligible skills do not merely rank badly, they
+        consume slots eligible ones needed.
+
+        Values are parameterised rather than repr()-interpolated, which is
+        what the boost fragments did.
         """
-        Return a SQL fragment that adds a small score bonus when the skill's
-        taxonomy overlaps with the caller's filters.
-        Each matching dimension adds 0.05 (max +0.15 total).
-        """
-        boosts = []
-        if filters.get("domain"):
-            boosts.append(
-                f"+ CASE WHEN domain && ARRAY{filters['domain']!r}::varchar[] THEN 0.05 ELSE 0 END"
-            )
-        if filters.get("intent"):
-            boosts.append(
-                f"+ CASE WHEN intent && ARRAY{filters['intent']!r}::varchar[] THEN 0.05 ELSE 0 END"
-            )
-        if filters.get("task_type"):
-            boosts.append(
-                f"+ CASE WHEN task_type && ARRAY{filters['task_type']!r}::varchar[] THEN 0.05 ELSE 0 END"
-            )
-        return " ".join(boosts)
+        filters = filters or {}
+        clauses = ["status = 'active'"]
+        params: list = []
+        for col in ("domain", "intent", "task_type"):
+            vals = filters.get(col)
+            if vals:
+                clauses.append(f"{col} && %s::varchar[]")
+                params.append(list(vals))
+        if filters.get("modality"):
+            # Derived from the steps at promote time. 'mixed' stays eligible
+            # for any modality: it has at least one step that fits.
+            clauses.append("(modality = %s OR modality = 'mixed')")
+            params.append(filters["modality"])
+        return " AND ".join(clauses), params
 
     def _resolve_steps(
         self, steps_json: list | str, model: str | None = None,

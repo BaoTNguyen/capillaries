@@ -54,6 +54,17 @@ MIN_MATCHED_STEPS = 2
 # result is a long-tail match, not something the user is being shown.
 TOP_WINDOW = 10
 
+def top_window(skill_count: int, steps_per_skill: float = 3.0) -> int:
+    """How deep to look for a skill's own steps.
+
+    Fixed at 10, this gate silently tightens as the corpus grows: five skills
+    contribute ~17 step-prompts competing for those slots, a hundred
+    contribute ~300. The same query that confirmed a skill at n=5 fails at
+    n=100 with nothing changed about the skill. Scale the window with the
+    number of step-prompts in play, capped so it never swallows the ranking.
+    """
+    return max(TOP_WINDOW, min(50, int(skill_count * steps_per_skill * 0.15)))
+
 # Serving a skill starts a stateful, multi-step session (skills.skill_sessions,
 # accumulated context, a 24h expiry). Serving a prompt hands over text the user
 # discards in a second. The costs of being wrong are not symmetric, which is
@@ -79,6 +90,29 @@ class SkillCoverage:
                 f"({self.matched}/{self.total} steps)")
 
 
+def stuck_drafts(days: int = 14, db_config: dict | None = None) -> list[dict]:
+    """Skills promoted but never activated.
+
+    promote() writes status='draft' while prompts default to 'active', so a
+    skill nobody activates is not broken, not logged, and not retrievable —
+    it simply never appears. One forgotten skill is noticeable; eighty are
+    not.
+    """
+    conn = psycopg2.connect(**(db_config or DB_CONFIG))
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "SELECT name, tag, created_at, created_by FROM skills.skills "
+                "WHERE status = 'draft' "
+                "  AND created_at < NOW() - make_interval(days => %s) "
+                "ORDER BY created_at",
+                (days,),
+            )
+            return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
 def score_skills(
     ranked: list,
     db_config: dict | None = None,
@@ -92,8 +126,6 @@ def score_skills(
     if not ranked:
         return []
 
-    scores = {r.prompt_id: r.rerank_score for r in ranked[:TOP_WINDOW]}
-
     conn = psycopg2.connect(**(db_config or DB_CONFIG))
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -104,6 +136,10 @@ def score_skills(
             rows = [dict(r) for r in cur.fetchall()]
     finally:
         conn.close()
+
+    # Sized from the corpus, not fixed — see top_window().
+    window = top_window(len(rows))
+    scores = {r.prompt_id: r.rerank_score for r in ranked[:window]}
 
     out: list[SkillCoverage] = []
     for row in rows:
