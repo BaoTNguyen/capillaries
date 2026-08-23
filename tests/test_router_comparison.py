@@ -54,7 +54,12 @@ SINGLE = [
 
 
 def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    """Fresh loop per call, same as tests/test_search.py:51.
+
+    get_event_loop() passed standalone and errored inside the full suite,
+    where an earlier async test had already closed the shared loop.
+    """
+    return asyncio.run(coro)
 
 
 @pytest.fixture(scope="module")
