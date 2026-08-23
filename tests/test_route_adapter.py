@@ -41,7 +41,7 @@ def test_agent_router_formats_shared_skill_result():
         steps=[{"step_order": 1, "prompt_id": "prompt-1", "prompt_text": "Do [THING]."}],
     )
     router = AgentRouter()
-    router._create_session = lambda *_: None
+    router._create_session = lambda *_, **_kw: None
     with patch("capillaries.agent.route.find", new_callable=AsyncMock, return_value=result):
         response = asyncio.run(router.route("Build a plan", context={"THING": "the work"}))
 

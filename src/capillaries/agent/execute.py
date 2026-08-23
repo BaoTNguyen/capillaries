@@ -80,8 +80,22 @@ class SkillExecutor:
                         progress=None,
                     )
 
-                steps = json.loads(skill["steps"]) if isinstance(skill["steps"], str) else skill["steps"]
+                # The chain pinned when the session was created, which may be
+                # this model's variant. Falls back to the skill's own steps
+                # for sessions predating the column. Never re-resolved: a
+                # variant written mid-run must not change total_steps under a
+                # session already partway through it.
+                pinned = session.get("steps")
+                if isinstance(pinned, str):
+                    pinned = json.loads(pinned)
+                if not pinned:
+                    pinned = json.loads(skill["steps"]) if isinstance(skill["steps"], str) else skill["steps"]
+                steps = pinned
                 total_steps = len(steps)
+
+                # The session's model wins over the per-call argument for the
+                # same reason: step text has to stay consistent across a run.
+                model = session.get("model") or model
                 current_step_num = session["current_step"]
 
                 if action == "abort":

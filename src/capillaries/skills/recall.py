@@ -293,8 +293,37 @@ class SkillRecall:
             params.append(filters["modality"])
         return " AND ".join(clauses), params
 
+    @staticmethod
+    def variant_steps(cur, skill_id: str, model: str | None) -> list[dict] | None:
+        """The model's alternative chain for this skill, or None.
+
+        Two independent layers resolve for a model, and they compose:
+        this one picks WHICH steps run, prompt_variants then picks the TEXT
+        of each. A skill with a variant chain still gets model-specific
+        prompt text for every step in it.
+        """
+        if not model or not skill_id:
+            return None
+        cur.execute(
+            """
+            SELECT steps FROM skills.skill_variants
+            WHERE skill_id = %s::uuid AND model = %s AND is_current
+            """,
+            (skill_id, model),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        steps = row["steps"] if isinstance(row, dict) else row[0]
+        if isinstance(steps, str):
+            steps = json.loads(steps)
+        # An empty chain is a broken variant, not an instruction to run
+        # nothing -- fall back rather than serve a skill with no steps.
+        return steps or None
+
     def _resolve_steps(
         self, steps_json: list | str, model: str | None = None,
+        skill_id: str | None = None,
     ) -> list[dict]:
         """
         Fetch prompt_text and metadata for each step from public.prompts.
@@ -309,10 +338,12 @@ class SkillRecall:
         if not steps:
             return []
 
-        prompt_ids = [s["prompt_id"] for s in steps]
-
         with psycopg2.connect(**self._db_config) as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                variant = self.variant_steps(cur, skill_id, model)
+                if variant is not None:
+                    steps = variant
+                prompt_ids = [s["prompt_id"] for s in steps]
                 # Steps carry prompt UUIDs, so both lookups match on prompt_id.
                 # They used to match on title against a UUID, which returned
                 # nothing without erroring — every step fell back to empty text.

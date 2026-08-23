@@ -162,7 +162,7 @@ class AgentRouter:
 
     def __init__(self, db_config: dict | None = None):
         self._db_config = db_config or DB_CONFIG
-    async def route(self, situation: str, domain: list[str] | None = None, intent: list[str] | None = None, prefer: str = "auto", context: dict | None = None, session_id: str | None = None, source: str = "private", modality: str = "text", memory_context=None) -> RouteResponse:
+    async def route(self, situation: str, domain: list[str] | None = None, intent: list[str] | None = None, prefer: str = "auto", context: dict | None = None, session_id: str | None = None, source: str = "private", modality: str = "text", memory_context=None, model: str | None = None) -> RouteResponse:
         """
         Find the best prompt or skill for the given situation.
 
@@ -171,7 +171,8 @@ class AgentRouter:
         """
         trace_id = f"pf_tr_{uuid.uuid4().hex[:12]}"
 
-        # Soft hints for skill recall taxonomy boost — not hard retrieval filters
+        # Skill taxonomy filters. These were a score boost; they are
+        # eligibility now, same as the prompt side (skills/recall.py).
         hints = {}
         if domain:
             hints["domain"] = domain
@@ -191,7 +192,7 @@ class AgentRouter:
         if result.mode == "none":
             return RouteResponse(mode="none", confidence=result.confidence, trace_id=trace_id)
         if result.mode == "skill":
-            return self._build_skill_response(result, trace_id, context)
+            return self._build_skill_response(result, trace_id, context, model=model)
 
         prompt_text, unfilled = resolve_template_variables(result.prompt_text, context)
         mode = "needs_context" if unfilled else "single"
@@ -214,10 +215,10 @@ class AgentRouter:
             trace_id=trace_id,
         )
 
-    def _build_skill_response(self, result, trace_id: str, context: dict | None = None) -> RouteResponse:
+    def _build_skill_response(self, result, trace_id: str, context: dict | None = None, model: str | None = None) -> RouteResponse:
         """Build a skill-mode response."""
         session_id = str(uuid.uuid4())
-        self._create_session(session_id, result.skill_id, trace_id)
+        self._create_session(session_id, result.skill_id, trace_id, model=model)
 
         steps_preview = []
         for step in result.steps:
@@ -258,15 +259,39 @@ class AgentRouter:
             trace_id=trace_id,
         )
 
-    def _create_session(self, session_id: str, skill_id: str, trace_id: str) -> None:
-        """Create a new skill session."""
+    def _create_session(
+        self, session_id: str, skill_id: str, trace_id: str,
+        model: str | None = None,
+    ) -> None:
+        """Create a new skill session, pinning the chain it will run.
+
+        The model's variant chain is resolved once, here, and stored on the
+        session. execute_step used to re-read skills.skills.steps on every
+        call and take `model` as a per-call argument, so a variant written
+        mid-run -- or a caller passing a different model on step 4 -- changed
+        total_steps underneath a session already in progress. A run executes
+        the chain it started with.
+        """
+        from capillaries.skills.recall import SkillRecall
+
         with psycopg2.connect(**self._db_config) as conn:
-            with conn.cursor() as cur:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                pinned = SkillRecall.variant_steps(cur, str(skill_id), model)
+                if pinned is None:
+                    cur.execute(
+                        "SELECT steps FROM skills.skills WHERE skill_id = %s",
+                        (skill_id,),
+                    )
+                    row = cur.fetchone()
+                    pinned = (row or {}).get("steps") or []
+                    if isinstance(pinned, str):
+                        pinned = json.loads(pinned)
                 cur.execute(
                     """
-                    INSERT INTO skills.skill_sessions (session_id, skill_id, trace_id, current_step, status)
-                    VALUES (%s, %s, %s, 0, 'active')
+                    INSERT INTO skills.skill_sessions
+                        (session_id, skill_id, trace_id, current_step, status, model, steps)
+                    VALUES (%s, %s, %s, 0, 'active', %s, %s)
                     """,
-                    (session_id, skill_id, trace_id),
+                    (session_id, skill_id, trace_id, model, json.dumps(pinned)),
                 )
                 conn.commit()
