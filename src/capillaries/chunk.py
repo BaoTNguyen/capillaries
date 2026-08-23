@@ -218,6 +218,15 @@ CREATE TABLE IF NOT EXISTS prompt_chunks (
     is_atomic     BOOLEAN DEFAULT FALSE,
     content_hash  VARCHAR NOT NULL,
 
+    -- Denormalised from prompts.status, kept in sync by a trigger below.
+    -- The vector channel orders by prompt_chunks.embedding while the
+    -- eligibility lives on the joined prompts row, so no partial index on
+    -- prompts can help it: chunks of inactive prompts got walked, fetched,
+    -- joined and only then discarded. With status here, the chunk index can
+    -- be partial too. Inactive prompts keep their chunks and vectors — they
+    -- just stop costing the walk anything.
+    status        VARCHAR NOT NULL DEFAULT 'active',
+
     embedding         VECTOR(EMBED_DIM),
     embedding_version VARCHAR,
     search_tsv        TSVECTOR,
@@ -234,9 +243,28 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_chunks_exact  ON prompt_chunks USING GIN (exact_tsv);",
     # Built after backfill — HNSW on an empty table then filled row-by-row is
     # far slower to build than one pass over populated data.
-    "CREATE INDEX IF NOT EXISTS idx_chunks_embedding ON prompt_chunks "
-    "USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);",
+    "CREATE INDEX IF NOT EXISTS idx_chunks_embedding_active ON prompt_chunks "
+    "USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64) "
+    "WHERE status = 'active';",
 ]
+
+# Application code cannot be trusted to remember this: status is written by
+# ingest, by lifecycle/inactivate.py, and by hand. A trigger is the only
+# version that stays true.
+SYNC_STATUS_SQL = """
+CREATE OR REPLACE FUNCTION sync_chunk_status() RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE prompt_chunks SET status = NEW.status WHERE prompt_id = NEW.prompt_id;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_sync_chunk_status ON prompts;
+CREATE TRIGGER trg_sync_chunk_status
+    AFTER UPDATE OF status ON prompts
+    FOR EACH ROW WHEN (OLD.status IS DISTINCT FROM NEW.status)
+    EXECUTE FUNCTION sync_chunk_status();
+"""
 
 # search_tsv is 'english' and stemmed, for prose. exact_tsv is 'simple' and
 # unstemmed, so `snake_case`, `--flags` and `L-6-v2` survive as lexemes instead
@@ -263,12 +291,15 @@ def backfill(dry: bool = False, db_config: dict | None = None) -> dict:
 
     if not dry:
         cur.execute(_ddl())
+        cur.execute("ALTER TABLE prompt_chunks ADD COLUMN IF NOT EXISTS status "
+                    "VARCHAR NOT NULL DEFAULT 'active';")
+        cur.execute(SYNC_STATUS_SQL)
         for sql in INDEXES[:-1]:   # HNSW comes last, after the rows exist
             cur.execute(sql)
         conn.commit()
 
     cur.execute(
-        "SELECT prompt_id::text, title, prompt_text, summary FROM prompts "
+        "SELECT prompt_id::text, title, prompt_text, summary, status FROM prompts "
         "WHERE length(trim(prompt_text)) > 0 ORDER BY title"
     )
     rows = cur.fetchall()
@@ -285,14 +316,14 @@ def backfill(dry: bool = False, db_config: dict | None = None) -> dict:
     stats = {"prompts": len(rows), "chunks": 0, "reused": 0, "embedded": 0, "atomic": 0}
     plan: list[tuple] = []
 
-    for prompt_id, title, text, summary in rows:
+    for prompt_id, title, text, summary, status in rows:
         for c in chunk(text):
             stats["chunks"] += 1
             stats["atomic"] += c.is_atomic
-            plan.append((prompt_id, title, c, summary))
+            plan.append((prompt_id, title, c, summary, status))
 
     if dry:
-        sizes = sorted(len(c.text) for _, _, c, _ in plan)
+        sizes = sorted(len(c.text) for _, _, c, _, _ in plan)
         stats["median_chunk_chars"] = sizes[len(sizes) // 2] if sizes else 0
         stats["max_chunk_chars"] = sizes[-1] if sizes else 0
         return stats
@@ -318,7 +349,7 @@ def backfill(dry: bool = False, db_config: dict | None = None) -> dict:
     for i in range(0, len(plan), BATCH):
         window = plan[i:i + BATCH]
         need = [(j, _key(t, c, sm), embed_text(t, c, sm))
-                for j, (_, t, c, sm) in enumerate(window)
+                for j, (_, t, c, sm, _st) in enumerate(window)
                 if _key(t, c, sm) not in cached]
         vecs = asyncio.run(_embed([s for _, _, s in need])) if need else []
         for (j, key, _), vec in zip(need, vecs):
@@ -326,18 +357,18 @@ def backfill(dry: bool = False, db_config: dict | None = None) -> dict:
             stats["embedded"] += 1
 
         fresh = {j for j, _, _ in need}
-        for j, (prompt_id, title, c, sm) in enumerate(window):
+        for j, (prompt_id, title, c, sm, status) in enumerate(window):
             vec = cached.get(_key(title, c, sm))
             stats["reused"] += vec is not None and j not in fresh
             crumb = f"{title} > {c.label}" if c.label else title
             cur.execute("""
                 INSERT INTO prompt_chunks (
                     prompt_id, chunk_index, label, chunk_text,
-                    char_start, char_end, is_atomic, content_hash,
+                    char_start, char_end, is_atomic, content_hash, status,
                     embedding, embedding_version, search_tsv
                 ) VALUES (
                     %(pid)s, %(idx)s, %(label)s, %(raw)s,
-                    %(start)s, %(end)s, %(atomic)s, %(hash)s,
+                    %(start)s, %(end)s, %(atomic)s, %(hash)s, %(status)s,
                     %(vec)s::vector, %(ver)s,
                     setweight(to_tsvector('english', %(crumb)s), 'A')
                         || to_tsvector('english', %(body)s)
@@ -345,7 +376,7 @@ def backfill(dry: bool = False, db_config: dict | None = None) -> dict:
             """, {"pid": prompt_id, "idx": c.index, "label": c.label,
                   "raw": c.text, "body": expand_acronyms(c.text),
                   "start": c.char_start, "end": c.char_end,
-                  "atomic": c.is_atomic, "hash": c.content_hash,
+                  "atomic": c.is_atomic, "hash": c.content_hash, "status": status,
                   "vec": str(vec) if vec else None, "ver": EMBED_MODEL if vec else None,
                   "crumb": expand_acronyms(crumb)})
         conn.commit()
@@ -360,7 +391,7 @@ def backfill(dry: bool = False, db_config: dict | None = None) -> dict:
     # worse graph than one bulk pass. REINDEX forces the bulk build.
     print("\nRebuilding HNSW index...")
     cur.execute(INDEXES[-1])          # first run: the index does not exist yet
-    cur.execute("REINDEX INDEX idx_chunks_embedding")
+    cur.execute("REINDEX INDEX idx_chunks_embedding_active")
     conn.commit()
 
     cur.close()
