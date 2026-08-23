@@ -142,6 +142,7 @@ class _FindEngine:
             query_expansion=self._build_query_expansion(context),
             boost_prompt_ids=self._build_boost_ids(context),
             agent_context=agent_context,
+            context=context,
         )
 
         if resp.recommendation == "skill" and resp.skill_match:
@@ -216,12 +217,10 @@ class _FindEngine:
         if not response.results:
             return None
 
-        if context:
-            filtered = self._context_filter.apply(response.results, context)
-            best = filtered[0]
-            top = best.result
-        else:
-            top = response.results[0]
+        # Ordering already reflects the MemoryFrame: search() runs the
+        # context filter over the whole reranked pool, before prompts and
+        # skills are split. Re-applying it here would double-count.
+        top = response.results[0]
 
         # The rejected score rides along on the none-result. A caller that wants
         # to log "we had something at 0.29" can; one that checks .mode cannot

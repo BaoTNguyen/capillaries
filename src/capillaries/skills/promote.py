@@ -97,13 +97,13 @@ class SkillPromoter:
                         steps,
                         domain, intent, task_type,
                         version, status, created_by,
-                        content_hash, search_tsv
+                        content_hash, routing_text, modality, search_tsv
                     ) VALUES (
                         %(skill_id)s, %(name)s, %(tag)s, %(summary)s,
                         %(steps)s,
                         %(domain)s, %(intent)s, %(task_type)s,
                         %(version)s, 'draft', %(created_by)s,
-                        %(content_hash)s, {_SEARCH_TSV_SQL}
+                        %(content_hash)s, %(routing_text)s, %(modality)s, {_SEARCH_TSV_SQL}
                     )
                     RETURNING skill_id, tag, version, status
                     """,
@@ -113,6 +113,8 @@ class SkillPromoter:
                         "tag": tag,
                         "summary": summary,
                         "steps": json.dumps(steps_json),
+                        "routing_text": _routing_text(cur, name, summary, steps_json),
+                        "modality": _modality(cur, steps_json),
                         "domain": taxonomy["domain"],
                         "intent": taxonomy["intent"],
                         "task_type": taxonomy["task_type"],
@@ -196,13 +198,13 @@ class SkillPromoter:
                         steps,
                         domain, intent, task_type,
                         version, status, created_by,
-                        content_hash, source, search_tsv
+                        content_hash, source, routing_text, modality, search_tsv
                     ) VALUES (
                         %(skill_id)s, %(name)s, %(tag)s, %(summary)s,
                         %(steps)s,
                         %(domain)s, %(intent)s, %(task_type)s,
                         %(version)s, 'draft', %(created_by)s,
-                        %(content_hash)s, %(source)s, {_SEARCH_TSV_SQL}
+                        %(content_hash)s, %(source)s, %(routing_text)s, %(modality)s, {_SEARCH_TSV_SQL}
                     )
                     RETURNING skill_id, tag, version, status
                     """,
@@ -212,6 +214,8 @@ class SkillPromoter:
                         "domain": domain, "intent": intent, "task_type": task_type,
                         "version": version, "created_by": created_by,
                         "content_hash": content_hash, "source": source,
+                        "routing_text": _routing_text(cur, name, summary, steps_json),
+                        "modality": _modality(cur, steps_json),
                     },
                 )
                 row = cur.fetchone()
@@ -304,10 +308,19 @@ class SkillPromoter:
         updates.append("content_hash = %s")
         params.append(content_hash)
 
-        # routing_embedding is derived from the summary, so a summary edit
-        # invalidates it. embed.py's incremental pass looks for NULL, which is
-        # the only way it will ever revisit this row.
-        if summary is not None and summary != skill["summary"]:
+        # routing_text is what the skill is embedded and reranked by, so it is
+        # recomputed whenever anything feeding it could have changed, and the
+        # vector derived from it is dropped. embed.py's incremental pass looks
+        # for NULL, which is the only way it will ever revisit this row.
+        with psycopg2.connect(**self._db_config) as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                new_routing = _routing_text(
+                    cur, name if name is not None else skill["name"],
+                    new_summary, skill["steps"],
+                )
+        updates.append("routing_text = %s")
+        params.append(new_routing)
+        if new_routing != (skill.get("routing_text") or ""):
             updates.append("routing_embedding = NULL")
 
         # search_tsv depends on name/summary/taxonomy — recompute from the
@@ -316,6 +329,7 @@ class SkillPromoter:
         updates.append(
             "search_tsv = setweight(to_tsvector('english', %s), 'A') || "
             "setweight(to_tsvector('english', %s), 'B') || "
+            "to_tsvector('english', %s) || "
             "to_tsvector('english', "
             "COALESCE(array_to_string(%s::varchar[], ' '), '') || ' ' || "
             "COALESCE(array_to_string(%s::varchar[], ' '), '') || ' ' || "
@@ -324,6 +338,7 @@ class SkillPromoter:
         params.extend([
             name if name is not None else skill["name"],
             new_summary,
+            new_routing,
             domain if domain is not None else skill["domain"],
             intent if intent is not None else skill["intent"],
             task_type if task_type is not None else skill["task_type"],
@@ -354,11 +369,16 @@ class SkillPromoter:
 
         content_hash = _content_hash(skill["summary"], steps_json)
         with psycopg2.connect(**self._db_config) as conn:
-            with conn.cursor() as cur:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                routing_text = _routing_text(
+                    cur, skill["name"], skill["summary"], steps_json)
+                modality = _modality(cur, steps_json)
                 cur.execute(
                     "UPDATE skills.skills SET steps = %s, content_hash = %s, "
+                    "routing_text = %s, modality = %s, routing_embedding = NULL, "
                     "last_updated = CURRENT_TIMESTAMP WHERE skill_id = %s",
-                    (json.dumps(steps_json), content_hash, str(skill["skill_id"])),
+                    (json.dumps(steps_json), content_hash, routing_text, modality,
+                     str(skill["skill_id"])),
                 )
 
     def activate(self, skill_id: str) -> None:
@@ -438,11 +458,24 @@ class SkillPromoter:
             return {}
         with psycopg2.connect(**self._db_config) as conn:
             with conn.cursor() as cur:
+                # Steps key prompts by UUID (see skills.skills.steps), so
+                # matching on title returned nothing and every pinned_hash
+                # came back None -- silently disabling drift detection. The
+                # title branch stays for callers still passing titles.
                 cur.execute(
-                    "SELECT title, content_hash FROM prompts WHERE title = ANY(%s)",
+                    "SELECT prompt_id::text, content_hash FROM prompts "
+                    "WHERE prompt_id::text = ANY(%s)",
                     (prompt_ids,),
                 )
-                return {row[0]: row[1] for row in cur.fetchall()}
+                by_id = {row[0]: row[1] for row in cur.fetchall()}
+                missing = [p for p in prompt_ids if p not in by_id]
+                if missing:
+                    cur.execute(
+                        "SELECT title, content_hash FROM prompts WHERE title = ANY(%s)",
+                        (missing,),
+                    )
+                    by_id.update({row[0]: row[1] for row in cur.fetchall()})
+                return by_id
 
     def _next_version(self, cur, tag: str) -> int:
         """Return 1 for a new tag, or max(version)+1 for an existing one."""
@@ -618,12 +651,65 @@ def ab_gate(
 _SEARCH_TSV_SQL = """
     setweight(to_tsvector('english', %(name)s), 'A') ||
     setweight(to_tsvector('english', %(summary)s), 'B') ||
+    to_tsvector('english', COALESCE(%(routing_text)s, '')) ||
     to_tsvector('english',
         COALESCE(array_to_string(%(domain)s::varchar[], ' '), '') || ' ' ||
         COALESCE(array_to_string(%(intent)s::varchar[], ' '), '') || ' ' ||
         COALESCE(array_to_string(%(task_type)s::varchar[], ' '), '')
     )
 """
+
+
+def _routing_text(cur, name: str, summary: str, steps: list[dict]) -> str:
+    """The document a skill is retrieved and reranked by.
+
+    A skill's own text is one short summary. Its steps point at prompts that
+    are already chunked, embedded and lexically indexed, so the cheapest way
+    to give a skill a competitive routing signal is to borrow from them:
+    every step's title plus the rationale explaining why it is in the chain.
+
+    Composed once at write time rather than joined per query. That means it
+    goes stale if a step prompt is renamed — acceptable, because a rename
+    already invalidates pinned_hash and calls for a re-promote.
+    """
+    parts = [name, summary]
+    ids = [s["prompt_id"] for s in steps if s.get("prompt_id")]
+    by_id: dict[str, dict] = {}
+    if ids:
+        cur.execute(
+            "SELECT prompt_id::text AS pid, title, COALESCE(summary, '') AS summary "
+            "FROM prompts WHERE prompt_id::text = ANY(%s)",
+            (ids,),
+        )
+        by_id = {r["pid"]: r for r in cur.fetchall()}
+    for step in sorted(steps, key=lambda s: s.get("step_order") or 0):
+        row = by_id.get(step.get("prompt_id")) or {}
+        for piece in (row.get("title"), step.get("rationale"), row.get("summary")):
+            if piece:
+                parts.append(str(piece))
+    return "\n".join(parts)
+
+
+def _modality(cur, steps: list[dict]) -> str:
+    """A skill is text-only when every step is.
+
+    Mirrors prompts.modality so a modality filter can exclude skills the same
+    way it excludes prompts. With no resolvable steps it stays 'text', which
+    is also the prompts default.
+    """
+    ids = [s["prompt_id"] for s in steps if s.get("prompt_id")]
+    if not ids:
+        return "text"
+    cur.execute(
+        "SELECT DISTINCT modality FROM prompts WHERE prompt_id::text = ANY(%s)",
+        (ids,),
+    )
+    found = {r["modality"] for r in cur.fetchall()}
+    found.discard(None)
+    if not found or found == {"text"}:
+        return "text"
+    non_text = sorted(found - {"text"})
+    return non_text[0] if len(non_text) == 1 else "mixed"
 
 
 def _content_hash(summary: str, steps: list[dict]) -> str:

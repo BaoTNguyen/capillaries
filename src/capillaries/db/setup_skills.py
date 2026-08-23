@@ -73,6 +73,19 @@ def create_skills_table(cursor) -> None:
             -- Freeform notes, same as prompts.notes
             notes       TEXT,
 
+            -- The document skills are actually routed by: name + summary +
+            -- every step's title and rationale, composed at promote time.
+            -- A bare 300-char summary asks one short string to compete with
+            -- richly-indexed prompt bodies; this is the closest a skill gets
+            -- to having a body of its own. Still ~900 chars, well under one
+            -- prompt chunk, so skills stay unchunked on purpose.
+            routing_text TEXT,
+
+            -- Mirrors prompts.modality so a modality filter can exclude
+            -- skills the same way it excludes prompts. Derived from the
+            -- steps: a skill is only text-only if every step is.
+            modality    VARCHAR DEFAULT 'text',
+
             created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             created_by  VARCHAR DEFAULT 'manual',  -- 'manual' | 'orchestrator'
 
@@ -244,6 +257,13 @@ def create_materialized_views(cursor) -> None:
     """)
 
 
+def add_missing_columns(cursor) -> None:
+    """Columns added after the table shipped. CREATE TABLE IF NOT EXISTS
+    skips an existing table entirely, so these never arrive without this."""
+    cursor.execute("ALTER TABLE skills.skills ADD COLUMN IF NOT EXISTS routing_text TEXT;")
+    cursor.execute("ALTER TABLE skills.skills ADD COLUMN IF NOT EXISTS modality VARCHAR DEFAULT 'text';")
+
+
 def create_indexes(cursor) -> None:
     indexes = [
         # Active skill lookup by tag — the most common query pattern
@@ -256,6 +276,7 @@ def create_indexes(cursor) -> None:
         "CREATE INDEX IF NOT EXISTS idx_skills_intent    ON skills.skills USING GIN (intent);",
         "CREATE INDEX IF NOT EXISTS idx_skills_task_type ON skills.skills USING GIN (task_type);",
         "CREATE INDEX IF NOT EXISTS idx_skills_status    ON skills.skills (status);",
+        "CREATE INDEX IF NOT EXISTS idx_skills_modality  ON skills.skills (modality);",
 
         # Full-text search on the materialized search_tsv (name + summary +
         # taxonomy), same shape as idx_prompts_search_tsv.
