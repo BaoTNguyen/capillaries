@@ -179,11 +179,23 @@ class SkillExecutor:
                         prompt_text = variant_row["prompt_text"]
                 if not prompt_text:
                     cur.execute(
-                        "SELECT prompt_text FROM prompts WHERE prompt_id = %s::uuid",
+                        "SELECT prompt_text FROM prompts "
+                        "WHERE prompt_id = %s::uuid AND status = 'active'",
                         (pid,),
                     )
                     prompt_row = cur.fetchone()
                     prompt_text = prompt_row["prompt_text"] if prompt_row else ""
+
+                # A step whose prompt was inactivated mid-session resolves to
+                # nothing. Running the model on an empty prompt is worse than
+                # stopping, so stop.
+                if not prompt_text:
+                    return StepResponse(
+                        session_id=session_id,
+                        status="error",
+                        current_step=None,
+                        progress=None,
+                    )
 
                 agent_context = json.loads(session["agent_context"]) if session["agent_context"] else {}
                 if variables:
