@@ -181,6 +181,7 @@ async def route(req: RouteRequest) -> dict | StreamingResponse:
         source=req.source,
         modality=req.modality,
         memory_context=context_frame,
+        model=req.model,
     )
     response = result.to_dict()
     if agent_context:

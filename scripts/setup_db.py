@@ -26,6 +26,10 @@ from capillaries.db.setup_skills import (
     create_skills_schema,
     create_skills_table,
     create_skill_runs_table,
+    create_skill_variants_table,
+    create_skill_sessions_table,
+    create_agent_feedback_table,
+    create_materialized_views,
     add_missing_columns as add_skills_columns,
     create_indexes as create_skills_indexes,
 )
@@ -44,8 +48,17 @@ def setup_schemas() -> None:
     create_skills_schema(cur)
     create_skills_table(cur)
     create_skill_runs_table(cur)
+    create_skill_variants_table(cur)
+    # These were defined in setup_skills.py but never called here, so a
+    # database built by this script had neither. agent/route.py could not
+    # open a skill session, and lifecycle/inactivate.py reads
+    # skills.agent_feedback to decide what is stale -- auto-inactivation has
+    # never had a table to read.
+    create_skill_sessions_table(cur)
+    create_agent_feedback_table(cur)
     add_skills_columns(cur)
     create_skills_indexes(cur)
+    create_materialized_views(cur)
     conn.commit()
 
     print("Analyzing metadata confidence...")

@@ -145,6 +145,54 @@ def create_skill_runs_table(cursor) -> None:
     """)
 
 
+def create_skill_variants_table(cursor) -> None:
+    """Alternative step chains for a skill, one per model.
+
+    Distinct from prompt_variants, which varies the *text* of a single step.
+    This varies the *shape of the chain*: a model that needs a workflow broken
+    into six granular steps gets six, where a stronger one gets three. That is
+    a property of the model, not of any prompt, so prompt_variants cannot
+    express it however many variants it holds.
+
+    Routing is deliberately unaffected. Which skill gets selected is decided
+    by an embedder and a cross-encoder, neither of which knows which LLM will
+    run the steps, so there is no `model` dimension on retrieval and no
+    variant of routing_text here.
+    """
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS skills.skill_variants (
+            variant_id   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            skill_id     UUID NOT NULL REFERENCES skills.skills(skill_id) ON DELETE CASCADE,
+            model        VARCHAR NOT NULL,
+
+            -- Same shape as skills.skills.steps:
+            -- [{prompt_id, step_order, rationale, pinned_hash}]
+            steps        JSONB NOT NULL,
+
+            -- Hash of the chain, so a stale variant is detectable the same
+            -- way a stale prompt is.
+            content_hash VARCHAR,
+
+            optimizer    VARCHAR NOT NULL DEFAULT 'manual',
+            metric_score FLOAT,
+            notes        TEXT,
+
+            created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            is_current   BOOLEAN DEFAULT TRUE
+        );
+    """)
+    # One live chain per (skill, model). Partial, so superseded variants are
+    # kept for comparison rather than deleted.
+    cursor.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_skill_variants_current
+        ON skills.skill_variants (skill_id, model) WHERE is_current;
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_skill_variants_skill
+        ON skills.skill_variants (skill_id, model);
+    """)
+
+
 def create_skill_sessions_table(cursor) -> None:
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS skills.skill_sessions (
@@ -262,6 +310,12 @@ def add_missing_columns(cursor) -> None:
     skips an existing table entirely, so these never arrive without this."""
     cursor.execute("ALTER TABLE skills.skills ADD COLUMN IF NOT EXISTS routing_text TEXT;")
     cursor.execute("ALTER TABLE skills.skills ADD COLUMN IF NOT EXISTS modality VARCHAR DEFAULT 'text';")
+    # A session pins the chain it started with. Without this, execute_step
+    # re-read skills.skills.steps on every call and took `model` as a
+    # per-call argument -- so a variant edit, or a caller passing a different
+    # model on step 4, changed total_steps underneath a running session.
+    cursor.execute("ALTER TABLE skills.skill_sessions ADD COLUMN IF NOT EXISTS model VARCHAR;")
+    cursor.execute("ALTER TABLE skills.skill_sessions ADD COLUMN IF NOT EXISTS steps JSONB;")
 
 
 def create_indexes(cursor) -> None:
