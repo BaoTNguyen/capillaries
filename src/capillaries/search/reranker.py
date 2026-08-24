@@ -178,14 +178,17 @@ class Reranker:
         model_name: HuggingFace model ID. Defaults to MODEL_NAME
                     (Qwen/Qwen3-Reranker-0.6B), overridable via RERANKER_MODEL.
         device:     'cuda', 'cpu', or None (auto-detect GPU if available).
-        batch_size: Pairs per forward pass. 16 is safe for 1.5B on a 3090.
+        batch_size: Pairs per forward pass. 8 on a shared 3090: at
+                    MAX_DOC_CHARS=4000 a pair is ~1k tokens, so 16 put ~16k
+                    tokens of activations through 28 layers and OOMed
+                    against a card llama-server was already holding.
     """
 
     def __init__(
         self,
         model_name: str = MODEL_NAME,
         device: str | None = None,
-        batch_size: int = 16,
+        batch_size: int = 8,
     ) -> None:
         if device is None:
             # Auto-detect rather than defaulting to CPU. Measured on 50 real
@@ -199,7 +202,11 @@ class Reranker:
         self.batch_size = batch_size
         self._model = None  # loaded on first local scoring, never if the daemon serves
 
-    # Rough bf16 footprint of the cross-encoder plus activation headroom.
+    # Measured, not guessed: weights 1.11 GB in bf16, and peak-with-activations
+    # is also 1.11 GB at batch 8 with full-length docs. 3 GB is ~2.7x that.
+    # It was never the threshold that OOMed -- it was batch 32 (4.64 GiB) and a
+    # device pinned to the fullest card. Raising this instead would strand a
+    # usable GPU and silently drop reranking onto CPU, which costs ~110x.
     MIN_FREE_VRAM = 3 * 1024**3
 
     @staticmethod
@@ -219,12 +226,23 @@ class Reranker:
             import torch
             if not torch.cuda.is_available():
                 return "cpu"
-            free = [(torch.cuda.mem_get_info(i)[0], i)
-                    for i in range(torch.cuda.device_count())]
-            best, idx = max(free)
-            return f"cuda:{idx}" if best >= Reranker.MIN_FREE_VRAM else "cpu"
         except Exception:
             return "cpu"
+
+        # Probe each card separately. mem_get_info() has to create a CUDA
+        # context, and on a card with a few hundred MB left that call itself
+        # raises OOM -- which used to abort the whole loop and send everything
+        # to CPU while a second card sat there with 6 GB free.
+        free = []
+        for i in range(torch.cuda.device_count()):
+            try:
+                free.append((torch.cuda.mem_get_info(i)[0], i))
+            except Exception:
+                continue  # too full to even talk to; it was never a candidate
+        if not free:
+            return "cpu"
+        best, idx = max(free)
+        return f"cuda:{idx}" if best >= Reranker.MIN_FREE_VRAM else "cpu"
 
     @property
     def model(self):
@@ -237,6 +255,9 @@ class Reranker:
         if self._model is None:
             from sentence_transformers import CrossEncoder
             print(f"Loading cross-encoder {self.model_name} on {self.device}...")
+            # No torch_dtype here on purpose: sentence-transformers honours
+            # the checkpoint dtype, and this one ships bf16 -- measured at
+            # 0.60B params / 1.11 GB loaded. Forcing bf16 changes nothing.
             self._model = CrossEncoder(self.model_name, device=self.device)
             print("Reranker ready.")
         return self._model
