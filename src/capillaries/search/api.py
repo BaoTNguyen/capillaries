@@ -54,7 +54,11 @@ from capillaries.skills.recall import SkillRecall, SkillMatch
 RETRIEVAL_CANDIDATES = 20
 SKILL_CANDIDATES = 10
 EXPANSION_CANDIDATES = 10
-RERANKER_BATCH_SIZE = int(os.getenv("CAPILLARIES_RERANKER_BATCH_SIZE", "32"))
+# 8, not 32. PromptSearch always passes this, so it -- not Reranker's own
+# default -- is the number that runs. At MAX_DOC_CHARS=4000 a pair is ~1k
+# tokens, and 32 of them held 4.64 GiB of activations against weights of
+# 1.11 GiB: the batch was the footprint. Measured at 8: 1.11 GiB total.
+RERANKER_BATCH_SIZE = int(os.getenv("CAPILLARIES_RERANKER_BATCH_SIZE", "8"))
 IMAGE_GEN_PREFIX = "image gen"
 _IMAGE_GENERATION_QUERY = re.compile(
     r"\b(?:generate|render|produce|edit|animate)\s+"
