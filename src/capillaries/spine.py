@@ -15,7 +15,7 @@ def emit(kind: str, **payload) -> None:
         event = {"ts": now.isoformat(), "source": "capillaries", "kind": kind}
         if payload:
             event["payload"] = payload
-        d = Path(os.environ.get("HEART_SPOOL_DIR", str(Path.home() / ".local" / "share" / "heart" / "events")))
+        d = Path(os.environ.get("EVENT_JOURNAL_DIR", str(Path.home() / ".local" / "share" / "heart" / "events")))
         d.mkdir(parents=True, exist_ok=True)
         with open(d / now.strftime("%Y%m%d.ndjson"), "a", encoding="utf-8") as f:
             f.write(json.dumps(event, default=str) + "\n")

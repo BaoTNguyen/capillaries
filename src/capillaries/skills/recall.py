@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -233,7 +233,7 @@ class SkillRecall:
                         status,
                         score,
                         json.dumps(step_hashes or []),
-                        datetime.utcnow(),
+                        datetime.now(timezone.utc),
                         duration_ms,
                     ),
                 )
