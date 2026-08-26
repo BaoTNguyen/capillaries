@@ -288,8 +288,8 @@ class PromptSearch:
         if winner is not None and winner.metadata.get("kind") == "skill":
             match = self._build_skill_match(winner, model=model)
             self._log_skill_run(match)
-            self._log_serving(query, "skill", match.skill_id, ranked_candidates,
-                              agent_context)
+            self._log_serving(query, "skill", match.skill_id, match.match_score,
+                              ranked_candidates, agent_context)
             return SearchResponse(
                 query=query,
                 recommendation="skill",
@@ -299,8 +299,10 @@ class PromptSearch:
                 skill_match=match,
             )
 
-        self._log_serving(query, "single_prompt", results[0].prompt_id if results else None,
-                           ranked_candidates, agent_context)
+        self._log_serving(query, "single_prompt",
+                          results[0].prompt_id if results else None,
+                          results[0].rerank_score if results else None,
+                          ranked_candidates, agent_context)
         return SearchResponse(
             query=query,
             recommendation="single_prompt",
@@ -379,12 +381,23 @@ class PromptSearch:
             pass
 
     def _log_serving(
-        self, query: str, served_kind: str, served_id: str | None, candidates: list[dict],
-        agent_context: Any | None = None,
+        self, query: str, served_kind: str, served_id: str | None, score: float | None,
+        candidates: list[dict], agent_context: Any | None = None,
     ) -> None:
-        """Best-effort serving log — never blocks or breaks retrieval."""
+        """Best-effort serving log — never blocks or breaks retrieval.
+
+        served_kind records what the caller will actually get, not what ranked
+        first. This layer used to log the top candidate unconditionally while
+        find() refused it one layer up, so a row could claim a prompt was served
+        on a score of 1.8e-05. The floor is asked here, from the same place
+        find() asks it, and a refusal is logged as "none" with no served_id --
+        the candidate and its score still ride along in the candidates column.
+        """
         try:
+            from capillaries.config import clears_floor
             from capillaries.optimize.serving import log_serving
+            if not clears_floor(score):
+                served_kind, served_id = "none", None
             log_serving(
                 query, served_kind, served_id, candidates,
                 episode_id=getattr(agent_context, "episode_id", None),
