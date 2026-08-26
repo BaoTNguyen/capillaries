@@ -8,10 +8,11 @@ from capillaries.config.paths import (
     EMBED_MODEL,
     EMBED_DIM,
     MIN_CONFIDENCE,
+    clears_floor,
     QUERY_PREFIX,
 )
 
 __all__ = [
     "OBSIDIAN_VAULT_PATH", "PROMPTS_PATH", "SKILLS_PATH",
-    "DB_CONFIG", "EMBED_URL", "EMBED_MODEL", "EMBED_DIM", "MIN_CONFIDENCE", "QUERY_PREFIX",
+    "DB_CONFIG", "EMBED_URL", "EMBED_MODEL", "EMBED_DIM", "MIN_CONFIDENCE", "clears_floor", "QUERY_PREFIX",
 ]

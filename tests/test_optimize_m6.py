@@ -232,15 +232,15 @@ class AbGateTests(unittest.TestCase):
         self.pid_notraffic = self._insert_prompt(cur, self.PROMPT_TITLE_NOTRAFFIC, "baseline text")
         cur.close()
 
-        self._orig_spool = os.environ.get("HEART_SPOOL_DIR")
+        self._orig_journal = os.environ.get("EVENT_JOURNAL_DIR")
         self._tmpdir = tempfile.TemporaryDirectory()
-        os.environ["HEART_SPOOL_DIR"] = self._tmpdir.name
+        os.environ["EVENT_JOURNAL_DIR"] = self._tmpdir.name
 
     def tearDown(self):
-        if self._orig_spool is None:
-            os.environ.pop("HEART_SPOOL_DIR", None)
+        if self._orig_journal is None:
+            os.environ.pop("EVENT_JOURNAL_DIR", None)
         else:
-            os.environ["HEART_SPOOL_DIR"] = self._orig_spool
+            os.environ["EVENT_JOURNAL_DIR"] = self._orig_journal
         self._tmpdir.cleanup()
 
         cur = self.conn.cursor()
