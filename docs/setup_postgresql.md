@@ -4,12 +4,18 @@
 
 ### Ubuntu/Debian
 ```bash
-# Install PostgreSQL and pgvector 0.8+
+# Install PostgreSQL and pgvector 0.7+
 sudo apt update
-sudo apt install postgresql postgresql-contrib postgresql-14-pgvector
+sudo apt install postgresql postgresql-contrib
 
-# Confirm the installed package provides pgvector 0.8 or later.
-# Package names and repository versions vary by PostgreSQL release.
+# The distribution package lags: Ubuntu noble ships pgvector 0.6.0, which has no
+# halfvec type. Check what your release offers before relying on it:
+#   apt-cache policy postgresql-$(pg_config --version | grep -oP '\d+' | head -1)-pgvector
+#
+# If it is below 0.7, build from source instead (needs the server headers):
+sudo apt install postgresql-server-dev-all build-essential git
+git clone --branch v0.8.1 https://github.com/pgvector/pgvector.git
+cd pgvector && make && sudo make install && sudo systemctl restart postgresql
 
 # Start and enable PostgreSQL
 sudo systemctl start postgresql
