@@ -240,14 +240,15 @@ async def _embedding_proximity(message: str, db_config: dict | None = None) -> t
     conn = psycopg2.connect(**config)
     try:
         with conn.cursor() as cur:
+            cur.execute("SET LOCAL hnsw.iterative_scan = 'relaxed_order'")
             cur.execute(
                 """
                 SELECT title,
-                       1 - (embedding <=> %s::vector) AS similarity
+                       1 - (embedding <=> %s::halfvec) AS similarity
                 FROM prompts
                 WHERE embedding IS NOT NULL
                   AND status = 'active'
-                ORDER BY embedding <=> %s::vector
+                ORDER BY embedding <=> %s::halfvec
                 LIMIT 1
                 """,
                 (query_vec, query_vec),

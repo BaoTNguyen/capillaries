@@ -94,7 +94,7 @@ def create_skills_table(cursor) -> None:
 
             -- Semantic search on summary; width from EMBED_DIM,
             -- same convention as prompts.embedding / embedding_version
-            routing_embedding VECTOR(EMBED_DIM),
+            routing_embedding HALFVEC(EMBED_DIM),
             embedding_version VARCHAR,
 
             -- Lexical search, same shape as prompts.search_tsv: name (A) +
@@ -105,7 +105,7 @@ def create_skills_table(cursor) -> None:
 
             UNIQUE (tag, version)
         );
-    """.replace("VECTOR(EMBED_DIM)", f"VECTOR({EMBED_DIM})"))
+    """.replace("HALFVEC(EMBED_DIM)", f"HALFVEC({EMBED_DIM})"))
     # Table may already exist from before these columns were added.
     for stmt in [
         "ALTER TABLE skills.skills ADD COLUMN IF NOT EXISTS last_evaluated DATE;",
@@ -380,7 +380,7 @@ def create_indexes(cursor) -> None:
         # Partial, matching idx_prompts_embedding_active — recall.py only ever
         # queries active skills, so inactive ones have no business in the graph.
         """CREATE INDEX IF NOT EXISTS idx_skills_routing_embedding_active
-           ON skills.skills USING hnsw (routing_embedding vector_cosine_ops)
+           ON skills.skills USING hnsw (routing_embedding halfvec_cosine_ops)
            WITH (m = 16, ef_construction = 64)
            WHERE status = 'active';""",
 

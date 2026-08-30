@@ -146,19 +146,21 @@ class SkillRecall:
                 SELECT
                     skill_id, name, tag, version, summary, routing_text,
                     steps, domain, intent, task_type,
-                    1 - (routing_embedding <=> %s::vector) AS score
+                    1 - (routing_embedding <=> %s::halfvec) AS score
                 FROM skills.skills
                 WHERE {where}
                   AND routing_embedding IS NOT NULL
-                ORDER BY routing_embedding <=> %s::vector
+                ORDER BY routing_embedding <=> %s::halfvec
                 LIMIT %s
             """
             with psycopg2.connect(**self._db_config) as conn:
                 with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                    # See retriever._dense_search: ef_search caps the index
-                    # walk and status is filtered after it.
-                    cur.execute("SET LOCAL hnsw.ef_search = %s",
-                                (max(2 * per_channel, 100),))
+                    # ef_search is left at its default. pgvector 0.8's iterative scan
+                    # above continues the walk until LIMIT is met, which is what the
+                    # old `max(2 * n, 100)` was guessing at -- and a guess large enough
+                    # for the worst filter was paid on every query, including the ones
+                    # that filter nothing.
+                    cur.execute("SET LOCAL hnsw.iterative_scan = 'relaxed_order'")
                     cur.execute(sem_sql, [vec_str] + fparams + [vec_str, per_channel])
                     sem_rows = cur.fetchall()
 
