@@ -65,8 +65,8 @@
 
 | Column | Type | Fill rate | Notes |
 |--------|------|-----------|-------|
-| `embedding` | vector(768) | ~59% | `nomic-embed-text` embeddings via Ollama with `search_document:` prefix |
-| `embedding_version` | varchar | ~59% | Current: `nomic-embed-text` |
+| `embedding` | halfvec(EMBED_DIM), default 1024 | — | Qwen3-Embedding-0.6B embeddings; Python values remain `list[float]` |
+| `embedding_version` | varchar | — | Embedding model/version recorded with the vector |
 | `search_vector` | tsvector | ~100% | Full-text search vector, populated on insert |
 
 ---
@@ -76,7 +76,7 @@
 | Index | Type | Columns | Purpose |
 |-------|------|---------|---------|
 | `prompts_pkey` | btree | `prompt_id` | Primary key |
-| `idx_prompts_embedding` | **HNSW** | `embedding` (cosine) | Vector similarity search. `m=16, ef_construction=64` |
+| `idx_prompts_embedding_active` | **partial HNSW** | `embedding halfvec_cosine_ops`, `status = 'active'` | Vector similarity search. `m=16, ef_construction=64` |
 | `idx_prompts_search` | GIN | `search_vector` | Full-text search |
 | `idx_prompts_intent` | GIN | `intent` | Array containment filter |
 | `idx_prompts_task_type` | GIN | `task_type` | Array containment filter |
@@ -129,6 +129,22 @@
 
 ## Related tables
 
+### `skills.skills`
+
+Skill routing uses `routing_embedding halfvec(EMBED_DIM)` with the same
+config-driven width (1024 by default). Its partial HNSW index is
+`idx_skills_routing_embedding_active`, using `halfvec_cosine_ops`,
+`m=16`, `ef_construction=64`, and `WHERE status = 'active'`.
+
+All partial-HNSW query paths set `hnsw.iterative_scan` to
+`'relaxed_order'` locally in the transaction immediately before the ordered
+query. This matters when a nearest-neighbor query also filters on `status`:
+without iterative scanning, the initial index scan can run out of candidates
+before enough rows pass the partial-index filter, causing under-return.
+
+The Python embedding interface remains `list[float]`; SQL values assigned to or
+compared with these columns use `::halfvec`.
+
 ### `batch_processing_log`
 Tracks LLM classification runs. FK to `prompts.prompt_id`.
 
@@ -162,7 +178,7 @@ Use this section alongside `capillaries.search.eval` to diagnose retrieval quali
 | A stage is always empty (e.g. reflect) | **Data coverage** | Check stage distribution above — only 5 reflect prompts, 56 clarify. Add prompts to the vault. |
 | Wrong `primary_stage` on a prompt | **Classification** | Fix the Obsidian frontmatter directly. If the pattern is systemic, update `config/classification_prompt_template.md` and re-run the batch classifier. |
 | Good prompt excluded by a domain/intent filter | **Classification metadata** | The prompt's `domain`/`intent` arrays may be too narrow. A finance prompt about strategy should have `["finance", "strategy"]` not just `["finance"]`. |
-| All results vaguely related, none precise | **Embedding model** | `nomic-embed-text` is general-purpose. If domain-specific terms are central to the query, the embedding may lack precision. Consider a domain-tuned model or adding keyword emphasis to prompt text. |
+| All results vaguely related, none precise | **Embedding model** | `Qwen3-Embedding-0.6B` is a general-purpose model. If domain-specific terms are central to the query, the embedding may lack precision. Consider a domain-tuned model or adding keyword emphasis to prompt text. |
 | Duplicate / near-duplicate prompts in top results | **Data dedup** | Two vault files cover the same ground. Merge them or differentiate their stage/domain metadata so filters separate them. |
 | Same prompt appears in multiple chain stages | **Data coverage** | Not enough stage-specific prompts for this topic. The system reuses the best general match per stage. |
 | Most chain steps flagged ⚠ WEAK | **Data + query fit** | Either the query is too broad for the corpus, or the problem space lacks prompt coverage. Check if adding 2-3 targeted prompts fixes the chain. |
@@ -198,5 +214,6 @@ Use this section alongside `capillaries.search.eval` to diagnose retrieval quali
 
 | Date | Change |
 |------|--------|
-| 2026-04-18 | Dropped `secondary_stages`, `context_variables`, `accomplishes` (never populated). Renamed `input_schema`→`expected_input`, `output_schema`→`expected_output` to match Obsidian. Normalized all `intent`/`task_type` values to lowercase. Fixed DDL vector dimension 1536→768. |
+| 2026-08-29 | Migrated embedding storage to pgvector 0.8 `halfvec(EMBED_DIM)` with partial HNSW indexes using `halfvec_cosine_ops`; embedding width remains 1024 by default. |
+| 2026-04-18 | Dropped `secondary_stages`, `context_variables`, `accomplishes` (never populated). Renamed `input_schema`→`expected_input`, `output_schema`→`expected_output` to match Obsidian. Normalized all `intent`/`task_type` values to lowercase. |
 | 2026-03-29 | Switched vector index from IVFFlat to HNSW (`m=16, ef_construction=64`) |

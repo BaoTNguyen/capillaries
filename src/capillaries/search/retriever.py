@@ -275,12 +275,12 @@ class Retriever:
         n: int,
     ) -> list[dict]:
         """Return top-n results by cosine similarity using pgvector HNSW."""
-        # hnsw.ef_search caps how many tuples the index walk yields, and the
-        # status/domain filters are applied *after* that walk. Left at the
-        # default 40, a LIMIT 50 returned 40 rows on a corpus with nothing
-        # filtered out at all. Size the walk above the ask so filtered rows
-        # come out of slack instead of out of the result set.
-        cur.execute("SET LOCAL hnsw.ef_search = %s", (max(2 * n, 100),))
+        # ef_search is left at its default. pgvector 0.8's iterative scan
+        # above continues the walk until LIMIT is met, which is what the
+        # old `max(2 * n, 100)` was guessing at -- and a guess large enough
+        # for the worst filter was paid on every query, including the ones
+        # that filter nothing.
+        cur.execute("SET LOCAL hnsw.iterative_scan = 'relaxed_order'")
         vec_str = "[" + ",".join(map(str, query_vec)) + "]"
         sql = f"""
             SELECT
@@ -288,11 +288,11 @@ class Retriever:
                 prompt_text, summary,
                 intent, task_type, domain,
                 status, notes,
-                1 - (embedding <=> %s::vector) AS dense_sim
+                1 - (embedding <=> %s::halfvec) AS dense_sim
             FROM prompts
             WHERE embedding IS NOT NULL
               AND {filter_clause}
-            ORDER BY embedding <=> %s::vector
+            ORDER BY embedding <=> %s::halfvec
             LIMIT %s
         """
         cur.execute(sql, [vec_str] + filter_params + [vec_str] + [n])
