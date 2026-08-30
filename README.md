@@ -117,7 +117,9 @@ hooks/             arteries memory system integration
 
 ## Setup
 
-Requires Python 3.10+ and PostgreSQL 14+ with pgvector.
+Requires Python 3.10+ and PostgreSQL 14+ with pgvector 0.8 or later. The
+embedding width remains config-driven: `EMBED_DIM` defaults to 1024 and must
+match the embedding service and database schema.
 
 ```bash
 git clone <repo-url> capillaries && cd capillaries
@@ -151,6 +153,81 @@ psql -d capillaries -c "SELECT count(*), count(embedding) FROM prompt_chunks;"
 ```
 
 Each pair should match, and the chunk count should be several times the prompt count.
+
+### pgvector 0.8 and halfvec
+
+The database stores the existing 1024-dimensional embeddings as `halfvec` in
+`prompts.embedding`, `prompt_chunks.embedding`, and
+`skills.skills.routing_embedding`. The partial HNSW indexes are
+`idx_prompts_embedding_active`, `idx_chunks_embedding_active`, and
+`idx_skills_routing_embedding_active`; each uses `halfvec_cosine_ops`,
+`m=16`, `ef_construction=64`, and `WHERE status = 'active'`. The Python
+embedding API still accepts and returns `list[float]`.
+
+For an existing database, inspect the plan first. The migration is a dry run
+unless `--apply` is supplied, is safe to resume, and preserves non-null
+embeddings:
+
+```bash
+PYTHONPATH=src python -m capillaries.db.migrate_pgvector_08
+PYTHONPATH=src python -m capillaries.db.migrate_pgvector_08 --apply
+```
+
+Before applying it, take a backup and confirm the configured width and the
+extension version:
+
+```bash
+pg_dump -Fc capillaries > capillaries-before-halfvec.dump
+psql -d capillaries -c "SELECT current_setting('server_version'), extversion FROM pg_extension WHERE extname = 'vector';"
+```
+
+Verify the application value with `EMBED_DIM`. After migration, verify the
+declared column types and dimensions, index definitions, and non-null counts:
+
+```bash
+psql -d capillaries -c "SELECT n.nspname, c.relname, a.attname, format_type(a.atttypid, a.atttypmod) AS declared_type FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE (n.nspname, c.relname, a.attname) IN (('public','prompts','embedding'),('public','prompt_chunks','embedding'),('skills','skills','routing_embedding')) AND NOT a.attisdropped;"
+psql -d capillaries -c "SELECT indexname, indexdef FROM pg_indexes WHERE indexname IN ('idx_prompts_embedding_active','idx_chunks_embedding_active','idx_skills_routing_embedding_active');"
+psql -d capillaries -c "SELECT (SELECT count(*) FROM prompts WHERE embedding IS NOT NULL), (SELECT count(*) FROM prompt_chunks WHERE embedding IS NOT NULL), (SELECT count(*) FROM skills.skills WHERE routing_embedding IS NOT NULL);"
+```
+
+Filtered HNSW searches set `hnsw.iterative_scan = 'relaxed_order'` locally in
+the same transaction immediately before the ordered query. Without iterative
+scanning, a partial index can return too few rows when the query also filters
+for active records: the index may exhaust its initial nearest-neighbor scan
+before enough rows pass the filter. Relaxed iterative scanning keeps collecting
+candidates while retaining the existing `hnsw.ef_search` tuning.
+
+To roll back, keep pgvector 0.8 installed. Back up first, then during a
+maintenance window run the following sequence:
+
+```sql
+DROP INDEX IF EXISTS idx_prompts_embedding_active;
+DROP INDEX IF EXISTS idx_chunks_embedding_active;
+DROP INDEX IF EXISTS skills.idx_skills_routing_embedding_active;
+ALTER TABLE prompts ALTER COLUMN embedding TYPE vector(EMBED_DIM)
+  USING embedding::vector;
+ALTER TABLE prompt_chunks ALTER COLUMN embedding TYPE vector(EMBED_DIM)
+  USING embedding::vector;
+ALTER TABLE skills.skills ALTER COLUMN routing_embedding TYPE vector(EMBED_DIM)
+  USING routing_embedding::vector;
+CREATE INDEX idx_prompts_embedding_active ON prompts USING hnsw
+  (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64)
+  WHERE status = 'active';
+CREATE INDEX idx_chunks_embedding_active ON prompt_chunks USING hnsw
+  (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64)
+  WHERE status = 'active';
+CREATE INDEX idx_skills_routing_embedding_active ON skills.skills USING hnsw
+  (routing_embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64)
+  WHERE status = 'active';
+```
+
+Replace `EMBED_DIM` with the configured integer if running this SQL directly;
+it is a Python configuration name, not a PostgreSQL variable. Only after all
+columns and indexes use `vector` should you optionally run `ALTER EXTENSION
+vector UPDATE TO '<older-version>'`, and only if the installed server package
+supports that version. These ALTER TABLE and index operations can lock tables
+and consume substantial I/O; plan for downtime or contention and keep the dump
+until verification is complete.
 
 Or run `./scripts/setup.sh`, which does all of this in order and ends by running a live `find()` against what it built. Full details in [docs/quick_start_guide.md](docs/quick_start_guide.md).
 

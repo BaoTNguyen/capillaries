@@ -352,7 +352,7 @@ class PromptOptimizer:
                 if vec is not None:
                     from capillaries.config import EMBED_MODEL
                     cur.execute(
-                        "UPDATE prompts SET embedding = %s::vector, embedding_version = %s "
+                        "UPDATE prompts SET embedding = %s::halfvec, embedding_version = %s "
                         "WHERE prompt_id = %s",
                         (vec, EMBED_MODEL, prompt_id))
                 conn.commit()

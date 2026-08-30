@@ -55,7 +55,7 @@ def create_database_schema(cursor):
 
         -- Vector search. Width is config-driven — see EMBED_DIM below.
         embedding_version VARCHAR,
-        embedding VECTOR(EMBED_DIM),
+        embedding HALFVEC(EMBED_DIM),
 
         -- Full-text search (A-weighted title + body with acronym expansion).
         -- Written by the ingest paths, not generated: expand_acronyms() runs in
@@ -80,7 +80,7 @@ def create_database_schema(cursor):
     """
     # Substituted rather than f-string-interpolated: the DDL above uses `'{}'`
     # array defaults, which an f-string would try to read as fields.
-    cursor.execute(create_prompts_table.replace("VECTOR(EMBED_DIM)", f"VECTOR({EMBED_DIM})"))
+    cursor.execute(create_prompts_table.replace("HALFVEC(EMBED_DIM)", f"HALFVEC({EMBED_DIM})"))
     cursor.execute("ALTER TABLE prompts ADD COLUMN IF NOT EXISTS summary TEXT;")
     cursor.execute("ALTER TABLE prompts ADD COLUMN IF NOT EXISTS tag VARCHAR;")
     cursor.execute("""
@@ -207,7 +207,7 @@ def create_database_schema(cursor):
         # Restricting the graph to what can actually be returned fixes that and
         # is faster besides. Postgres maintains membership on every UPDATE, so
         # inactivating and reactivating take effect immediately; no rebuild.
-        "CREATE INDEX IF NOT EXISTS idx_prompts_embedding_active ON prompts USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64) WHERE status = 'active';",
+        "CREATE INDEX IF NOT EXISTS idx_prompts_embedding_active ON prompts USING hnsw (embedding halfvec_cosine_ops) WITH (m = 16, ef_construction = 64) WHERE status = 'active';",
         "CREATE INDEX IF NOT EXISTS idx_prompts_confidence ON prompts USING GIN (metadata_confidence);",
         "CREATE INDEX IF NOT EXISTS idx_prompts_backfill ON prompts (backfill_status);",
         "CREATE INDEX IF NOT EXISTS idx_variants_prompt_model ON prompt_variants (prompt_id, model) WHERE is_current = TRUE;",

@@ -252,22 +252,23 @@ def vector_search(
     clause, fparams = _filter_sql(filters)
     sql = f"""
         SELECT c.chunk_id::text, c.prompt_id::text, p.title,
-               1 - (c.embedding <=> %s::vector) AS score
+               1 - (c.embedding <=> %s::halfvec) AS score
         FROM prompt_chunks c
         JOIN prompts p USING (prompt_id)
         -- c.status is what makes the partial chunk index usable; the p.*
         -- clause still carries taxonomy, and its own status check is a cheap
         -- backstop if the sync trigger ever lags.
         WHERE c.embedding IS NOT NULL AND c.status = 'active' AND {clause}
-        ORDER BY c.embedding <=> %s::vector
+        ORDER BY c.embedding <=> %s::halfvec
         LIMIT %s
     """
     conn = psycopg2.connect(**(db_config or DB_CONFIG))
     try:
         with conn.cursor() as cur:
-            # See retriever._dense_search — ef_search caps the walk, filters
-            # come after it, so the walk has to be wider than CANDIDATES.
-            cur.execute("SET LOCAL hnsw.ef_search = %s", (max(2 * CANDIDATES, 100),))
+            # ef_search is left at its default: the iterative scan continues
+            # the walk until CANDIDATES is met, which is what the old
+            # `max(2 * CANDIDATES, 100)` was guessing at.
+            cur.execute("SET LOCAL hnsw.iterative_scan = 'relaxed_order'")
             cur.execute(sql, [vec] + fparams + [vec, CANDIDATES])
             rows = cur.fetchall()
     finally:
