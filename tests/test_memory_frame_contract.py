@@ -12,7 +12,20 @@ installed is the contract. Everything here must hold under both the old
 
 import unittest
 
-from arteries.memory_types import EphemeralMemory, Insight, MemoryFrame, PersistentMemory
+import pytest
+
+# Guarded, because CI does not install the sibling: a module-level import here
+# takes the whole collection down before any skip can fire, which is what turned
+# `-m "not db"` into `1 error, 59 deselected` on every run since 2026-08-23.
+# ci.yml already says this test "skips" when arteries is absent -- now it does.
+arteries_memory_types = pytest.importorskip(
+    "arteries.memory_types",
+    reason="arteries is a sibling checkout, not a pinned dependency",
+)
+EphemeralMemory = arteries_memory_types.EphemeralMemory
+Insight = arteries_memory_types.Insight
+MemoryFrame = arteries_memory_types.MemoryFrame
+PersistentMemory = arteries_memory_types.PersistentMemory
 
 from capillaries.agent import frame_compat
 from capillaries.agent.api import _build_context_frame
