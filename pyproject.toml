@@ -83,6 +83,12 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Prefer this checkout's source over the editable install. Without it,
+# `import capillaries` resolves through __editable__.capillaries.pth to whatever
+# directory was pip-installed -- so tests run in a git worktree (heart episodes,
+# plexus features, any `git worktree add` bisect) silently exercise the ORIGINAL
+# repo instead of the one under test, and pass no matter what changed.
+pythonpath = ["src"]
 markers = [
     "db: needs a live Postgres + embedding endpoint (deselect with -m 'not db')",
 ]
