@@ -12,11 +12,32 @@ from typing import List, Dict, Any
 
 from capillaries.config.paths import DB_CONFIG, EMBED_DIM
 
+def _require_halfvec(cursor) -> None:
+    """Fail here, where the reason is obvious, rather than 200 lines later.
+
+    The schema below creates halfvec_cosine_ops indexes. CREATE EXTENSION picks
+    whatever version the server has on disk, and stock Ubuntu still ships
+    pgvector 0.6 -- so a fresh install used to get an extension that installs
+    fine and then an index build that dies on a type nobody mentioned.
+    """
+    cursor.execute("SELECT extversion FROM pg_extension WHERE extname = 'vector'")
+    row = cursor.fetchone()
+    version = row[0] if row else None
+    if version is None or tuple(int(p) for p in version.split(".")[:2]) < (0, 7):
+        raise SystemExit(
+            f"pgvector 0.7+ is required for halfvec; this server has "
+            f"{version or 'no vector extension'}.\n"
+            f"Install a newer pgvector, then re-run setup. On Debian/Ubuntu the "
+            f"distribution package may lag -- see docs/setup_postgresql.md."
+        )
+
+
 def create_database_schema(cursor):
     """Create the complete database schema"""
 
     # Enable pgvector extension
     cursor.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+    _require_halfvec(cursor)
     cursor.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm;")  # For fuzzy text search
 
     # Main prompts table
