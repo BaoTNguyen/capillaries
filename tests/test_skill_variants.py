@@ -14,6 +14,12 @@ from capillaries.config.paths import DB_CONFIG
 from capillaries.skills.promote import SkillPromoter
 from capillaries.skills.recall import SkillRecall
 
+# Every test here opens a Postgres connection, so it belongs behind the `db`
+# marker CI deselects with `-m "not db"`. Without the mark these failed on
+# every machine without a database, which is every machine but this one.
+pytestmark = pytest.mark.db
+
+
 MODEL = "test-model-skill-variants"
 
 

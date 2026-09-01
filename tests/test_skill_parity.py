@@ -13,6 +13,12 @@ from capillaries.skills.coverage import TOP_WINDOW, top_window
 from capillaries.skills.promote import _modality, _routing_text
 from capillaries.skills.recall import SkillRecall
 
+# Every test here opens a Postgres connection, so it belongs behind the `db`
+# marker CI deselects with `-m "not db"`. Without the mark these failed on
+# every machine without a database, which is every machine but this one.
+pytestmark = pytest.mark.db
+
+
 QUERY = "post-mortem after a production outage"
 
 

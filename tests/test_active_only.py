@@ -8,6 +8,13 @@ import pathlib
 
 from capillaries.search.channels import _filter_sql
 from capillaries.search.retriever import _build_filter_clause
+import pytest
+
+# Every test here opens a Postgres connection, so it belongs behind the `db`
+# marker CI deselects with `-m "not db"`. Without the mark these failed on
+# every machine without a database, which is every machine but this one.
+pytestmark = pytest.mark.db
+
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
