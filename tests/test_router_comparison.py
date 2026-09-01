@@ -28,6 +28,12 @@ import pytest
 from capillaries.search.api import PromptSearch
 from capillaries.skills.coverage import best_skill, score_skills
 
+# Every test here opens a Postgres connection, so it belongs behind the `db`
+# marker CI deselects with `-m "not db"`. Without the mark these failed on
+# every machine without a database, which is every machine but this one.
+pytestmark = pytest.mark.db
+
+
 WORKFLOW = [
     ("we had a production outage overnight and need to run the whole response", "incident-response"),
     ("take me through handling a sev1 from triage to written post-mortem",      "incident-response"),

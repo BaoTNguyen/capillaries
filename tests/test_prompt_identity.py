@@ -12,6 +12,12 @@ from capillaries.agent.feedback import FeedbackHandler, get_quality_prior
 from capillaries.config.paths import DB_CONFIG
 from capillaries.lifecycle.cascade import find_dependent_skills
 
+# Every test here opens a Postgres connection, so it belongs behind the `db`
+# marker CI deselects with `-m "not db"`. Without the mark these failed on
+# every machine without a database, which is every machine but this one.
+pytestmark = pytest.mark.db
+
+
 TRACE = "pytest-prompt-identity"
 
 
