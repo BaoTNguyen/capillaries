@@ -34,6 +34,12 @@ _needs_dspy = pytest.mark.skipif(
 from capillaries.config.paths import DB_CONFIG
 from capillaries.optimize.fences import assert_fences_unchanged, split_fences
 
+# Every test here opens a Postgres connection, so it belongs behind the `db`
+# marker CI deselects with `-m "not db"`. Without the mark these failed on
+# every machine without a database, which is every machine but this one.
+pytestmark = pytest.mark.db
+
+
 
 def _db_reachable() -> bool:
     try:
