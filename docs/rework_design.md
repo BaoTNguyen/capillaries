@@ -361,6 +361,23 @@ CREATE TABLE base_info (
 durable user facts in `arteries.evergreen`; base_info should sync from it
 rather than becoming a second place the user types their company name.
 
+> **Correction, 2026-09-05.** "Arteries already holds" was never true.
+> `arteries.evergreen` has never existed —
+> `arteries/src/arteries/memory_types.py:56` records that the table "never held a
+> row", and the `arteries/scripts/evergreen-*.sh` wrappers call a module absent
+> from `src/`. The tier is being built now as the knowledge-graph layer
+> (`arteries/planning/ingestion_redesign.md`), keyed by `scope_id` rather than
+> `project_id`, with tombstoned rows and a `core` flag for facts seeded from a
+> project's own `planning/*.md`. See the note on action 4.6 in `rework_actions.md`
+> before building the sync.
+>
+> Two details in the DDL above to fix while here: `VECTOR(768)` contradicts the
+> shared embedding contract, which moved to Qwen3-Embedding-0.6B at **1024** dims
+> (`arteries/src/arteries/config.py:30-45` records the drift and why arteries now
+> imports the values from capillaries rather than declaring its own). And a synced
+> `base_info` must filter `valid_until IS NULL`, or it will serve superseded facts
+> forever.
+
 ### The fill algorithm
 
 ```

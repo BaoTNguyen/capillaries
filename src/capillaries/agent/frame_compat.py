@@ -1,10 +1,10 @@
 """Reading arteries' MemoryFrame across a contract rename.
 
 arteries renamed the frame's third tier: `MemoryFrame.evergreen` became
-`.scope`, `EvergreenMemory` became `ScopeMemory`, and `ground_truth_insights`
-became `sibling_insights`. The tier never described permanence -- it describes
-how far out context reaches -- and with scope groups it holds sibling-repo
-memory.
+`.scope` and `ground_truth_insights` became `sibling_insights`. The class was
+briefly `ScopeMemory` too; it is `EvergreenMemory` again, because evergreen is
+back as the knowledge-graph tier. Detect the shape by its fields, never by the
+class name -- the name has now moved twice and the fields have moved once.
 
 capillaries consumes that contract from a sibling checkout. arteries is not on
 PyPI, so there is no version to pin and no resolver to complain: whichever
@@ -13,9 +13,9 @@ work, or capillaries breaks whenever arteries is on the other side of the
 rename -- which is exactly what happened, and stayed hidden because no test
 exercised the memory-context path with a real frame.
 
-Delete this module when every arteries checkout in use exposes ScopeMemory:
+Delete this module when every arteries checkout in use has the new fields:
 
-    python -c "from arteries.memory_types import ScopeMemory"
+    python -c "from arteries.memory_types import MemoryFrame; MemoryFrame().scope.sibling_insights"
 """
 
 from __future__ import annotations
@@ -54,10 +54,10 @@ def recurring_domains(context: Any) -> list[str]:
 
 
 def scope_memory_class():
-    """ScopeMemory where arteries has it, EvergreenMemory where it does not."""
+    """The third tier's class, under whichever name this checkout uses."""
     from arteries import memory_types
 
-    return getattr(memory_types, "ScopeMemory", None) or memory_types.EvergreenMemory
+    return getattr(memory_types, "EvergreenMemory", None) or memory_types.ScopeMemory
 
 
 def build_scope_tier(raw: dict) -> Any:
@@ -73,7 +73,9 @@ def build_scope_tier(raw: dict) -> Any:
         "last_retrieval_ts": raw.get("last_retrieval_ts"),
         "retrieval_confidence": raw.get("retrieval_confidence"),
     }
-    field = "sibling_insights" if cls.__name__ == "ScopeMemory" else "ground_truth_insights"
+    # By field, not by class name: the class has been called both things.
+    field = ("sibling_insights" if "sibling_insights" in cls.__dataclass_fields__
+             else "ground_truth_insights")
     return cls(**common, **{field: insights})
 
 
