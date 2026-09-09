@@ -35,7 +35,11 @@ from capillaries.search.context_filter import ContextFilter
 def a_frame(**tier_kwargs) -> MemoryFrame:
     """A frame with a populated third tier, named however arteries names it."""
     cls = frame_compat.scope_memory_class()
-    field = ("sibling_insights" if cls.__name__ == "ScopeMemory"
+    # By field, not by class name. The helper mirrored frame_compat's old
+    # `cls.__name__` check and inherited the same defect: the class has been
+    # called EvergreenMemory, then ScopeMemory, then EvergreenMemory again,
+    # while the fields moved exactly once.
+    field = ("sibling_insights" if "sibling_insights" in cls.__dataclass_fields__
              else "ground_truth_insights")
     tier = cls(user_intent=tier_kwargs.get("user_intent", []),
                recurring_domains=tier_kwargs.get("recurring_domains", []),
