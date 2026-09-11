@@ -74,6 +74,18 @@ EMBED_DIM = int(os.getenv("EMBED_DIM", "1024"))
 # the reranker can make a calibrated appropriateness decision.
 MIN_CONFIDENCE = float(os.getenv("CAPILLARIES_MIN_CONFIDENCE", "0.8"))
 
+
+def clears_floor(score: float | None) -> bool:
+    """The one serve/refuse decision, so the log and the caller cannot disagree.
+
+    find() applied this floor while search() logged unconditionally one layer
+    below it, so serving_log recorded refused candidates as served -- 3,579 rows
+    reading as routing wins when the top score could be 1.8e-05. The decision
+    lives here now and both layers ask it the same question.
+    """
+    return score is not None and score >= MIN_CONFIDENCE
+
+
 # Prepended to queries only — documents are embedded raw. Asymmetric retrieval
 # models each want their own convention, so this belongs with the model name
 # rather than copied into every call site.

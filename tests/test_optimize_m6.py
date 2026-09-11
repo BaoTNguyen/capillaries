@@ -34,6 +34,12 @@ _needs_dspy = pytest.mark.skipif(
 from capillaries.config.paths import DB_CONFIG
 from capillaries.optimize.fences import assert_fences_unchanged, split_fences
 
+# Every test here opens a Postgres connection, so it belongs behind the `db`
+# marker CI deselects with `-m "not db"`. Without the mark these failed on
+# every machine without a database, which is every machine but this one.
+pytestmark = pytest.mark.db
+
+
 
 def _db_reachable() -> bool:
     try:
@@ -232,15 +238,15 @@ class AbGateTests(unittest.TestCase):
         self.pid_notraffic = self._insert_prompt(cur, self.PROMPT_TITLE_NOTRAFFIC, "baseline text")
         cur.close()
 
-        self._orig_spool = os.environ.get("HEART_SPOOL_DIR")
+        self._orig_journal = os.environ.get("EVENT_JOURNAL_DIR")
         self._tmpdir = tempfile.TemporaryDirectory()
-        os.environ["HEART_SPOOL_DIR"] = self._tmpdir.name
+        os.environ["EVENT_JOURNAL_DIR"] = self._tmpdir.name
 
     def tearDown(self):
-        if self._orig_spool is None:
-            os.environ.pop("HEART_SPOOL_DIR", None)
+        if self._orig_journal is None:
+            os.environ.pop("EVENT_JOURNAL_DIR", None)
         else:
-            os.environ["HEART_SPOOL_DIR"] = self._orig_spool
+            os.environ["EVENT_JOURNAL_DIR"] = self._orig_journal
         self._tmpdir.cleanup()
 
         cur = self.conn.cursor()

@@ -94,6 +94,7 @@ def find_similar_active_prompts(
     config = db_config or DB_CONFIG
     with psycopg2.connect(**config) as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SET LOCAL hnsw.iterative_scan = 'relaxed_order'")
             cur.execute("""
                 SELECT title, 1 - (embedding <=> (
                     SELECT embedding FROM prompts WHERE title = %s

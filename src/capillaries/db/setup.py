@@ -12,11 +12,32 @@ from typing import List, Dict, Any
 
 from capillaries.config.paths import DB_CONFIG, EMBED_DIM
 
+def _require_halfvec(cursor) -> None:
+    """Fail here, where the reason is obvious, rather than 200 lines later.
+
+    The schema below creates halfvec_cosine_ops indexes. CREATE EXTENSION picks
+    whatever version the server has on disk, and stock Ubuntu still ships
+    pgvector 0.6 -- so a fresh install used to get an extension that installs
+    fine and then an index build that dies on a type nobody mentioned.
+    """
+    cursor.execute("SELECT extversion FROM pg_extension WHERE extname = 'vector'")
+    row = cursor.fetchone()
+    version = row[0] if row else None
+    if version is None or tuple(int(p) for p in version.split(".")[:2]) < (0, 7):
+        raise SystemExit(
+            f"pgvector 0.7+ is required for halfvec; this server has "
+            f"{version or 'no vector extension'}.\n"
+            f"Install a newer pgvector, then re-run setup. On Debian/Ubuntu the "
+            f"distribution package may lag -- see docs/setup_postgresql.md."
+        )
+
+
 def create_database_schema(cursor):
     """Create the complete database schema"""
 
     # Enable pgvector extension
     cursor.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+    _require_halfvec(cursor)
     cursor.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm;")  # For fuzzy text search
 
     # Main prompts table
@@ -55,7 +76,7 @@ def create_database_schema(cursor):
 
         -- Vector search. Width is config-driven — see EMBED_DIM below.
         embedding_version VARCHAR,
-        embedding VECTOR(EMBED_DIM),
+        embedding HALFVEC(EMBED_DIM),
 
         -- Full-text search (A-weighted title + body with acronym expansion).
         -- Written by the ingest paths, not generated: expand_acronyms() runs in
@@ -80,7 +101,7 @@ def create_database_schema(cursor):
     """
     # Substituted rather than f-string-interpolated: the DDL above uses `'{}'`
     # array defaults, which an f-string would try to read as fields.
-    cursor.execute(create_prompts_table.replace("VECTOR(EMBED_DIM)", f"VECTOR({EMBED_DIM})"))
+    cursor.execute(create_prompts_table.replace("HALFVEC(EMBED_DIM)", f"HALFVEC({EMBED_DIM})"))
     cursor.execute("ALTER TABLE prompts ADD COLUMN IF NOT EXISTS summary TEXT;")
     cursor.execute("ALTER TABLE prompts ADD COLUMN IF NOT EXISTS tag VARCHAR;")
     cursor.execute("""
@@ -207,7 +228,7 @@ def create_database_schema(cursor):
         # Restricting the graph to what can actually be returned fixes that and
         # is faster besides. Postgres maintains membership on every UPDATE, so
         # inactivating and reactivating take effect immediately; no rebuild.
-        "CREATE INDEX IF NOT EXISTS idx_prompts_embedding_active ON prompts USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64) WHERE status = 'active';",
+        "CREATE INDEX IF NOT EXISTS idx_prompts_embedding_active ON prompts USING hnsw (embedding halfvec_cosine_ops) WITH (m = 16, ef_construction = 64) WHERE status = 'active';",
         "CREATE INDEX IF NOT EXISTS idx_prompts_confidence ON prompts USING GIN (metadata_confidence);",
         "CREATE INDEX IF NOT EXISTS idx_prompts_backfill ON prompts (backfill_status);",
         "CREATE INDEX IF NOT EXISTS idx_variants_prompt_model ON prompt_variants (prompt_id, model) WHERE is_current = TRUE;",

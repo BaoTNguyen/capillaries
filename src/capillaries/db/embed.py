@@ -100,7 +100,7 @@ async def run(reembed: bool = False) -> None:
                 cur,
                 """
                 UPDATE prompts
-                SET embedding = %s::vector,
+                SET embedding = %s::halfvec,
                     embedding_version = %s
                 WHERE title = %s
                 """,
@@ -123,7 +123,7 @@ async def run(reembed: bool = False) -> None:
     cur.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_prompts_embedding_active
-        ON prompts USING hnsw (embedding vector_cosine_ops)
+        ON prompts USING hnsw (embedding halfvec_cosine_ops)
         WITH (m = 16, ef_construction = 64)
         WHERE status = 'active'
         """
@@ -155,7 +155,7 @@ async def run_skills(reembed: bool = False) -> None:
                 WHERE table_schema = 'skills' AND table_name = 'skills'
                 AND column_name = 'routing_embedding'
             ) THEN
-                ALTER TABLE skills.skills ADD COLUMN routing_embedding VECTOR({EMBED_DIM});
+                ALTER TABLE skills.skills ADD COLUMN routing_embedding HALFVEC({EMBED_DIM});
             END IF;
         END $$;
     """)
@@ -208,7 +208,7 @@ async def run_skills(reembed: bool = False) -> None:
             cur,
             """
             UPDATE skills.skills
-            SET routing_embedding = %s::vector,
+            SET routing_embedding = %s::halfvec,
                 embedding_version = %s
             WHERE skill_id = %s::uuid
             """,
@@ -222,7 +222,7 @@ async def run_skills(reembed: bool = False) -> None:
     cur.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_skills_routing_embedding_active
-        ON skills.skills USING hnsw (routing_embedding vector_cosine_ops)
+        ON skills.skills USING hnsw (routing_embedding halfvec_cosine_ops)
         WITH (m = 16, ef_construction = 64)
         WHERE status = 'active'
         """

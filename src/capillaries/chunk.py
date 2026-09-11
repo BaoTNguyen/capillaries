@@ -203,7 +203,7 @@ def embed_text(title: str, c: Chunk, summary: str | None = None) -> str:
 def _ddl() -> str:
     """Chunk table DDL. Vector width comes from config so a model swap is one edit."""
     from capillaries.config import EMBED_DIM
-    return DDL.replace("VECTOR(EMBED_DIM)", f"VECTOR({EMBED_DIM})")
+    return DDL.replace("HALFVEC(EMBED_DIM)", f"HALFVEC({EMBED_DIM})")
 
 
 DDL = """
@@ -227,7 +227,7 @@ CREATE TABLE IF NOT EXISTS prompt_chunks (
     -- just stop costing the walk anything.
     status        VARCHAR NOT NULL DEFAULT 'active',
 
-    embedding         VECTOR(EMBED_DIM),
+    embedding         HALFVEC(EMBED_DIM),
     embedding_version VARCHAR,
     search_tsv        TSVECTOR,
     exact_tsv         TSVECTOR,
@@ -244,7 +244,7 @@ INDEXES = [
     # Built after backfill — HNSW on an empty table then filled row-by-row is
     # far slower to build than one pass over populated data.
     "CREATE INDEX IF NOT EXISTS idx_chunks_embedding_active ON prompt_chunks "
-    "USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64) "
+    "USING hnsw (embedding halfvec_cosine_ops) WITH (m = 16, ef_construction = 64) "
     "WHERE status = 'active';",
 ]
 
@@ -369,7 +369,7 @@ def backfill(dry: bool = False, db_config: dict | None = None) -> dict:
                 ) VALUES (
                     %(pid)s, %(idx)s, %(label)s, %(raw)s,
                     %(start)s, %(end)s, %(atomic)s, %(hash)s, %(status)s,
-                    %(vec)s::vector, %(ver)s,
+                    %(vec)s::halfvec, %(ver)s,
                     setweight(to_tsvector('english', %(crumb)s), 'A')
                         || to_tsvector('english', %(body)s)
                 )

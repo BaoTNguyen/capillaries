@@ -36,7 +36,7 @@ from dataclasses import dataclass, field
 from typing import Any, TYPE_CHECKING
 
 from capillaries.agent.context import AgentContext, normalize_agent_context
-from capillaries.config import MIN_CONFIDENCE
+from capillaries.config import clears_floor
 from capillaries.search.context_filter import ContextFilter
 
 if TYPE_CHECKING:
@@ -228,7 +228,7 @@ class _FindEngine:
         # The rejected score rides along on the none-result. A caller that wants
         # to log "we had something at 0.29" can; one that checks .mode cannot
         # accidentally serve it.
-        if top.rerank_score < MIN_CONFIDENCE:
+        if not clears_floor(top.rerank_score):
             return FindResult(mode="none", confidence=top.rerank_score)
 
         return FindResult(
@@ -252,7 +252,7 @@ class _FindEngine:
         # Same floor as the single path. A skill wins by out-scoring prompts,
         # so an unfiltered weak skill match is the more likely bad serve of the
         # two: it arrives with steps attached and looks authoritative.
-        if match.match_score < MIN_CONFIDENCE:
+        if not clears_floor(match.match_score):
             return None
 
         steps = []

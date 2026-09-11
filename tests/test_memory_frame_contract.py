@@ -12,7 +12,20 @@ installed is the contract. Everything here must hold under both the old
 
 import unittest
 
-from arteries.memory_types import EphemeralMemory, Insight, MemoryFrame, PersistentMemory
+import pytest
+
+# Guarded, because CI does not install the sibling: a module-level import here
+# takes the whole collection down before any skip can fire, which is what turned
+# `-m "not db"` into `1 error, 59 deselected` on every run since 2026-08-23.
+# ci.yml already says this test "skips" when arteries is absent -- now it does.
+arteries_memory_types = pytest.importorskip(
+    "arteries.memory_types",
+    reason="arteries is a sibling checkout, not a pinned dependency",
+)
+EphemeralMemory = arteries_memory_types.EphemeralMemory
+Insight = arteries_memory_types.Insight
+MemoryFrame = arteries_memory_types.MemoryFrame
+PersistentMemory = arteries_memory_types.PersistentMemory
 
 from capillaries.agent import frame_compat
 from capillaries.agent.api import _build_context_frame
@@ -22,7 +35,11 @@ from capillaries.search.context_filter import ContextFilter
 def a_frame(**tier_kwargs) -> MemoryFrame:
     """A frame with a populated third tier, named however arteries names it."""
     cls = frame_compat.scope_memory_class()
-    field = ("sibling_insights" if cls.__name__ == "ScopeMemory"
+    # By field, not by class name. The helper mirrored frame_compat's old
+    # `cls.__name__` check and inherited the same defect: the class has been
+    # called EvergreenMemory, then ScopeMemory, then EvergreenMemory again,
+    # while the fields moved exactly once.
+    field = ("sibling_insights" if "sibling_insights" in cls.__dataclass_fields__
              else "ground_truth_insights")
     tier = cls(user_intent=tier_kwargs.get("user_intent", []),
                recurring_domains=tier_kwargs.get("recurring_domains", []),
