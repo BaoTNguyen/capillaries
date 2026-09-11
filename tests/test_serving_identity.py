@@ -89,10 +89,54 @@ def test_search_forwards_context_to_log(monkeypatch):
     monkeypatch.setattr(serving_mod, "log_serving", fake_log_serving)
 
     search = PromptSearch.__new__(PromptSearch)  # no DB, no models
-    search._log_serving("q", "single_prompt", "pid", [],
+    search._log_serving("q", "single_prompt", "pid", 0.95, [],
                         AgentContext(episode_id="ep-7", turn_id="t-3"))
 
     assert seen == {"episode_id": "ep-7", "turn_id": "t-3"}
+
+
+def _logged(monkeypatch, kind, served_id, score):
+    """Run _log_serving and return the (kind, id) it actually recorded."""
+    from capillaries.search.api import PromptSearch
+
+    seen = {}
+
+    def fake_log_serving(query, k, sid, cands, db_config=None,
+                         episode_id=None, turn_id=None):
+        seen["kind"], seen["id"] = k, sid
+
+    import capillaries.optimize.serving as serving_mod
+    monkeypatch.setattr(serving_mod, "log_serving", fake_log_serving)
+
+    search = PromptSearch.__new__(PromptSearch)
+    search._log_serving("q", kind, served_id, score, [{"id": served_id, "score": score}])
+    return seen
+
+
+def test_a_refused_candidate_is_not_logged_as_served(monkeypatch):
+    """The bug this closes: search() logged the top candidate unconditionally
+    while find() refused it on the same score, so serving_log read as a routing
+    win on scores as low as 1.8e-05."""
+    assert _logged(monkeypatch, "single_prompt", "pid", 0.0001) == {"kind": "none", "id": None}
+    assert _logged(monkeypatch, "skill", "sid", 0.7058) == {"kind": "none", "id": None}
+
+
+def test_a_served_candidate_is_logged_as_served(monkeypatch):
+    assert _logged(monkeypatch, "single_prompt", "pid", 0.97) == {"kind": "single_prompt", "id": "pid"}
+    assert _logged(monkeypatch, "skill", "sid", 0.83) == {"kind": "skill", "id": "sid"}
+
+
+def test_no_results_logs_none(monkeypatch):
+    assert _logged(monkeypatch, "single_prompt", None, None) == {"kind": "none", "id": None}
+
+
+def test_the_floor_is_one_decision_shared_with_find():
+    """find() and the log must not be able to drift apart."""
+    from capillaries.config import MIN_CONFIDENCE, clears_floor
+
+    assert clears_floor(MIN_CONFIDENCE) is True
+    assert clears_floor(MIN_CONFIDENCE - 0.0001) is False
+    assert clears_floor(None) is False
 
 
 # These two run in a subprocess on purpose. `capillaries.find` is both a

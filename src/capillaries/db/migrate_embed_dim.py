@@ -29,9 +29,9 @@ from capillaries.config import DB_CONFIG, EMBED_DIM, EMBED_MODEL
 # by the re-embed pass, which builds HNSW over populated rows — far faster than
 # maintaining it insert-by-insert.
 TARGETS = [
-    ("prompts", "embedding", "idx_prompts_embedding"),
-    ("prompt_chunks", "embedding", "idx_chunks_embedding"),
-    ("skills.skills", "routing_embedding", "idx_skills_routing_embedding"),
+    ("prompts", "embedding", "idx_prompts_embedding_active"),
+    ("prompt_chunks", "embedding", "idx_chunks_embedding_active"),
+    ("skills.skills", "routing_embedding", "idx_skills_routing_embedding_active"),
 ]
 
 CURRENT_DIM_SQL = """
@@ -74,7 +74,7 @@ def migrate(apply: bool = False, db_config: dict | None = None) -> list[dict]:
             # whose width and contents disagree.
             cur.execute(f"DROP INDEX IF EXISTS {index};")
             cur.execute(f"ALTER TABLE {table} DROP COLUMN {column};")
-            cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} VECTOR({EMBED_DIM});")
+            cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} HALFVEC({EMBED_DIM});")
             if table != "skills.skills":
                 cur.execute(f"UPDATE {table} SET embedding_version = NULL;")
             conn.commit()

@@ -460,6 +460,34 @@ before optimizing anything.
 | 4.5 | Never fabricate a `fact` or `artifact`; leave the slot in place and emit a structured `need` | **[reasoned]** a fabricated `[COMPANY NAME]` produces a fluent, confident, wrong document that nothing downstream can detect |
 | 4.6 | `base_info` store, ~40–60 entries to start, synced from `arteries.evergreen` | **[measured]** repeat counts suggest small coverage goes far: `[AMOUNT]`×71, `[TIMEFRAME]`×32, `[MONTHS]`×14 |
 
+> **4.6 status, 2026-09-05 — the dependency is about to unblock.**
+> `arteries.evergreen` has never existed. `arteries/src/arteries/memory_types.py:56`
+> records that the table this action names "never held a row", and the three
+> `arteries/scripts/evergreen-*.sh` wrappers invoke `python -m arteries.evergreen`,
+> a module absent from `src/`. Anything written against 4.6 so far was written
+> against a table that was never there.
+>
+> `arteries/planning/ingestion_redesign.md` creates it, on the `ingestion-redesign`
+> branch. Three things worth knowing before wiring `base_info` to it:
+>
+> - **It is the knowledge-graph tier, not a fact dump.** Rows are promoted from
+>   `arteries.persistent` on an incrementality score, and carry entities and typed
+>   edges. A `base_info` sync wants the `fact` text plus `entities` via
+>   `memory_edges`, not a `SELECT *`.
+> - **It is keyed by `scope_id`, not `project_id`.** One graph per project group, so
+>   `harness` is a single namespace across arteries, capillaries, heart, marrow and
+>   plexus. `base_info` values sourced from it are group-wide by construction.
+> - **Rows are mutable and tombstoned, never deleted.** Filter `valid_until IS NULL`
+>   or a synced `base_info` will keep serving superseded values. `core = true` marks
+>   rows seeded from a project's own `planning/*.md`, which is the closest thing to
+>   the stable 40–60 entries this action wants.
+>
+> Ordering: the table lands on `dev` before `main`, and the schema reaches the live
+> database ahead of either. `base_info` sync should not be built until
+> `arteries.evergreen` exists in the live `capillaries` database — check with
+> `\dt arteries.evergreen` rather than assuming.
+
+
 ## Tier 5 — DSPy
 
 | # | Action | Backing |
