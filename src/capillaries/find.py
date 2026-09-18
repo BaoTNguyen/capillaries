@@ -35,7 +35,9 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Any, TYPE_CHECKING
 
+from capillaries.agent import frame_compat
 from capillaries.agent.context import AgentContext, normalize_agent_context
+from capillaries.agent.inference import infer_from_situation
 from capillaries.config import clears_floor
 from capillaries.search.context_filter import ContextFilter
 
@@ -104,6 +106,9 @@ class _FindEngine:
     """Lazy-loaded singleton wrapping retrieval + reranking + skill recall."""
 
     def __init__(self) -> None:
+        # lazy: building PromptSearch is what pulls in the retrieval and rerank
+        # stack, and this class exists so that cost lands on first find(), not
+        # on `import capillaries`
         from capillaries.search.api import PromptSearch
 
         self._search = PromptSearch()
@@ -199,13 +204,9 @@ class _FindEngine:
         if context:
             if context.persistent.active_domains:
                 domain = context.persistent.active_domains
-            from capillaries.agent import frame_compat
-
             intents = frame_compat.user_intent(context)
             if intents:
                 intent = intents
-
-        from capillaries.agent.inference import infer_from_situation
 
         inference = infer_from_situation(
             situation,

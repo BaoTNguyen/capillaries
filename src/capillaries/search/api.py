@@ -46,9 +46,12 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from capillaries.config import clears_floor
+from capillaries.search.context_filter import ContextFilter
 from capillaries.search.retriever import Retriever
 from capillaries.search.reranker import Reranker, RankedResult
 from capillaries.search.union import union_candidates_broad, fetch_by_ids
+from capillaries.skills.coverage import score_skills
 from capillaries.skills.recall import SkillRecall, SkillMatch
 
 RETRIEVAL_CANDIDATES = 20
@@ -135,7 +138,6 @@ class PromptSearch:
         self.retriever = Retriever()
         self.reranker = Reranker(batch_size=reranker_batch_size)
         self.recall = SkillRecall() if skill_recall else None
-        from capillaries.search.context_filter import ContextFilter
         self._context_filter = ContextFilter()
         self._retrieval_candidates = retrieval_candidates
         self._rerank_only = rerank_only
@@ -321,8 +323,6 @@ class PromptSearch:
         the adapted meaning of coverage.py's original "top-ranked result"
         check now that skills and prompts share one ranked list.
         """
-        from capillaries.skills.coverage import score_skills
-
         prompt_ranked = [r for r in ranked if r.metadata.get("kind") != "skill"]
         if not prompt_ranked:
             return False
@@ -394,7 +394,7 @@ class PromptSearch:
         the candidate and its score still ride along in the candidates column.
         """
         try:
-            from capillaries.config import clears_floor
+            # lazy: tests patch serving.log_serving, so bind it at call time
             from capillaries.optimize.serving import log_serving
             if not clears_floor(score):
                 served_kind, served_id = "none", None

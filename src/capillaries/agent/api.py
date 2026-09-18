@@ -6,12 +6,14 @@ Exposes /agent/route, /agent/step, /agent/feedback, /agent/catalog, /agent/disco
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from capillaries.agent import frame_compat
 from capillaries.agent.catalog import CatalogHandler, get_discover_response
 from capillaries.agent.context import normalize_agent_context, with_agent_context
 from capillaries.agent.execute import SkillExecutor
@@ -130,8 +132,6 @@ def _build_context_frame(raw: dict[str, Any]) -> "MemoryFrame":
         PersistentMemory,
     )
 
-    from capillaries.agent import frame_compat
-
     eph_raw = raw.get("ephemeral", {})
     per_raw = raw.get("persistent", {})
     scope_raw = raw.get("scope") or raw.get("evergreen") or {}
@@ -199,8 +199,7 @@ async def route(req: RouteRequest) -> dict | StreamingResponse:
 
     if req.stream:
         async def _stream():
-            import json as _json
-            yield _json.dumps(response) + "\n---STREAM_START---\n"
+            yield json.dumps(response) + "\n---STREAM_START---\n"
             async for chunk in generate_stream(prompt_text, model=req.model):
                 yield chunk
         return StreamingResponse(_stream(), media_type="text/plain")

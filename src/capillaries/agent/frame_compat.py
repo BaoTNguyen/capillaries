@@ -55,6 +55,7 @@ def recurring_domains(context: Any) -> list[str]:
 
 def scope_memory_class():
     """The third tier's class, under whichever name this checkout uses."""
+    # lazy: arteries is a sibling checkout, not on PyPI; capillaries installs without it
     from arteries import memory_types
 
     return getattr(memory_types, "EvergreenMemory", None) or memory_types.ScopeMemory
@@ -63,6 +64,7 @@ def scope_memory_class():
 def build_scope_tier(raw: dict) -> Any:
     """Construct the third tier from posted JSON, under either shape."""
     cls = scope_memory_class()
+    # lazy: same reason as scope_memory_class -- arteries stays an optional sibling
     from arteries.memory_types import Insight
 
     insights = [Insight(**i) for i in
@@ -81,6 +83,7 @@ def build_scope_tier(raw: dict) -> Any:
 
 def frame_kwarg_name() -> str:
     """Whether MemoryFrame takes `scope=` or `evergreen=`."""
+    # lazy: same reason as scope_memory_class -- arteries stays an optional sibling
     from arteries.memory_types import MemoryFrame
 
     return "scope" if "scope" in MemoryFrame.__dataclass_fields__ else "evergreen"

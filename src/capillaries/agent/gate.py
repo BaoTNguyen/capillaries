@@ -17,7 +17,11 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from capillaries.config import QUERY_PREFIX  # one source of truth
+import httpx
+import psycopg2
+
+from capillaries.config import DB_CONFIG, EMBED_MODEL, EMBED_URL, QUERY_PREFIX  # one source of truth
+from capillaries.search.retriever import expand_acronyms
 
 if TYPE_CHECKING:
     # arteries owns the frame contract. The gate only annotates with these and
@@ -220,11 +224,6 @@ async def _embedding_proximity(message: str, db_config: dict | None = None) -> t
     Stage 2: embed the message and check nearest-neighbor similarity in the corpus.
     Returns (max_similarity, closest_title).
     """
-    import httpx
-    import psycopg2
-    from capillaries.config import DB_CONFIG, EMBED_URL, EMBED_MODEL
-    from capillaries.search.retriever import expand_acronyms
-
     config = db_config or DB_CONFIG
 
     async with httpx.AsyncClient() as client:

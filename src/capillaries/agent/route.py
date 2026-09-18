@@ -18,6 +18,7 @@ import psycopg2.extras
 
 from capillaries.config.paths import DB_CONFIG
 from capillaries.find import find
+from capillaries.skills.recall import SkillRecall
 
 
 # SINGLE_THRESHOLD removed — see search/api.py. Comparing a cross-encoder
@@ -272,8 +273,6 @@ class AgentRouter:
         total_steps underneath a session already in progress. A run executes
         the chain it started with.
         """
-        from capillaries.skills.recall import SkillRecall
-
         with psycopg2.connect(**self._db_config) as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 pinned = SkillRecall.variant_steps(cur, str(skill_id), model)

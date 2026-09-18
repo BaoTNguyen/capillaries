@@ -26,6 +26,8 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
+import httpx
+
 from capillaries.search.retriever import SearchResult
 
 # sentence_transformers (and torch under it) cost seconds to import, before any
@@ -99,7 +101,6 @@ def _remote_scores(pairs: list[tuple[str, str]]) -> list[float] | None:
     if _daemon_up is False or os.getenv("CAPILLARIES_NO_REMOTE"):
         return None
     try:
-        import httpx
         scores = []
         for start in range(0, len(pairs), REMOTE_BATCH_SIZE):
             batch = pairs[start:start + REMOTE_BATCH_SIZE]
@@ -223,6 +224,7 @@ class Reranker:
         the daemon does it — pays nothing for the check.
         """
         try:
+            # lazy: torch is an optional extra, and this check must not cost a process that never scores locally
             import torch
             if not torch.cuda.is_available():
                 return "cpu"
@@ -253,6 +255,7 @@ class Reranker:
         scored nothing locally because a daemon was available.
         """
         if self._model is None:
+            # lazy: sentence-transformers is an optional extra, and importing it costs seconds
             from sentence_transformers import CrossEncoder
             print(f"Loading cross-encoder {self.model_name} on {self.device}...")
             # No torch_dtype here on purpose: sentence-transformers honours

@@ -6,13 +6,16 @@ import hashlib
 import uuid
 
 import dspy
+import httpx
 import psycopg2
 import psycopg2.extras
 
+from capillaries.config import EMBED_MODEL, EMBED_URL
 from capillaries.config.paths import DB_CONFIG
 from capillaries.optimize.capture import ExampleCapture, _resolve_prompt_id
 from capillaries.optimize.fences import assert_fences_unchanged
 from capillaries.optimize.metrics import MIN_IMPROVEMENT, get_metric
+from capillaries.search.retriever import expand_acronyms
 
 
 def _content_hash(text: str) -> str:
@@ -37,9 +40,6 @@ def _embed_document_sync(title: str | None, text: str) -> list[float] | None:
     None if the embedding server is unreachable, so a canonical text change still
     lands (with a refreshed search_tsv) even when the embedder is down."""
     try:
-        import httpx
-        from capillaries.config import EMBED_URL, EMBED_MODEL
-        from capillaries.search.retriever import expand_acronyms
         body = f"{title}\n\n{text}" if title else text
         r = httpx.post(EMBED_URL,
                        json={"input": expand_acronyms(body)[:4000], "model": EMBED_MODEL},
@@ -320,7 +320,6 @@ class PromptOptimizer:
         if original_text is not None:
             assert_fences_unchanged(original_text, text)
         content_hash = _content_hash(text)
-        from capillaries.search.retriever import expand_acronyms
         with psycopg2.connect(**self._db_config) as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT title FROM prompts WHERE prompt_id = %s", (prompt_id,))
@@ -350,7 +349,6 @@ class PromptOptimizer:
                 # tsv still land; a later `db.embed --reembed` closes the gap.
                 vec = _embed_document_sync(title, text)
                 if vec is not None:
-                    from capillaries.config import EMBED_MODEL
                     cur.execute(
                         "UPDATE prompts SET embedding = %s::halfvec, embedding_version = %s "
                         "WHERE prompt_id = %s",

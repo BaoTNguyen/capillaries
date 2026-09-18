@@ -20,12 +20,15 @@ Run either from the CLI:
 from __future__ import annotations
 
 import re
+import sys
 from dataclasses import dataclass, field
 
+import httpx
 import psycopg2
 import psycopg2.extras
 
-from capillaries.config import DB_CONFIG
+from capillaries.config import DB_CONFIG, EMBED_MODEL, EMBED_URL, QUERY_PREFIX
+from capillaries.search.retriever import _build_filter_clause
 
 CANDIDATES = 50          # chunks pulled before rolling up to parents
 TOP_K = 10               # parents returned
@@ -160,7 +163,6 @@ def _filter_sql(filters: dict | None) -> tuple[str, list]:
     Filters express *eligibility* and stay a hard WHERE, never a score boost —
     an inactive or out-of-domain prompt with a great score is still ineligible.
     """
-    from capillaries.search.retriever import _build_filter_clause
     # Qualified: both queries below join prompts as `p`, and prompt_chunks now
     # has a status column of its own, so a bare `status` is ambiguous.
     clause, params = _build_filter_clause(filters or {}, alias="p.")
@@ -237,10 +239,6 @@ def vector_search(
     Shares no code path with exact_search on purpose — the point is to measure
     each independently, so neither can quietly prop the other up.
     """
-    import httpx
-
-    from capillaries.config import EMBED_MODEL, EMBED_URL, QUERY_PREFIX
-
     resp = httpx.post(
         EMBED_URL,
         json={"input": QUERY_PREFIX + query, "model": EMBED_MODEL},
@@ -294,8 +292,6 @@ def _rollup(rows, top_k: int, matched: list[str]) -> list[Hit]:
 
 
 if __name__ == "__main__":
-    import sys
-
     if len(sys.argv) < 3:
         print(__doc__)
         raise SystemExit(1)
