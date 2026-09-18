@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from dataclasses import asdict
 from typing import Any
 
 from capillaries.agent.api import (
@@ -98,14 +99,8 @@ try:
             action=action,
             skip_reason=skip_reason,
         )
-        return {
-            "session_id": result.session_id,
-            "status": result.status,
-            "current_step": result.current_step,
-            "progress": result.progress,
-            "context_summary": result.context_summary,
-            "next_step_preview": result.next_step_preview,
-        }
+        # StepResponse is a flat dataclass of exactly these fields.
+        return asdict(result)
 
     @mcp.tool()
     async def capillaries_feedback(

@@ -250,6 +250,25 @@ def _build_filter_clause(filters: dict[str, Any], alias: str = "") -> tuple[str,
 
 # --- Retriever -----------------------------------------------------------
 
+
+def _row_metadata(row: dict) -> dict:
+    """The six prompt columns that ride along with a result.
+
+    union.py built this dict independently, so adding a column meant
+    remembering both call sites; the retriever path had already lost the
+    indentation of the last key, which is what it looks like when nobody is
+    reading a block any more.
+    """
+    return {
+        "summary": row.get("summary") or "",
+        "intent": row.get("intent") or [],
+        "task_type": row.get("task_type") or [],
+        "domain": row.get("domain") or [],
+        "status": row.get("status"),
+        "notes": row.get("notes"),
+    }
+
+
 class Retriever:
     """
     Hybrid prompt retriever.
@@ -396,14 +415,7 @@ class Retriever:
                     sparse_rank=sr,
                     dense_sim=row.get("dense_sim") if dr else None,
                     sparse_sim=row.get("sparse_sim") if sr else None,
-                    metadata={
-                        "summary": row.get("summary") or "",
-                        "intent": row.get("intent") or [],
-                        "task_type": row.get("task_type") or [],
-                        "domain": row.get("domain") or [],
-                        "status": row.get("status"),
-                                                "notes": row.get("notes"),
-                    },
+                    metadata=_row_metadata(row),
                 )
             )
 

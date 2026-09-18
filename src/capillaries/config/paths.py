@@ -97,3 +97,23 @@ def clears_floor(score: float | None) -> bool:
 # "Represent this sentence for searching relevant passages: " — carrying that
 # over would have been silently wrong.
 QUERY_PREFIX = os.getenv("EMBED_QUERY_PREFIX", "")
+
+
+def outcome_score_sql(unknown: str = "NULL") -> str:
+    """The value of a feedback outcome, as a SQL CASE expression.
+
+    Three call sites each spelled this mapping out by hand, and they had
+    already drifted: the two success-rate averages treat an unrecognised
+    outcome as NULL and drop the row, while the Bayesian prior scores it 0.0
+    and counts it against the prompt. Both readings are defensible, which is
+    exactly why the choice should be visible at the call site instead of
+    buried three times in SQL string literals.
+    """
+    return (
+        "CASE "
+        "WHEN outcome = 'success' THEN 1.0 "
+        "WHEN outcome = 'partial' THEN 0.5 "
+        "WHEN outcome = 'failure' THEN 0.0 "
+        f"ELSE {unknown} "
+        "END"
+    )
