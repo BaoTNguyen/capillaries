@@ -24,6 +24,7 @@ from typing import Any
 
 import psycopg2
 import psycopg2.extras
+import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -32,6 +33,7 @@ from capillaries.config import DB_CONFIG
 from capillaries.find import _get_engine
 from capillaries.search.api import PromptSearch
 from capillaries.agent.api import router as agent_router
+from capillaries.agent.catalog import get_discover_response
 
 
 # --- App lifecycle -------------------------------------------------------
@@ -110,7 +112,6 @@ async def health():
 @app.get("/agent/discover")
 async def discover():
     """Self-describing endpoint for agent discovery."""
-    from capillaries.agent.catalog import get_discover_response
     return get_discover_response()
 
 
@@ -202,7 +203,6 @@ async def get_prompt(title: str):
 # --- CLI entry point -----------------------------------------------------
 
 if __name__ == "__main__":
-    import uvicorn
     uvicorn.run(
         "capillaries.server:app",
         host="127.0.0.1",

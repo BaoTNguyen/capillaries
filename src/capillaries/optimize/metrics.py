@@ -6,6 +6,8 @@ import difflib
 import os
 from typing import Callable
 
+import anthropic
+
 # A candidate must beat the baseline by at least this margin before it replaces
 # anything. exact_match is difflib similarity on generated prose — noisy enough
 # that a hair over baseline is often measurement noise, not a real win. The gate
@@ -38,8 +40,6 @@ def llm_judge(example, prediction, trace=None, judge_model: str = "claude-haiku-
 
     Uses a cheaper model than the one being optimized to avoid circular evaluation.
     """
-    import anthropic
-
     client = anthropic.Anthropic()
     response = client.messages.create(
         model=judge_model,

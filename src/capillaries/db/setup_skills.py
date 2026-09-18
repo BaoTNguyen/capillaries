@@ -11,7 +11,7 @@ Usage:
 """
 
 import psycopg2
-from capillaries.config.paths import DB_CONFIG, EMBED_DIM
+from capillaries.config.paths import DB_CONFIG, EMBED_DIM, outcome_score_sql
 
 
 def create_skills_schema(cursor) -> None:
@@ -289,20 +289,15 @@ def create_materialized_views(cursor) -> None:
         SELECT
             prompt_id,
             COUNT(*) AS feedback_count,
-            AVG(CASE
-                WHEN outcome = 'success' THEN 1.0
-                WHEN outcome = 'partial' THEN 0.5
-                WHEN outcome = 'failure' THEN 0.0
-                ELSE NULL
-            END) AS success_rate,
+            AVG({score}) AS success_rate,
             AVG(quality_score) FILTER (WHERE quality_score IS NOT NULL) AS avg_quality,
-            (COUNT(*) * AVG(CASE WHEN outcome = 'success' THEN 1.0 WHEN outcome = 'partial' THEN 0.5 ELSE 0.0 END)
+            (COUNT(*) * AVG({score_zero})
              + 5 * 0.5) / (COUNT(*) + 5) AS bayesian_quality
         FROM skills.agent_feedback
         WHERE prompt_id IS NOT NULL
           AND outcome != 'skipped'
         GROUP BY prompt_id;
-    """)
+    """.format(score=outcome_score_sql(), score_zero=outcome_score_sql("0.0")))
     cursor.execute("""
         CREATE UNIQUE INDEX IF NOT EXISTS idx_pqp_prompt
         ON prompt_quality_prior (prompt_id);
