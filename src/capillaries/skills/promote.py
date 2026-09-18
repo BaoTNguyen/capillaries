@@ -233,9 +233,8 @@ class SkillPromoter:
         Fetch a skill's full record by tag (latest version) or skill_id.
         Returns None if not found.
         """
-        import re as _re
-        _uuid_pattern = _re.compile(
-            r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", _re.I
+        _uuid_pattern = re.compile(
+            r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I
         )
         is_uuid = bool(_uuid_pattern.match(tag_or_id))
 
@@ -692,6 +691,8 @@ def ab_gate(
     is_current — see dspy_optimize.PromptOptimizer._write_variant); a
     rejected candidate never touches the canonical text.
     """
+    # lazy: dspy_optimize imports dspy, an optional extra, and skill promotion is
+    # usable without the optimizer installed
     from capillaries.optimize.dspy_optimize import PromptOptimizer
     from capillaries.optimize.fences import assert_fences_unchanged
     from capillaries.optimize.metrics import MIN_IMPROVEMENT, get_metric

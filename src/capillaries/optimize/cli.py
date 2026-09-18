@@ -5,9 +5,13 @@ from __future__ import annotations
 import argparse
 import sys
 
+from capillaries.optimize.capture import ExampleCapture
+
 
 def cmd_optimize(args: argparse.Namespace) -> None:
     """Run DSPy optimization on a prompt."""
+    # lazy: dspy_optimize imports dspy, an optional extra -- the capture and
+    # examples subcommands must keep working without it
     from capillaries.optimize.dspy_optimize import PromptOptimizer
 
     optimizer = PromptOptimizer()
@@ -39,6 +43,8 @@ def cmd_optimize(args: argparse.Namespace) -> None:
 
 def cmd_status(args: argparse.Namespace) -> None:
     """Show optimization status for a prompt."""
+    # lazy: dspy_optimize imports dspy, an optional extra -- the capture and
+    # examples subcommands must keep working without it
     from capillaries.optimize.dspy_optimize import PromptOptimizer
 
     optimizer = PromptOptimizer()
@@ -72,6 +78,8 @@ def cmd_status(args: argparse.Namespace) -> None:
 
 def cmd_compare(args: argparse.Namespace) -> None:
     """Side-by-side comparison of prompt variants."""
+    # lazy: dspy_optimize imports dspy, an optional extra -- the capture and
+    # examples subcommands must keep working without it
     from capillaries.optimize.dspy_optimize import PromptOptimizer
 
     optimizer = PromptOptimizer()
@@ -96,8 +104,6 @@ def cmd_compare(args: argparse.Namespace) -> None:
 
 def cmd_capture(args: argparse.Namespace) -> None:
     """Capture a golden example."""
-    from capillaries.optimize.capture import ExampleCapture
-
     capture = ExampleCapture()
 
     if args.contrastive:
@@ -145,8 +151,6 @@ def cmd_capture(args: argparse.Namespace) -> None:
 
 def cmd_examples(args: argparse.Namespace) -> None:
     """List golden examples for a prompt."""
-    from capillaries.optimize.capture import ExampleCapture
-
     capture = ExampleCapture()
     examples = capture.list_examples(args.prompt_title)
     dist = capture.source_distribution(args.prompt_title)

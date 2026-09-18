@@ -105,6 +105,8 @@ class SkillRecall:
         steps JSON — steps are only resolved to full prompt text for whichever
         candidate the reranker actually picks, via `_resolve_steps`.
         """
+        # lazy: see the TYPE_CHECKING note above -- search.api imports this module,
+        # so importing retriever eagerly makes the cycle depend on entry order
         from capillaries.search.retriever import Retriever
 
         filters = filters or {}
@@ -182,6 +184,7 @@ class SkillRecall:
         row: dict, dense_rank: int | None = None, sparse_rank: int | None = None,
         dense_sim: float | None = None, sparse_sim: float | None = None,
     ) -> SearchResult:
+        # lazy: same cycle as in candidates() above
         from capillaries.search.retriever import SearchResult
         return SearchResult(
             prompt_id=str(row["skill_id"]),
