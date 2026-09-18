@@ -9,7 +9,7 @@ import uuid
 import psycopg2
 import psycopg2.extras
 
-from capillaries.config.paths import DB_CONFIG
+from capillaries.config.paths import DB_CONFIG, outcome_score_sql
 
 
 class FeedbackHandler:
@@ -108,15 +108,10 @@ class FeedbackHandler:
             """
             SELECT
                 COUNT(*) AS total_runs,
-                AVG(CASE
-                    WHEN outcome = 'success' THEN 1.0
-                    WHEN outcome = 'partial' THEN 0.5
-                    WHEN outcome = 'failure' THEN 0.0
-                    ELSE NULL
-                END) AS success_rate
+                AVG({score}) AS success_rate
             FROM skills.agent_feedback
             WHERE skill_id = %s AND outcome != 'skipped'
-            """,
+            """.format(score=outcome_score_sql()),
             (skill_id,),
         )
         result = cur.fetchone()

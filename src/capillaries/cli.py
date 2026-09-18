@@ -12,6 +12,8 @@ import argparse
 import json
 import sys
 
+from capillaries.optimize.cli import register_subcommands
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="cap", description="Capillaries prompt retrieval")
@@ -22,7 +24,6 @@ def main() -> None:
     find_p.add_argument("--context", help="MemoryFrame JSON (from arteries)", default=None)
     find_p.add_argument("--prefer", choices=["auto", "single", "skill"], default="auto")
 
-    from capillaries.optimize.cli import register_subcommands
     opt_p = sub.add_parser("optimize", help="DSPy prompt/skill optimization (run/status/compare/capture/examples)")
     opt_sub = opt_p.add_subparsers(dest="optimize_command", required=True)
     optimize_commands = register_subcommands(opt_sub, run_name="run")
@@ -37,10 +38,13 @@ def main() -> None:
         return
 
     if args.command == "find":
+        # lazy: only this subcommand needs the retrieval stack; `cap optimize`
+        # should not pay to build it
         from capillaries.find import find_sync, FindResult
 
         context = None
         if args.context:
+            # lazy: agent.api pulls in FastAPI, and only a --context run needs it
             from capillaries.agent.api import _build_context_frame
             context = _build_context_frame(json.loads(args.context))
 

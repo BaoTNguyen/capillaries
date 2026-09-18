@@ -29,10 +29,16 @@ So this is a recall change, not yet a precision one.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
+import psycopg2
+
+from capillaries.config import DB_CONFIG
 from capillaries.search.channels import keyword_search, vector_search
-from capillaries.search.retriever import SearchResult
+from capillaries.search.retriever import (
+    Retriever, SearchResult, _build_filter_clause, _row_metadata,
+)
 
 CHANNEL_TOP_K = 10       # per channel, before the union
 
@@ -66,10 +72,6 @@ async def union_candidates_broad(
     matching passage for the reranker. Lexical retrieval remains document-level
     because its terms can legitimately occur in different prompt sections.
     """
-    import asyncio
-
-    from capillaries.search.retriever import Retriever, _build_filter_clause
-
     retriever = Retriever()
     clause, params = _build_filter_clause(filters or {})
 
@@ -119,10 +121,6 @@ def fetch_by_ids(prompt_ids: list[str]) -> list[SearchResult]:
     """
     if not prompt_ids:
         return []
-    import psycopg2
-
-    from capillaries.config import DB_CONFIG
-
     conn = psycopg2.connect(**DB_CONFIG)
     try:
         with conn.cursor() as cur:
@@ -158,14 +156,7 @@ def _from_row(row: dict, dense_rank=None, sparse_rank=None) -> SearchResult:
         prompt_text=row["prompt_text"], rrf_score=0.0,
         dense_rank=dense_rank, sparse_rank=sparse_rank,
         dense_sim=row.get("dense_sim"), sparse_sim=row.get("sparse_sim"),
-        metadata={
-            "summary": row.get("summary") or "",
-            "intent": row.get("intent") or [],
-            "task_type": row.get("task_type") or [],
-            "domain": row.get("domain") or [],
-            "status": row.get("status"),
-            "notes": row.get("notes"),
-        },
+        metadata=_row_metadata(row),
     )
 
 
@@ -217,10 +208,6 @@ def _fill_text(by_id: dict[str, SearchResult]) -> None:
     """
     if not by_id:
         return
-    import psycopg2
-
-    from capillaries.config import DB_CONFIG
-
     conn = psycopg2.connect(**DB_CONFIG)
     try:
         with conn.cursor() as cur:

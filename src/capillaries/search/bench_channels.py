@@ -28,11 +28,14 @@ from __future__ import annotations
 
 import argparse
 import statistics as st
+import sys
+from pathlib import Path
 
 import psycopg2
 
 from capillaries.config import DB_CONFIG
 from capillaries.search.channels import exact_search, keyword_search, vector_search
+from capillaries.search.retriever import SearchResult
 
 
 def _load(bench: str) -> list[tuple[str, str]]:
@@ -48,9 +51,8 @@ def _load(bench: str) -> list[tuple[str, str]]:
                             "ORDER BY md5(title) LIMIT 300")
                 return cur.fetchall()
             if bench == "golden":
-                import sys
-                from pathlib import Path
                 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "tests"))
+                # lazy: tests/ only joins sys.path on the line above, so this cannot be hoisted
                 from test_search import GOLDEN_SET  # noqa: E402
                 out = []
                 for query, expected, _k, _label in GOLDEN_SET:
@@ -118,8 +120,6 @@ def union_rerank(query: str, reranker, texts: dict, k: int = 10) -> list[str]:
     construction. The honest measures are R@1 and MRR, which ask whether the
     reranker can actually put the right one on top.
     """
-    from capillaries.search.retriever import SearchResult
-
     ids: list[str] = []
     for h in vector_search(query, top_k=k) + keyword_search(query, top_k=k):
         if h.prompt_id not in ids:

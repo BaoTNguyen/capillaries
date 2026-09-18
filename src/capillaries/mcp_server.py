@@ -16,6 +16,8 @@ Or configure as MCP server in Claude Code / Cursor settings.
 from __future__ import annotations
 
 import asyncio
+import sys
+from dataclasses import asdict
 from typing import Any
 
 from capillaries.agent.api import (
@@ -32,6 +34,8 @@ from capillaries.agent.context import normalize_agent_context, with_agent_contex
 
 
 try:
+    # lazy: the whole MCP surface is guarded -- capillaries is usable without the
+    # MCP SDK, and the except branch below replaces each tool with a clear error
     from mcp.server.fastmcp import FastMCP
 
     mcp = FastMCP("Capillaries")
@@ -95,14 +99,8 @@ try:
             action=action,
             skip_reason=skip_reason,
         )
-        return {
-            "session_id": result.session_id,
-            "status": result.status,
-            "current_step": result.current_step,
-            "progress": result.progress,
-            "context_summary": result.context_summary,
-            "next_step_preview": result.next_step_preview,
-        }
+        # StepResponse is a flat dataclass of exactly these fields.
+        return asdict(result)
 
     @mcp.tool()
     async def capillaries_feedback(
@@ -157,8 +155,9 @@ try:
         mcp.run(transport="stdio")
 
     if __name__ == "__main__":
-        import sys
         if len(sys.argv) > 1 and sys.argv[1] == "serve":
+            # lazy: starlette is undeclared (it arrives under fastapi), and only
+            # the SSE transport needs it
             import uvicorn
             from mcp.server.sse import SseServerTransport
             from starlette.applications import Starlette
@@ -174,8 +173,6 @@ try:
             mcp.run(transport="stdio")
 
 except ImportError:
-    import sys
-
     def capillaries_find(situation: str, stage: str = None, domain: list = None, prefer: str = "auto", context: dict = None, agent_context: dict = None) -> dict:
         raise ImportError("MCP SDK not installed. Run: pip install mcp")
 

@@ -18,9 +18,18 @@ Usage:
 
 from __future__ import annotations
 
+import argparse
+import asyncio
 import hashlib
 import re
 from dataclasses import dataclass
+
+import httpx
+import psycopg2
+import psycopg2.extras
+
+from capillaries.config import DB_CONFIG, EMBED_DIM, EMBED_MODEL, EMBED_URL
+from capillaries.search.retriever import expand_acronyms
 
 TARGET = 1_600     # ~400 tokens: flush a chunk once it reaches this
 CEILING = 4_000    # ~1000 tokens: split harder above this
@@ -202,7 +211,6 @@ def embed_text(title: str, c: Chunk, summary: str | None = None) -> str:
 
 def _ddl() -> str:
     """Chunk table DDL. Vector width comes from config so a model swap is one edit."""
-    from capillaries.config import EMBED_DIM
     return DDL.replace("HALFVEC(EMBED_DIM)", f"HALFVEC({EMBED_DIM})")
 
 
@@ -277,15 +285,6 @@ def backfill(dry: bool = False, db_config: dict | None = None) -> dict:
     Re-runnable: a chunk whose content_hash already exists keeps its embedding
     instead of paying for it again.
     """
-    import asyncio
-
-    import httpx
-    import psycopg2
-    import psycopg2.extras
-
-    from capillaries.config import DB_CONFIG, EMBED_MODEL, EMBED_URL
-    from capillaries.search.retriever import expand_acronyms
-
     conn = psycopg2.connect(**(db_config or DB_CONFIG))
     cur = conn.cursor()
 
@@ -400,8 +399,6 @@ def backfill(dry: bool = False, db_config: dict | None = None) -> dict:
 
 
 if __name__ == "__main__":
-    import argparse
-
     ap = argparse.ArgumentParser()
     ap.add_argument("--backfill", action="store_true")
     ap.add_argument("--dry", action="store_true", help="report only, write nothing")
