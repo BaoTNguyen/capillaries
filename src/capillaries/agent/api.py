@@ -7,6 +7,7 @@ Exposes /agent/route, /agent/step, /agent/feedback, /agent/catalog, /agent/disco
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -251,14 +252,7 @@ async def execute_step(req: StepRequest) -> dict:
         skip_reason=req.skip_reason,
     )
 
-    return {
-        "session_id": result.session_id,
-        "status": result.status,
-        "current_step": result.current_step,
-        "progress": result.progress,
-        "context_summary": result.context_summary,
-        "next_step_preview": result.next_step_preview,
-    }
+    return asdict(result)
 
 
 @router.post("/feedback")
