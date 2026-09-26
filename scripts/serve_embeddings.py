@@ -9,8 +9,8 @@ Usage:
     python scripts/serve_embeddings.py                    # default port 8003
     python scripts/serve_embeddings.py --port 8003 --device cuda
 
-Requires:
-    pip install sentence-transformers fastapi uvicorn xformers einops
+Requires (sentence-transformers comes with the lightweight extra):
+    uv run --extra lightweight --with xformers --with einops python scripts/serve_embeddings.py
 """
 
 from __future__ import annotations

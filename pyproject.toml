@@ -7,9 +7,7 @@ name = "capillaries"
 version = "0.1.0"
 description = "Prompt search and management system with semantic retrieval"
 requires-python = ">=3.10"
-# arteries is required but undeclared: it isn't on PyPI, so declaring it would
-# resolve to a stranger's package. Install the sibling first:
-#   pip install -e ../arteries && pip install -e .
+# arteries is optional and undeclared (see the note on [dependency-groups]).
 # Only `arteries.memory_types` is imported — stdlib dataclasses defining the
 # MemoryFrame contract, with no psycopg2 or DB access on that path.
 dependencies = [
@@ -92,3 +90,10 @@ pythonpath = ["src"]
 markers = [
     "db: needs a live Postgres + embedding endpoint (deselect with -m 'not db')",
 ]
+
+# `uv sync` installs this group by default. arteries stays undeclared for the
+# same reason heart leaves it out: it's optional here, and a path source would
+# make the lock fail in a clone without ../arteries. Memory-aware retrieval:
+#   uv pip install -e ../arteries    (kept by `uv run`; plain `uv sync` drops it)
+[dependency-groups]
+dev = ["pytest>=8.0"]
