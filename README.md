@@ -122,7 +122,10 @@ embedding width remains config-driven: `EMBED_DIM` defaults to 1024 and must
 match the embedding service and database schema.
 
 ```bash
-git clone <repo-url> capillaries && cd capillaries
+git clone https://github.com/BaoTNguyen/capillaries && cd capillaries
+# memory-aware retrieval (MemoryFrame context) also needs arteries beside it:
+#   git clone https://github.com/BaoTNguyen/arteries ../arteries && pip install -e ../arteries
+# or take the whole stack: git clone --recursive https://github.com/BaoTNguyen/vascular
 
 pip install -e .                    # core
 pip install -e ".[lightweight]"     # + local embeddings, reranker
