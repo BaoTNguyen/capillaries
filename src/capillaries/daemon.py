@@ -4,11 +4,12 @@ The daemon holds the cross-encoder in memory so that agent hooks — one
 short-lived subprocess per prompt, which can never stay warm — borrow it
 instead of spending ~4.4s and ~2.9GB loading their own copy.
 
-Rather than register a service, the daemon is started by whoever first needs
-it and outlives them. After a reboot, a crash, or an OOM kill, the next hook
-that misses brings it straight back. That covers the reboot case without root,
-without systemd, and without a unit file that can drift out of sync with where
-the code actually lives.
+The daemon is started by whoever first needs it and outlives them. After a
+reboot, a crash, or an OOM kill, the next hook that misses brings it straight
+back. Where the user unit exists (capillaries-search.service) the start is
+handed to systemd, because a daemon spawned as the hook's own child died with
+the hook whenever the hook ran past its timeout (_start_unit). Without the
+unit, it falls back to a detached child: no root, no systemd required.
 
 The miss that triggers a start still falls back to local scoring, so the caller
 never waits for a cold daemon. It is the *next* call that gets the fast path.
@@ -55,6 +56,30 @@ def is_up(timeout: float = 0.2) -> bool:
         return False
 
 
+#: The user unit that runs the daemon, when there is one.
+UNIT = os.getenv("CAPILLARIES_UNIT", "capillaries-search.service")
+
+
+def _start_unit() -> bool:
+    """Ask systemd to start the daemon's unit. True if systemd took the job.
+
+    A child of the hook is not safe even with start_new_session: when the hook
+    itself runs long -- which is exactly when it is scoring locally because the
+    daemon was missing -- Claude Code kills it at its timeout, and the daemon
+    it just spawned went with it. Measured: the last 12 autostarted daemons
+    each shut down before serving one request, so every prompt missed, scored
+    locally, timed out, and killed the next one. Under systemd the daemon lives
+    in its own cgroup and outlives whoever asked for it. --no-block: the model
+    takes ~40s to load and the hook cannot wait for that.
+    """
+    try:
+        r = subprocess.run(["systemctl", "--user", "start", "--no-block", UNIT],
+                           capture_output=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return r.returncode == 0
+
+
 def ensure(wait: float = 0.0) -> bool:
     """Start a daemon if none is listening. Returns True if we spawned one.
 
@@ -85,6 +110,10 @@ def ensure(wait: float = 0.0) -> bool:
             pass
         if is_up():  # someone won the race while we waited for the lock
             return False
+
+        if _start_unit():
+            stamp.touch()
+            return True
 
         host, port = _host_port()
         log = open(state_dir() / "daemon.log", "ab")
