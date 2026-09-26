@@ -20,13 +20,13 @@ If you prefer to do each step manually, follow the sections below.
 ### 1. Clone and install
 
 ```bash
-git clone <repo-url> capillaries
+git clone https://github.com/BaoTNguyen/capillaries
 cd capillaries
 
 # Pick an install tier:
-pip install -e .                    # core only (no local ML models)
-pip install -e ".[lightweight]"     # + local embeddings, reranker, spaCy
-pip install -e ".[advanced]"        # + FAISS, clustering, full ML stack
+uv sync                             # core only (no local ML models)
+uv sync --extra lightweight         # + local embeddings, reranker, spaCy
+uv sync --extra advanced            # + FAISS, clustering, full ML stack
 ```
 
 ### 2. Create the database
@@ -54,25 +54,25 @@ PostgreSQL can leave everything commented out — the defaults work.
 
 ```bash
 # Full — snowflake-arctic-embed + mxbai-rerank + all-MiniLM + spaCy (~2 GB)
-python scripts/download_models.py --profile full
+uv run python scripts/download_models.py --profile full
 
 # Lite — snowflake-arctic-embed + spaCy (~700 MB)
-python scripts/download_models.py --profile lite
+uv run python scripts/download_models.py --profile lite
 
 # External — skip local models, use a remote embedding API
-python scripts/download_models.py --profile external
+uv run python scripts/download_models.py --profile external
 ```
 
 ### 5. Set up the database schema
 
 ```bash
-PYTHONPATH=src python scripts/setup_db.py
+uv run python scripts/setup_db.py
 ```
 
 To also generate embeddings and run batch classification:
 
 ```bash
-PYTHONPATH=src python scripts/setup_db.py --all
+uv run python scripts/setup_db.py --all
 ```
 
 ### 6. Load demo content (optional)
@@ -81,7 +81,7 @@ Ingest the bundled public prompts and skills so you have something to
 search immediately:
 
 ```bash
-PYTHONPATH=src python scripts/ingest_public.py --db-only
+uv run python scripts/ingest_public.py --db-only
 ```
 
 ### 7. Start the service
@@ -140,7 +140,7 @@ definition in `src/capillaries/db/setup.py` before running schema setup.
 If you use Obsidian to manage prompts, install the optional extra:
 
 ```bash
-pip install -e ".[obsidian]"
+uv sync --extra obsidian    # add --extra lightweight too if you use it
 ```
 
 Set `OBSIDIAN_VAULT_PATH` in `.env` to your vault root. Then use the
@@ -148,10 +148,10 @@ sync commands:
 
 ```bash
 # Ingest prompts from vault into the database
-PYTHONPATH=. python -m obsidian_sync.ingest
+uv run python -m obsidian_sync.ingest
 
 # Write classifications back to vault frontmatter
-PYTHONPATH=. python -m obsidian_sync.frontmatter
+uv run python -m obsidian_sync.frontmatter
 ```
 
 The `obsidian_sync` package is entirely optional — the core system works

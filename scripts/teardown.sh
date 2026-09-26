@@ -2,7 +2,7 @@
 # Remove everything scripts/setup.sh created.
 #
 # Drops the database, deletes .env, removes the prompts/skills directories,
-# uninstalls the editable package, and kills the service session. Tracked
+# removes the project's .venv, and kills the service session. Tracked
 # source is never touched — this undoes setup, it does not delete the repo.
 #
 # Usage:
@@ -230,27 +230,11 @@ for dir in "$PROMPTS_PATH" "$SKILLS_PATH"; do
     fi
 done
 
-# ── 5. Uninstall the package ────────────────────────────────────────────────
-# `python3 -m pip` rather than bare `pip`: the two can resolve to different
-# environments, and an unqualified `pip uninstall` will happily remove
-# capillaries from whichever env happens to be on PATH — not necessarily the one
-# setup.sh installed into. Naming the interpreter makes the target visible in
-# the prompt instead of a guess.
-PY_BIN="$(command -v python3 || true)"
-if [[ -n "$PY_BIN" ]] && confirm "Uninstall 'capillaries' from $PY_BIN?"; then
-    if $DRY_RUN; then
-        echo "    would run: $PY_BIN -m pip uninstall -y capillaries"
-    elif "$PY_BIN" -m pip show capillaries &>/dev/null; then
-        "$PY_BIN" -m pip uninstall -y capillaries >/dev/null
-        ok "Uninstalled capillaries from $PY_BIN."
-    else
-        # Not an error: a fresh clone, or the wrong venv is active. Say which,
-        # because "uninstalled" when nothing happened sends people looking in
-        # the wrong place later.
-        info "capillaries not installed in $PY_BIN — nothing to uninstall."
-        info "If you installed it elsewhere, activate that environment and run:"
-        echo "    pip uninstall capillaries"
-    fi
+# ── 5. Remove the project environment ───────────────────────────────────────
+# setup.sh installs with `uv sync`, into .venv here and nowhere else, so the
+# environment *is* the install. Removing it can't touch any other env.
+if [[ -d "$PROJECT_DIR/.venv" ]] && confirm "Remove the project environment ($PROJECT_DIR/.venv)?"; then
+    safe_rm "$PROJECT_DIR/.venv"
     safe_rm "$PROJECT_DIR/src/capillaries.egg-info"
 fi
 

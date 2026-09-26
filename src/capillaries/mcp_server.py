@@ -174,13 +174,13 @@ try:
 
 except ImportError:
     def capillaries_find(situation: str, stage: str = None, domain: list = None, prefer: str = "auto", context: dict = None, agent_context: dict = None) -> dict:
-        raise ImportError("MCP SDK not installed. Run: pip install mcp")
+        raise ImportError("MCP SDK not installed. Run: uv sync")
 
     def capillaries_execute_step(session_id: str, step_order: int, previous_output: str = None, variables: dict = None, skip_reason: str = None) -> dict:
-        raise ImportError("MCP SDK not installed. Run: pip install mcp")
+        raise ImportError("MCP SDK not installed. Run: uv sync")
 
     def capillaries_feedback(trace_id: str, outcome: str, quality_score: float = None, failure_step: int = None, notes: str = None, agent_context: dict = None) -> dict:
-        raise ImportError("MCP SDK not installed. Run: pip install mcp")
+        raise ImportError("MCP SDK not installed. Run: uv sync")
 
     def capillaries_catalog(view: str = "overview", domain_filter: str = None) -> dict:
-        raise ImportError("MCP SDK not installed. Run: pip install mcp")
+        raise ImportError("MCP SDK not installed. Run: uv sync")
