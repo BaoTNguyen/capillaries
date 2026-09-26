@@ -34,7 +34,7 @@ def download_encoder(name, size):
         from sentence_transformers import SentenceTransformer
     except ImportError:
         print("  ERROR: sentence-transformers not installed.")
-        print("  Run: pip install sentence-transformers")
+        print("  Run: uv sync --extra lightweight")
         return False
     SentenceTransformer(name, trust_remote_code=True)
     print(f"  Done: {name}")
@@ -47,7 +47,7 @@ def download_crossencoder(name, size):
         from sentence_transformers import CrossEncoder
     except ImportError:
         print("  ERROR: sentence-transformers not installed.")
-        print("  Run: pip install sentence-transformers")
+        print("  Run: uv sync --extra lightweight")
         return False
     CrossEncoder(name)
     print(f"  Done: {name}")
@@ -62,7 +62,7 @@ def download_spacy(name, size):
     )
     if result.returncode != 0:
         print(f"  ERROR: spaCy download failed. Is spaCy installed?")
-        print(f"  Run: pip install spacy")
+        print("  Run: uv sync --extra lightweight")
         if result.stderr:
             print(f"  {result.stderr.strip()}")
         return False

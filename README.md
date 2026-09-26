@@ -124,12 +124,12 @@ match the embedding service and database schema.
 ```bash
 git clone https://github.com/BaoTNguyen/capillaries && cd capillaries
 # memory-aware retrieval (MemoryFrame context) also needs arteries beside it:
-#   git clone https://github.com/BaoTNguyen/arteries ../arteries && pip install -e ../arteries
+#   git clone https://github.com/BaoTNguyen/arteries ../arteries && uv pip install -e ../arteries
 # or take the whole stack: git clone --recursive https://github.com/BaoTNguyen/vascular
 
-pip install -e .                    # core
-pip install -e ".[lightweight]"     # + local embeddings, reranker
-pip install -e ".[advanced]"        # + full ML stack
+uv sync                             # core
+uv sync --extra lightweight         # + local embeddings, reranker
+uv sync --extra advanced            # + full ML stack
 
 createdb capillaries
 psql -d capillaries -c "CREATE EXTENSION IF NOT EXISTS vector;"
@@ -137,11 +137,11 @@ psql -d capillaries -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
 
 cp .env.example .env               # edit as needed
 
-PYTHONPATH=src python scripts/setup_db.py                  # schemas and indexes
-PYTHONPATH=src python scripts/ingest_public.py --db-only   # load the corpus
-PYTHONPATH=. python -m obsidian_sync.ingest                # + your vault, if any
-PYTHONPATH=src python scripts/setup_db.py --embed          # then vectorize it
-PYTHONPATH=src python -m capillaries.chunk --backfill      # and chunk it
+uv run python scripts/setup_db.py                  # schemas and indexes
+uv run python scripts/ingest_public.py --db-only   # load the corpus
+uv run python -m obsidian_sync.ingest                # + your vault, if any
+uv run python scripts/setup_db.py --embed          # then vectorize it
+uv run python -m capillaries.chunk --backfill      # and chunk it
 ```
 
 Order matters, and two of these steps are easy to skip into a database that looks fine and retrieves nothing.
@@ -172,8 +172,8 @@ unless `--apply` is supplied, is safe to resume, and preserves non-null
 embeddings:
 
 ```bash
-PYTHONPATH=src python -m capillaries.db.migrate_pgvector_08
-PYTHONPATH=src python -m capillaries.db.migrate_pgvector_08 --apply
+uv run python -m capillaries.db.migrate_pgvector_08
+uv run python -m capillaries.db.migrate_pgvector_08 --apply
 ```
 
 Before applying it, take a backup and confirm the configured width and the
@@ -243,7 +243,7 @@ Capillaries imports and runs without arteries installed. Every reference to the 
 The dependency isn't declared in `pyproject.toml` because the name is unclaimed on PyPI, and declaring it would resolve to a stranger's package. Install the sibling checkout if you want the memory path:
 
 ```bash
-pip install -e ../arteries
+uv pip install -e ../arteries    # `uv run` keeps it; a plain `uv sync` removes it
 ```
 
 ### Tearing it down
@@ -268,7 +268,7 @@ Two guards exist because their absence cost a corpus. The database name is read 
 uvicorn capillaries.server:app --host 127.0.0.1 --port 8000
 
 # MCP server
-python -m capillaries.mcp_server
+uv run python -m capillaries.mcp_server
 ```
 
 ## Retrieval pipeline
@@ -290,10 +290,10 @@ Skills live in a `skills` schema in the same PostgreSQL database. Each has a rou
 A step is a pointer, not a copy: `{prompt_id, rationale, step_order, pinned_hash}`. `execute_step` looks the text up in `prompts` by UUID, checking `prompt_variants` first when a model is named. That means editing a prompt changes every skill that uses it — which is the point, and also why `pinned_hash` records the text a step was validated against.
 
 ```bash
-python -m capillaries.skills.cli --create
-python -m capillaries.skills.cli --list
-python -m capillaries.skills.cli --show gtm-strategy-builder
-python -m capillaries.skills.cli --edit gtm-strategy-builder
+uv run python -m capillaries.skills.cli --create
+uv run python -m capillaries.skills.cli --list
+uv run python -m capillaries.skills.cli --show gtm-strategy-builder
+uv run python -m capillaries.skills.cli --edit gtm-strategy-builder
 ```
 
 ## Prompt optimization
@@ -313,10 +313,10 @@ What remains is the acceptance side, and it still holds: a fence guard keeps an 
 If prompts live in an Obsidian vault, `obsidian_sync` handles bidirectional sync:
 
 ```bash
-PYTHONPATH=. python -m obsidian_sync.ingest              # vault -> DB
-PYTHONPATH=. python -m obsidian_sync.frontmatter          # DB -> vault
-PYTHONPATH=. python -m obsidian_sync.skills_vault export   # skills -> vault
-PYTHONPATH=. python -m obsidian_sync.skills_vault import   # vault -> skills
+uv run python -m obsidian_sync.ingest              # vault -> DB
+uv run python -m obsidian_sync.frontmatter          # DB -> vault
+uv run python -m obsidian_sync.skills_vault export   # skills -> vault
+uv run python -m obsidian_sync.skills_vault import   # vault -> skills
 ```
 
 Set `OBSIDIAN_VAULT_PATH` in `.env`. The sync layer is optional; the core system works without it.

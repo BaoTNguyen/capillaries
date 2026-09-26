@@ -20,7 +20,7 @@ def __getattr__(name):
             raise AttributeError(
                 "capillaries.MemoryFrame re-exports arteries.memory_types.MemoryFrame, "
                 "and arteries is not installed. It is not on PyPI — install the "
-                "sibling checkout with `pip install -e ../arteries`. Retrieval "
+                "sibling checkout with `uv pip install -e ../arteries`. Retrieval "
                 "(find, find_sync, FindResult) works without it."
             ) from exc
         globals()["MemoryFrame"] = MemoryFrame
