@@ -494,6 +494,14 @@ lightweight = [
 obsidian = [
     { name = "python-frontmatter" },
 ]
+optimizer = [
+    { name = "dspy-ai" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -504,6 +512,7 @@ requires-dist = [
     { name = "capillaries", extras = ["lightweight"], marker = "extra == 'advanced'" },
     { name = "diskcache", marker = "extra == 'lightweight'", specifier = ">=5.4.0" },
     { name = "dspy-ai", specifier = ">=2.5.0" },
+    { name = "dspy-ai", marker = "extra == 'optimizer'", specifier = ">=2.5.0" },
     { name = "faiss-cpu", marker = "extra == 'advanced'", specifier = ">=1.7.4" },
     { name = "fastapi", specifier = ">=0.100.0" },
     { name = "hdbscan", marker = "extra == 'advanced'", specifier = ">=0.8.28" },
@@ -535,7 +544,10 @@ requires-dist = [
     { name = "umap-learn", marker = "extra == 'advanced'", specifier = ">=0.5.3" },
     { name = "uvicorn", specifier = ">=0.23.0" },
 ]
-provides-extras = ["lightweight", "advanced", "obsidian", "dev"]
+provides-extras = ["optimizer", "lightweight", "advanced", "obsidian", "dev"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8.0" }]
 
 [[package]]
 name = "catalogue"

@@ -156,7 +156,7 @@ so plan for contention or downtime and retain the backup through verification.
 
 1. **Install Python dependencies:**
    ```bash
-   pip install -r requirements.txt
+   uv sync
    ```
 
 2. **Run database setup:**

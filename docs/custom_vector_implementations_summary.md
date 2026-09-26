@@ -162,8 +162,8 @@ results = await engine.search("Create marketing strategy", {
 
 ### **Install Requirements**:
 ```bash
-pip install -r requirements_custom_search.txt
-python -m spacy download en_core_web_sm
+uv sync --extra lightweight
+uv run python -m spacy download en_core_web_sm
 ```
 
 ### **Database Integration**:

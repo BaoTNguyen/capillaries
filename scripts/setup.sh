@@ -108,12 +108,13 @@ declare -A SUMMARY
 # ── 1. Python Check ─────────────────────────────────────────────────────────
 header "Checking Python"
 
-if ! command -v python3 &>/dev/null; then
-    err "python3 not found. Please install Python 3.10 or later."
+# uv supplies the interpreter too, so no system python3 is needed.
+if ! command -v uv &>/dev/null; then
+    err "uv not found. Install it: curl -LsSf https://astral.sh/uv/install.sh | sh"
     exit 1
 fi
 
-PY_VERSION="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+PY_VERSION="$(uv run --no-project python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
 PY_MAJOR="$(echo "$PY_VERSION" | cut -d. -f1)"
 PY_MINOR="$(echo "$PY_VERSION" | cut -d. -f2)"
 
@@ -387,21 +388,23 @@ prompt_choice "Install profile:" \
 install_choice=$?
 
 case $install_choice in
-    0) pip_target=".";                          profile_name="Core" ;;
-    1) pip_target=".[lightweight]";             profile_name="Lightweight" ;;
-    2) pip_target=".[advanced]";                profile_name="Advanced" ;;
-    3) pip_target=".[lightweight,obsidian]";    profile_name="With Obsidian" ;;
+    0) extras=();                                        profile_name="Core" ;;
+    1) extras=(--extra lightweight);                     profile_name="Lightweight" ;;
+    2) extras=(--extra advanced);                        profile_name="Advanced" ;;
+    3) extras=(--extra lightweight --extra obsidian);    profile_name="With Obsidian" ;;
 esac
 
 info "Installing ($profile_name)..."
-pip install -e "$pip_target" 2>&1 | tail -5
+uv sync "${extras[@]}" 2>&1 | tail -5
+# Every python3 below is the project venv from here on.
+export PATH="$PROJECT_DIR/.venv/bin:$PATH"
 success "Python packages installed ($profile_name)."
 SUMMARY[install_profile]="$profile_name"
 
 # arteries supplies the MemoryFrame contract for the memory-aware retrieval
 # path. Capillaries runs without it — plain retrieval needs nothing from the
 # sibling — so this is offered, not required. Not on PyPI, hence not in
-# pyproject: pip will never pull it on its own.
+# pyproject. A later plain `uv sync` removes it again; `uv sync --inexact` keeps it.
 if python3 -c "import arteries.memory_types" 2>/dev/null; then
     success "arteries is importable — memory-aware retrieval available."
     SUMMARY[arteries]="already installed"
@@ -409,7 +412,7 @@ elif prompt_yn "Install arteries for memory-aware retrieval (optional)?" "n"; th
     ARTERIES_DIR="$(prompt_input "Path to the arteries checkout" "$(dirname "$PROJECT_DIR")/arteries")"
     if [[ -d "$ARTERIES_DIR" ]]; then
         info "Installing arteries from $ARTERIES_DIR..."
-        pip install -e "$ARTERIES_DIR" 2>&1 | tail -3
+        uv pip install -e "$ARTERIES_DIR" 2>&1 | tail -3
         if python3 -c "import arteries.memory_types" 2>/dev/null; then
             success "arteries installed."
             SUMMARY[arteries]="$ARTERIES_DIR"
