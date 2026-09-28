@@ -13,7 +13,7 @@ from capillaries import daemon
 
 
 def _miss(monkeypatch, tmp_path):
-    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    monkeypatch.setenv("VASCULAR_HOME", str(tmp_path))
     monkeypatch.delenv("CAPILLARIES_AUTOSTART", raising=False)
     monkeypatch.delenv("CAPILLARIES_NO_REMOTE", raising=False)
     monkeypatch.setattr(daemon, "is_up", lambda: False)
