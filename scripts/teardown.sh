@@ -39,7 +39,7 @@ usage() { sed -n '2,25p' "$0" | sed 's/^# \?//'; exit "${1:-0}"; }
 
 DB_NAME_OVERRIDE=""
 NO_BACKUP=false
-BACKUP_DIR="${CAPILLARIES_BACKUP_DIR:-$HOME/.capillaries/backups}"
+BACKUP_DIR="${CAPILLARIES_BACKUP_DIR:-${VASCULAR_HOME:-$HOME/.vascular}/backups/capillaries}"
 
 while (( $# )); do
     case "$1" in
@@ -92,8 +92,8 @@ safe_rm() {
     [[ "$path" != "$HOME" ]]             || { err "refusing: \$HOME"; return 1; }
     [[ "$(dirname "$path")" != "/" ]]    || { err "refusing root-level path: $path"; return 1; }
     case "$path" in
-        "$HOME"/*|"$PROJECT_DIR"/*) ;;
-        *) err "refusing path outside \$HOME and the project: $path"; return 1 ;;
+        "$HOME"/*|"$PROJECT_DIR"/*|"${VASCULAR_HOME:-$HOME/.vascular}"/*) ;;
+        *) err "refusing path outside \$HOME, the project and the vascular home: $path"; return 1 ;;
     esac
     [[ -e "$path" ]] || { info "already gone: $path"; return 0; }
     run rm -rf -- "$path"
@@ -121,8 +121,8 @@ PROMPTS_PATH="$(expand_home "$(env_get PROMPTS_PATH)")"
 SKILLS_PATH="$(expand_home "$(env_get SKILLS_PATH)")"
 # Path defaults are safe to guess: safe_rm refuses anything outside $HOME or the
 # project, and a nonexistent path is a no-op. A DROP DATABASE has neither guard.
-PROMPTS_PATH="${PROMPTS_PATH:-$HOME/.capillaries/prompts}"
-SKILLS_PATH="${SKILLS_PATH:-$HOME/.capillaries/skills}"
+PROMPTS_PATH="${PROMPTS_PATH:-${VASCULAR_HOME:-$HOME/.vascular}/data/capillaries/prompts}"
+SKILLS_PATH="${SKILLS_PATH:-${VASCULAR_HOME:-$HOME/.vascular}/data/capillaries/skills}"
 
 # Lets the test source this file to exercise safe_rm's guards without running
 # a teardown. Nothing above this line touches the filesystem.
