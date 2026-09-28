@@ -91,8 +91,15 @@ safe_rm() {
     [[ "$path" != "/" ]]                 || { err "refusing: /"; return 1; }
     [[ "$path" != "$HOME" ]]             || { err "refusing: \$HOME"; return 1; }
     [[ "$(dirname "$path")" != "/" ]]    || { err "refusing root-level path: $path"; return 1; }
+    # VASCULAR_HOME widens what may be removed, so it has to be a real root of
+    # its own: absolute and at least two levels deep. Set to / or /usr, it would
+    # otherwise let "anything under it" mean anything on the machine.
+    local vroot="${VASCULAR_HOME:-$HOME/.vascular}"
+    if [[ "$vroot" != /* || "$(dirname "$vroot")" == "/" ]]; then
+        vroot="$HOME/.vascular"
+    fi
     case "$path" in
-        "$HOME"/*|"$PROJECT_DIR"/*|"${VASCULAR_HOME:-$HOME/.vascular}"/*) ;;
+        "$HOME"/*|"$PROJECT_DIR"/*|"$vroot"/*) ;;
         *) err "refusing path outside \$HOME, the project and the vascular home: $path"; return 1 ;;
     esac
     [[ -e "$path" ]] || { info "already gone: $path"; return 0; }
