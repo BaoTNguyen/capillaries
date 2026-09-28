@@ -11,7 +11,7 @@ These constants ARE the contract. Change one repo and its own test fails, at the
 point of the change rather than in production. Change all of them together and
 the rename is complete by construction.
 
-capillaries resolves the path inline inside spine.emit, so this asserts the
+capillaries resolves the path at emit time via vascular_paths, so this asserts the
 observable behaviour: where a written event lands.
 """
 import json
@@ -23,7 +23,7 @@ from unittest.mock import patch
 from capillaries import spine
 
 JOURNAL_ENV = "EVENT_JOURNAL_DIR"
-JOURNAL_DEFAULT = Path.home() / ".local" / "share" / "heart" / "events"
+JOURNAL_DEFAULT = Path.home() / ".vascular" / "state" / "heart" / "events"
 
 
 def test_spine_reads_the_contract_variable():
@@ -40,14 +40,14 @@ def test_spine_reads_the_contract_variable():
 def test_the_default_matches_the_other_repos():
     """Behavioural, not a source grep: clear the variable, point HOME at a temp
     directory, and check where the event actually lands. spine.py resolves the
-    path inline, so the only honest assertion is on the file it writes."""
+    path at call time, so the only honest assertion is on the file it writes."""
     with tempfile.TemporaryDirectory() as home:
-        env = {k: v for k, v in os.environ.items() if k != JOURNAL_ENV}
+        env = {k: v for k, v in os.environ.items() if k not in (JOURNAL_ENV, "VASCULAR_HOME")}
         env["HOME"] = home
         with patch.dict(os.environ, env, clear=True), \
                 patch.object(Path, "home", staticmethod(lambda: Path(home))):
             spine.emit("contract.check")
 
-        landed = list((Path(home) / ".local" / "share" / "heart" / "events").glob("*.ndjson"))
+        landed = list((Path(home) / ".vascular" / "state" / "heart" / "events").glob("*.ndjson"))
 
     assert landed, "the default path must match arteries and heart"
