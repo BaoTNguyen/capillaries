@@ -290,8 +290,8 @@ if [[ -f "$ENV_FILE" ]]; then
 else
     info "Creating .env from template..."
 
-    DEFAULT_PROMPTS="$HOME/.capillaries/prompts"
-    DEFAULT_SKILLS="$HOME/.capillaries/skills"
+    DEFAULT_PROMPTS="${VASCULAR_HOME:-$HOME/.vascular}/data/capillaries/prompts"
+    DEFAULT_SKILLS="${VASCULAR_HOME:-$HOME/.vascular}/data/capillaries/skills"
 
     PROMPTS_PATH="$(prompt_input "Prompts directory" "$DEFAULT_PROMPTS")"
     SKILLS_PATH="$(prompt_input "Skills directory" "$DEFAULT_SKILLS")"
@@ -362,10 +362,12 @@ fi
 # ── 5. Create Directories ───────────────────────────────────────────────────
 # Read paths from .env if we didn't just set them
 if [[ -z "${PROMPTS_PATH:-}" ]]; then
-    PROMPTS_PATH="$(grep '^PROMPTS_PATH=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || echo "$HOME/.capillaries/prompts")"
+    PROMPTS_PATH="$(grep '^PROMPTS_PATH=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)"
+    PROMPTS_PATH="${PROMPTS_PATH:-${VASCULAR_HOME:-$HOME/.vascular}/data/capillaries/prompts}"
 fi
 if [[ -z "${SKILLS_PATH:-}" ]]; then
-    SKILLS_PATH="$(grep '^SKILLS_PATH=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || echo "$HOME/.capillaries/skills")"
+    SKILLS_PATH="$(grep '^SKILLS_PATH=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || true)"
+    SKILLS_PATH="${SKILLS_PATH:-${VASCULAR_HOME:-$HOME/.vascular}/data/capillaries/skills}"
 fi
 
 # Expand ~ in paths

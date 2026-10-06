@@ -9,13 +9,13 @@ export them in your shell — never hardcode them here.
 import os
 from pathlib import Path
 
+from capillaries import vascular_paths
+
 try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
     pass  # python-dotenv is optional; env vars can be set externally
-
-_DEFAULT_DATA_DIR = Path.home() / ".capillaries"
 
 # Optional — only needed for Obsidian vault sync (obsidian_sync package).
 _vault_env = os.getenv("OBSIDIAN_VAULT_PATH")
@@ -27,14 +27,17 @@ def _resolve_path(env_key: str, vault_subpath: str, default_name: str) -> Path:
 
     1. Explicit env var (e.g. PROMPTS_PATH=/my/prompts)
     2. Derived from OBSIDIAN_VAULT_PATH if set
-    3. Default under ~/.capillaries/
+    3. Default under ~/.vascular/data/capillaries/ ($VASCULAR_HOME overrides)
+
+    Resolved at call time, so a test can set the env after import.
     """
     explicit = os.getenv(env_key)
     if explicit:
         return Path(explicit)
-    if OBSIDIAN_VAULT_PATH:
-        return OBSIDIAN_VAULT_PATH / vault_subpath
-    return _DEFAULT_DATA_DIR / default_name
+    vault = os.getenv("OBSIDIAN_VAULT_PATH")
+    if vault:
+        return Path(vault) / vault_subpath
+    return vascular_paths.path("data", "capillaries", default_name)
 
 
 PROMPTS_PATH: Path = _resolve_path("PROMPTS_PATH", "Areas/AI/Prompts", "prompts")
