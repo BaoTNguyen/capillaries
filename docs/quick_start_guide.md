@@ -101,8 +101,8 @@ curl http://localhost:8000/health
 
 | Variable              | Default                                       | Description                                       |
 |-----------------------|-----------------------------------------------|---------------------------------------------------|
-| `PROMPTS_PATH`        | `~/.capillaries/prompts/`                     | Directory containing prompt `.md` files            |
-| `SKILLS_PATH`         | `~/.capillaries/skills/`                      | Directory containing skill `.md` files             |
+| `PROMPTS_PATH`        | `~/.vascular/data/capillaries/prompts/`       | Directory containing prompt `.md` files            |
+| `SKILLS_PATH`         | `~/.vascular/data/capillaries/skills/`        | Directory containing skill `.md` files             |
 | `OBSIDIAN_VAULT_PATH` | *(unset)*                                     | Obsidian vault root (optional, for vault sync)     |
 | `DB_HOST`             | `/var/run/postgresql`                         | PostgreSQL host or Unix socket path                |
 | `DB_PORT`             | `5432`                                        | PostgreSQL port                                    |
@@ -116,8 +116,10 @@ curl http://localhost:8000/health
 | `OPENAI_API_KEY`      | *(unset)*                                     | For OpenAI-based features                          |
 
 If both `PROMPTS_PATH` and `OBSIDIAN_VAULT_PATH` are set, `PROMPTS_PATH`
-takes precedence. If neither is set, the default `~/.capillaries/prompts/`
-is used (same logic for `SKILLS_PATH`).
+takes precedence. If neither is set, the default
+`~/.vascular/data/capillaries/prompts/` is used (same logic for `SKILLS_PATH`,
+which defaults to `~/.vascular/data/capillaries/skills/`). Set `VASCULAR_HOME`
+to move `~/.vascular` somewhere else.
 
 ## Using External Embedding APIs
 

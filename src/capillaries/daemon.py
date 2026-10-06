@@ -27,6 +27,8 @@ import time
 from pathlib import Path
 from urllib.parse import urlparse
 
+from capillaries import vascular_paths
+
 URL = os.getenv("CAPILLARIES_URL", "http://127.0.0.1:8000")
 # a failed start must not turn every hook into a spawn attempt; wait this long
 # before trying again so a broken install degrades to "slow" and not "fork bomb"
@@ -34,10 +36,15 @@ COOLDOWN_S = float(os.getenv("CAPILLARIES_AUTOSTART_COOLDOWN", "120"))
 
 
 def state_dir() -> Path:
-    base = os.getenv("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
-    d = Path(base) / "capillaries"
+    d = vascular_paths.path("state", "capillaries")
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def log_path() -> Path:
+    p = vascular_paths.path("log", "capillaries", "daemon.log")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
 
 
 def _host_port() -> tuple[str, int]:
@@ -116,7 +123,7 @@ def ensure(wait: float = 0.0) -> bool:
             return True
 
         host, port = _host_port()
-        log = open(state_dir() / "daemon.log", "ab")
+        log = open(log_path(), "ab")
         try:
             subprocess.Popen(
                 [sys.executable, "-m", "uvicorn", "capillaries.server:app",

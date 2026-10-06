@@ -257,7 +257,7 @@ uv pip install -e ../arteries    # `uv run` keeps it; a plain `uv sync` removes 
 
 Teardown reverses setup: it drops the database, deletes `.env`, removes the prompts and skills directories, uninstalls the editable package, and clears caches. It never touches tracked source or git history — this uninstalls the system, it does not delete the repo. Run `--dry-run` first; the plan it prints is exactly what the real run does.
 
-Two guards exist because their absence cost a corpus. The database name is read from `.env` and never defaulted, so a second run after `.env` is gone refuses rather than dropping whatever is named `capillaries`. And every drop is preceded by a mandatory `pg_dump -Fc` into `~/.capillaries/backups/`; if the dump fails, the drop does not happen. `--no-backup` opts out and says plainly that it is unrecoverable.
+Two guards exist because their absence cost a corpus. The database name is read from `.env` and never defaulted, so a second run after `.env` is gone refuses rather than dropping whatever is named `capillaries`. And every drop is preceded by a mandatory `pg_dump -Fc` into `~/.vascular/backups/capillaries/` (`VASCULAR_HOME` overrides `~/.vascular`; `CAPILLARIES_BACKUP_DIR` overrides the whole path); if the dump fails, the drop does not happen. `--no-backup` opts out and says plainly that it is unrecoverable.
 
 ## Running
 
