@@ -12,6 +12,7 @@
 #   ./scripts/teardown.sh --models      # also delete the HuggingFace model cache
 #   ./scripts/teardown.sh --database X  # name the database explicitly
 #   ./scripts/teardown.sh --no-backup   # skip the pre-drop dump (unrecoverable)
+#   (the secrets file ~/.vascular/secrets/capillaries/env is asked separately; --force keeps it)
 #
 # Two safety rules, both learned by breaking them:
 #
@@ -35,7 +36,7 @@ DRY_RUN=false
 FORCE=false
 DROP_MODELS=false
 
-usage() { sed -n '2,25p' "$0" | sed 's/^# \?//'; exit "${1:-0}"; }
+usage() { sed -n '2,26p' "$0" | sed 's/^# \?//'; exit "${1:-0}"; }
 
 DB_NAME_OVERRIDE=""
 NO_BACKUP=false
@@ -131,6 +132,29 @@ SKILLS_PATH="$(expand_home "$(env_get SKILLS_PATH)")"
 PROMPTS_PATH="${PROMPTS_PATH:-${VASCULAR_HOME:-$HOME/.vascular}/data/capillaries/prompts}"
 SKILLS_PATH="${SKILLS_PATH:-${VASCULAR_HOME:-$HOME/.vascular}/data/capillaries/skills}"
 
+# The secrets file gets its own prompt and never goes under --force: --force
+# auto-accepts confirm(), and API keys are not something CI should delete.
+# Only the file goes — the secrets/ dirs are shared with other components.
+remove_secrets() {
+    local SECRETS_FILE="${VASCULAR_HOME:-$HOME/.vascular}/secrets/capillaries/env"
+    [[ -f "$SECRETS_FILE" ]] || { info "No secrets file at $SECRETS_FILE."; return 0; }
+    if $DRY_RUN; then
+        echo "    would delete (only after confirmation): $SECRETS_FILE"
+        return 0
+    fi
+    if $FORCE; then
+        info "secrets file kept: $SECRETS_FILE (delete it by hand or run teardown interactively)"
+        return 0
+    fi
+    local yn=""
+    read -rp "$(echo -e "${BLUE}?${NC} Delete $SECRETS_FILE (contains your API keys and DB password)? [y/N] ")" yn || true
+    if [[ "${yn,,}" == y* ]]; then
+        safe_rm "$SECRETS_FILE"
+    else
+        info "secrets file kept."
+    fi
+}
+
 # Lets the test source this file to exercise safe_rm's guards without running
 # a teardown. Nothing above this line touches the filesystem.
 [[ -n "${TEARDOWN_LIB:-}" ]] && return 0
@@ -144,6 +168,7 @@ else
     echo "  database        : (none named — SKIPPED, see below)"
 fi
 echo "  env file        : $PROJECT_DIR/.env"
+echo "  secrets file    : ${VASCULAR_HOME:-$HOME/.vascular}/secrets/capillaries/env (asked separately; kept under --force)"
 echo "  prompts dir     : $PROMPTS_PATH"
 echo "  skills dir      : $SKILLS_PATH"
 echo "  editable install: capillaries"
@@ -222,6 +247,9 @@ if [[ -f "$PROJECT_DIR/.env" ]]; then
         info ".env kept."
     fi
 fi
+
+# ── 3b. Remove the secrets file ─────────────────────────────────────────────
+remove_secrets
 
 # ── 4. Remove prompt and skill directories ──────────────────────────────────
 # These hold the user's own written prompts, which setup.sh only created empty.
