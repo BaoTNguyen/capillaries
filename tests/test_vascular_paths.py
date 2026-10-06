@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 from unittest import TestCase, main
 
@@ -18,7 +19,10 @@ class KindConstantsTest(TestCase):
     """KINDS is the single source of truth for path kinds."""
 
     def test_kind_values(self) -> None:
-        self.assertEqual(KINDS, ("config", "state", "cache", "data", "backups"))
+        self.assertEqual(
+            KINDS,
+            ("config", "secrets", "state", "spool", "log", "cache", "data", "backups"),
+        )
 
     def test_kind_is_tuple(self) -> None:
         self.assertIsInstance(KINDS, tuple)
@@ -74,6 +78,12 @@ class PathFunctionTest(TestCase):
         result = path("data", "comp", "file.txt")
         self.assertEqual(result, Path("/tmp/v/data/comp/file.txt"))
 
+    def test_new_kinds_build_under_home(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ["VASCULAR_HOME"] = tmp
+            for kind in ("secrets", "spool", "log"):
+                self.assertEqual(path(kind, "x"), Path(tmp) / kind / "x")
+
 
 class JournalDirTest(TestCase):
     """journal_dir() resolves $EVENT_JOURNAL_DIR or falls back."""
@@ -86,11 +96,11 @@ class JournalDirTest(TestCase):
         os.environ.pop("EVENT_JOURNAL_DIR", None)
         os.environ.pop("VASCULAR_HOME", None)
 
-    def test_defaults_to_heart_state(self) -> None:
+    def test_defaults_to_spool_events(self) -> None:
         result = journal_dir()
         self.assertEqual(
             result,
-            Path.home() / ".vascular" / "state" / "heart" / "events",
+            Path.home() / ".vascular" / "spool" / "events",
         )
 
     def test_uses_env_var(self) -> None:
@@ -102,7 +112,7 @@ class JournalDirTest(TestCase):
         result = journal_dir()
         self.assertEqual(
             result,
-            Path("/tmp/vh/state/heart/events"),
+            Path("/tmp/vh/spool/events"),
         )
 
 

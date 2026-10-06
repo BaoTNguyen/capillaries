@@ -23,7 +23,7 @@ from unittest.mock import patch
 from capillaries import spine
 
 JOURNAL_ENV = "EVENT_JOURNAL_DIR"
-JOURNAL_DEFAULT = Path.home() / ".vascular" / "state" / "heart" / "events"
+JOURNAL_DEFAULT = Path.home() / ".vascular" / "spool" / "events"
 
 
 def test_spine_reads_the_contract_variable():
@@ -48,6 +48,6 @@ def test_the_default_matches_the_other_repos():
                 patch.object(Path, "home", staticmethod(lambda: Path(home))):
             spine.emit("contract.check")
 
-        landed = list((Path(home) / ".vascular" / "state" / "heart" / "events").glob("*.ndjson"))
+        landed = list((Path(home) / ".vascular" / "spool" / "events").glob("*.ndjson"))
 
     assert landed, "the default path must match arteries and heart"
