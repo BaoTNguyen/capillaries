@@ -41,6 +41,12 @@ def state_dir() -> Path:
     return d
 
 
+def log_path() -> Path:
+    p = vascular_paths.path("log", "capillaries", "daemon.log")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
+
+
 def _host_port() -> tuple[str, int]:
     u = urlparse(URL)
     return u.hostname or "127.0.0.1", u.port or 8000
@@ -117,7 +123,7 @@ def ensure(wait: float = 0.0) -> bool:
             return True
 
         host, port = _host_port()
-        log = open(state_dir() / "daemon.log", "ab")
+        log = open(log_path(), "ab")
         try:
             subprocess.Popen(
                 [sys.executable, "-m", "uvicorn", "capillaries.server:app",

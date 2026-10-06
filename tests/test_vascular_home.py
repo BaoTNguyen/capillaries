@@ -23,6 +23,12 @@ def test_every_default_path_follows_vascular_home(monkeypatch, tmp_path):
     assert len(list((tmp_path / "spool" / "events").glob("*.ndjson"))) == 1
 
 
+def test_daemon_log_lives_under_log_kind(monkeypatch, tmp_path):
+    monkeypatch.setenv("VASCULAR_HOME", str(tmp_path))
+    assert daemon.log_path() == tmp_path / "log" / "capillaries" / "daemon.log"
+    assert daemon.log_path().parent.is_dir()
+
+
 def test_vendored_module_is_unmodified():
     digest = hashlib.sha256((ROOT / "src" / "capillaries" / "vascular_paths.py").read_bytes()).hexdigest()
     assert digest == "15d668c51d5e881fa7a9bf5a9908ba3d7bba796ebb76499cd2216ebf4f05f758"
