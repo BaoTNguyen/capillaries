@@ -1,9 +1,11 @@
 """
 Centralized path and database configuration for Capillaries.
 
-All environment-specific values (paths, credentials) are loaded from
-environment variables. Set these in a .env file (see .env.example) or
-export them in your shell — never hardcode them here.
+All environment-specific values are loaded from environment variables —
+never hardcode them here. Credentials (DB_PASSWORD, OPENAI_API_KEY,
+ANTHROPIC_API_KEY) come from ~/.vascular/secrets/capillaries/env
+($VASCULAR_HOME overrides ~/.vascular); everything else comes from .env
+(see .env.example). Precedence: shell env > secrets file > .env.
 """
 
 import os
@@ -13,6 +15,9 @@ from capillaries import vascular_paths
 
 try:
     from dotenv import load_dotenv
+    # Neither call overrides a variable already set, so the order is the precedence.
+    # A missing secrets file is silently skipped.
+    load_dotenv(vascular_paths.path("secrets", "capillaries", "env"))
     load_dotenv()
 except ImportError:
     pass  # python-dotenv is optional; env vars can be set externally
