@@ -144,6 +144,8 @@ uv run python scripts/setup_db.py --embed          # then vectorize it
 uv run python -m capillaries.chunk --backfill      # and chunk it
 ```
 
+Credentials stay out of `.env`. `DB_PASSWORD`, `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` live in `~/.vascular/secrets/capillaries/env`, a dotenv-format file with mode 0600 that `scripts/setup.sh` creates. A variable set in your shell beats the secrets file, and the secrets file beats `.env`.
+
 Order matters, and two of these steps are easy to skip into a database that looks fine and retrieves nothing.
 
 `ingest_public.py` writes rows and nothing derived — no embedding step — so embedding has to come after it. Run `--embed` against an empty table and you get prompts with null vectors: dense retrieval returns nothing, no error is raised.
@@ -255,7 +257,7 @@ uv pip install -e ../arteries    # `uv run` keeps it; a plain `uv sync` removes 
 ./scripts/teardown.sh --models     # also drop the shared HuggingFace cache
 ```
 
-Teardown reverses setup: it drops the database, deletes `.env`, removes the prompts and skills directories, uninstalls the editable package, and clears caches. It never touches tracked source or git history — this uninstalls the system, it does not delete the repo. Run `--dry-run` first; the plan it prints is exactly what the real run does.
+Teardown reverses setup: it drops the database, deletes `.env`, removes the prompts and skills directories, uninstalls the editable package, and clears caches. The secrets file is asked about separately, and `--force` keeps it. It never touches tracked source or git history — this uninstalls the system, it does not delete the repo. Run `--dry-run` first; the plan it prints is exactly what the real run does.
 
 Two guards exist because their absence cost a corpus. The database name is read from `.env` and never defaulted, so a second run after `.env` is gone refuses rather than dropping whatever is named `capillaries`. And every drop is preceded by a mandatory `pg_dump -Fc` into `~/.vascular/backups/capillaries/` (`VASCULAR_HOME` overrides `~/.vascular`; `CAPILLARIES_BACKUP_DIR` overrides the whole path); if the dump fails, the drop does not happen. `--no-backup` opts out and says plainly that it is unrecoverable.
 
