@@ -239,15 +239,26 @@ class AbGateTests(unittest.TestCase):
         cur.close()
 
         self._orig_journal = os.environ.get("EVENT_JOURNAL_DIR")
+        self._orig_home = os.environ.get("VASCULAR_HOME")
+        self._orig_cwd = os.getcwd()
         self._tmpdir = tempfile.TemporaryDirectory()
+        self._homedir = tempfile.TemporaryDirectory()
         os.environ["EVENT_JOURNAL_DIR"] = self._tmpdir.name
+        os.environ["VASCULAR_HOME"] = self._homedir.name
+        os.chdir(self._homedir.name)
 
     def tearDown(self):
         if self._orig_journal is None:
             os.environ.pop("EVENT_JOURNAL_DIR", None)
         else:
             os.environ["EVENT_JOURNAL_DIR"] = self._orig_journal
+        if self._orig_home is None:
+            os.environ.pop("VASCULAR_HOME", None)
+        else:
+            os.environ["VASCULAR_HOME"] = self._orig_home
+        os.chdir(self._orig_cwd)
         self._tmpdir.cleanup()
+        self._homedir.cleanup()
 
         cur = self.conn.cursor()
         cur.execute(
