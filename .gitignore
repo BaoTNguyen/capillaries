@@ -221,10 +221,12 @@ workflow_eval.txt
 
 # Temporary demo prototype
 demo/
-# Arteries/marrow runtime state. The whole of .arteries/ is local wiring —
+# Arteries/marrow runtime state. The whole of .vascular/ (and the older
+# .arteries/) is local wiring —
 # hooks, config, and per-session artifacts rewritten on every turn — and it
 # belongs to the arteries install, not to this repo. Tracking any of it meant a
 # permanently dirty tree and a conflict on every branch switch, which is how a
 # checkout got blocked mid-merge.
 .arteries/
 .marrow/
+.vascular/
