@@ -4,7 +4,7 @@ import hashlib
 import subprocess
 from pathlib import Path
 
-from capillaries import daemon, spine
+from capillaries import daemon, spine, vascular_paths
 from capillaries.config import paths
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,6 +19,10 @@ def test_every_default_path_follows_vascular_home(monkeypatch, tmp_path):
     assert paths._resolve_path("SKILLS_PATH", "Areas/AI/Skills", "skills") == tmp_path / "data" / "capillaries" / "skills"
     assert daemon.state_dir() == tmp_path / "state" / "capillaries"
 
+    journal = tmp_path / "spool" / "events"
+    assert vascular_paths.journal_dir() == journal
+    monkeypatch.setenv("EVENT_JOURNAL_DIR", str(journal))
+    monkeypatch.chdir(tmp_path)
     spine.emit("vascular.check")
     assert len(list((tmp_path / "spool" / "events").glob("*.ndjson"))) == 1
 
