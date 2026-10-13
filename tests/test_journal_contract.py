@@ -16,38 +16,46 @@ observable behaviour: where a written event lands.
 """
 import json
 import os
-import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-from capillaries import spine
+from capillaries import spine, vascular_paths
 
 JOURNAL_ENV = "EVENT_JOURNAL_DIR"
 JOURNAL_DEFAULT = Path.home() / ".vascular" / "spool" / "events"
 
 
-def test_spine_reads_the_contract_variable():
-    with tempfile.TemporaryDirectory() as tmp:
-        with patch.dict(os.environ, {JOURNAL_ENV: tmp}):
-            spine.emit("contract.check", probe=True)
-        written = list(Path(tmp).glob("*.ndjson"))
-        assert len(written) == 1, "the event must land where the variable points"
-        event = json.loads(written[0].read_text().splitlines()[-1])
+def test_spine_reads_the_contract_variable(monkeypatch, tmp_path):
+    tmp = tmp_path / "events"
+    monkeypatch.chdir(tmp_path)
+    with patch.dict(os.environ, {JOURNAL_ENV: str(tmp), "VASCULAR_HOME": str(tmp_path / "home")}):
+        spine.emit("contract.check", probe=True)
+    written = list(tmp.glob("*.ndjson"))
+    assert len(written) == 1, "the event must land where the variable points"
+    lines = [json.loads(l) for l in written[0].read_text().splitlines()]
+    event = next(e for e in lines if e["kind"] == "contract.check")
     assert event["source"] == "capillaries"
     assert event["kind"] == "contract.check"
 
 
-def test_the_default_matches_the_other_repos():
-    """Behavioural, not a source grep: clear the variable, point HOME at a temp
-    directory, and check where the event actually lands. spine.py resolves the
-    path at call time, so the only honest assertion is on the file it writes."""
-    with tempfile.TemporaryDirectory() as home:
-        env = {k: v for k, v in os.environ.items() if k not in (JOURNAL_ENV, "VASCULAR_HOME")}
-        env["HOME"] = home
-        with patch.dict(os.environ, env, clear=True), \
-                patch.object(Path, "home", staticmethod(lambda: Path(home))):
-            spine.emit("contract.check")
+def test_the_default_matches_the_other_repos(monkeypatch, tmp_path):
+    """Clear the variables, point HOME at a temp directory, and check where the
+    journal resolves -- resolved at call time, so nothing is cached. Then emit
+    with both variables pinned to that resolved path (an emitting test never
+    leaves them unset) and check the event actually lands there."""
+    home = tmp_path / "user"
+    monkeypatch.chdir(tmp_path)
+    env = {k: v for k, v in os.environ.items() if k not in (JOURNAL_ENV, "VASCULAR_HOME")}
+    env["HOME"] = str(home)
+    with patch.dict(os.environ, env, clear=True), \
+            patch.object(Path, "home", staticmethod(lambda: home)):
+        resolved = vascular_paths.journal_dir()
+        vascular_home = vascular_paths.home()
+    assert resolved == home / ".vascular" / "spool" / "events", \
+        "the default path must match arteries and heart"
 
-        landed = list((Path(home) / ".vascular" / "spool" / "events").glob("*.ndjson"))
+    with patch.dict(os.environ, {JOURNAL_ENV: str(resolved), "VASCULAR_HOME": str(vascular_home)}):
+        spine.emit("contract.check")
+    landed = list(resolved.glob("*.ndjson"))
 
     assert landed, "the default path must match arteries and heart"
