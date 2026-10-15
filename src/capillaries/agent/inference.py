@@ -7,9 +7,7 @@ Falls back to defaults when confidence is low.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
-from typing import Any
 
 INTENT_KEYWORDS = {
     "build": ["build", "create", "implement", "develop", "make", "construct", "design", "setup", "architect"],

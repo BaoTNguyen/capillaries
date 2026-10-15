@@ -23,7 +23,7 @@ import textwrap
 from datetime import datetime
 from pathlib import Path
 
-from capillaries.search.api import PromptSearch, SearchResponse
+from capillaries.search.api import PromptSearch
 
 # Kept only so this legacy report still renders; the threshold it described no
 # longer exists (search/api.py).

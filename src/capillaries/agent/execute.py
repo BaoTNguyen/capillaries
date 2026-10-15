@@ -5,7 +5,6 @@ Skill execution protocol - step-by-step skill execution with session state.
 from __future__ import annotations
 
 import json
-import uuid
 from dataclasses import dataclass
 
 import psycopg2

@@ -16,7 +16,6 @@ Usage:
 
 import argparse
 import asyncio
-import sys
 
 import psycopg2
 

@@ -11,7 +11,6 @@ Usage:
 
 import argparse
 import asyncio
-import sys
 import time
 
 import httpx

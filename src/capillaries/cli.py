@@ -40,7 +40,7 @@ def main() -> None:
     if args.command == "find":
         # lazy: only this subcommand needs the retrieval stack; `cap optimize`
         # should not pay to build it
-        from capillaries.find import find_sync, FindResult
+        from capillaries.find import find_sync
 
         context = None
         if args.context:

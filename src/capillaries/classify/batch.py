@@ -9,7 +9,7 @@ import json
 import logging
 import httpx
 import psycopg2
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Optional, Tuple
 from capillaries.config.paths import DB_CONFIG
 
 logger = logging.getLogger(__name__)
