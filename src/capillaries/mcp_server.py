@@ -15,21 +15,15 @@ Or configure as MCP server in Claude Code / Cursor settings.
 
 from __future__ import annotations
 
-import asyncio
 import sys
 from dataclasses import asdict
-from typing import Any
 
 from capillaries.agent.api import (
-    RouteRequest,
-    StepRequest,
-    FeedbackRequest,
     _get_router,
     _get_executor,
     _get_feedback_handler,
     _get_catalog_handler,
 )
-from capillaries.agent.catalog import get_discover_response
 from capillaries.agent.context import normalize_agent_context, with_agent_context
 
 
@@ -149,10 +143,6 @@ try:
         """
         handler = _get_catalog_handler()
         return handler.get_catalog(view=view, domain_filter=domain_filter)
-
-    def run_mcp_server(host: str = "127.0.0.1", port: int = 1100):
-        """Run the MCP server."""
-        mcp.run(transport="stdio")
 
     if __name__ == "__main__":
         if len(sys.argv) > 1 and sys.argv[1] == "serve":

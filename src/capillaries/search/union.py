@@ -35,7 +35,7 @@ from typing import Any
 import psycopg2
 
 from capillaries.config import DB_CONFIG
-from capillaries.search.channels import keyword_search, vector_search
+from capillaries.search.channels import vector_search
 from capillaries.search.retriever import (
     Retriever, SearchResult, _build_filter_clause, _row_metadata,
 )
@@ -158,45 +158,6 @@ def _from_row(row: dict, dense_rank=None, sparse_rank=None) -> SearchResult:
         dense_sim=row.get("dense_sim"), sparse_sim=row.get("sparse_sim"),
         metadata=_row_metadata(row),
     )
-
-
-def union_candidates(
-    query: str,
-    filters: dict[str, Any] | None = None,
-    channel_top_k: int = CHANNEL_TOP_K,
-) -> list[SearchResult]:
-    """Candidates from both channels, deduped, ready for the reranker.
-
-    Order here is arbitrary and deliberately so — the reranker assigns the real
-    order. `dense_rank` / `sparse_rank` are populated only so callers and the
-    serving log can see which channel contributed a result, which is the signal
-    needed to decide later whether keeping both channels is still worth it.
-    """
-    vec = vector_search(query, top_k=channel_top_k, filters=filters)
-    lex = keyword_search(query, top_k=channel_top_k, filters=filters)
-
-    by_id: dict[str, SearchResult] = {}
-    for rank, h in enumerate(vec, 1):
-        by_id[h.prompt_id] = SearchResult(
-            prompt_id=h.prompt_id, title=h.title, prompt_text="",
-            rrf_score=0.0, dense_rank=rank, sparse_rank=None,
-            dense_sim=h.score, sparse_sim=None,
-            matched_chunk_id=h.chunk_id,
-        )
-    for rank, h in enumerate(lex, 1):
-        existing = by_id.get(h.prompt_id)
-        if existing is not None:
-            existing.sparse_rank = rank
-            existing.sparse_sim = h.score
-        else:
-            by_id[h.prompt_id] = SearchResult(
-                prompt_id=h.prompt_id, title=h.title, prompt_text="",
-                rrf_score=0.0, dense_rank=None, sparse_rank=rank,
-                dense_sim=None, sparse_sim=h.score,
-            )
-
-    _fill_text(by_id)
-    return list(by_id.values())
 
 
 def _fill_text(by_id: dict[str, SearchResult]) -> None:

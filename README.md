@@ -13,7 +13,7 @@ Capillaries is the retrieval layer under a five-repo agent stack. Each repo does
 ```text
 capillaries  prompt/skill retrieval                <- this repo
 arteries     memory + trace substrate
-heart        orchestration + environment + reward
+heart        orchestration + environment
 plexus       goal decomposition + acceptance loop
 marrow       RL training on heart's episodes
 ```
@@ -302,7 +302,7 @@ uv run python -m capillaries.skills.cli --edit gtm-strategy-builder
 
 A DSPy integration generates per-model prompt variants. When a prompt works well with one model but poorly with another, the optimizer produces a tailored variant stored in `prompt_variants`. At retrieval time, `resolve_prompt_text()` checks for a model-specific variant before falling back to the base text.
 
-The optimizer is meant to be grounded in real outcomes, not a proxy metric. A serving log records what got served for each query alongside the top-k candidates the ranker considered but passed over — the negatives needed to learn ranking, not just "was the served prompt any good." Each row carries the `episode_id` and `turn_id` its caller supplied via `agent_context`, which is what lets a serving be matched to the reward that followed it.
+The optimizer is meant to be grounded in real outcomes, not a proxy metric. A serving log records what got served for each query alongside the top-k candidates the ranker considered but passed over — the negatives needed to learn ranking, not just "was the served prompt any good." Each row carries the `episode_id` and `turn_id` its caller supplied via `agent_context`, which is what lets a serving be matched to the episode outcome that followed it.
 
 The piece that turned that log into training examples is currently missing. `optimize/harvest.py` was deleted rather than fixed: it captured the retrieved prompt as the golden *output*, which trains an optimizer to reproduce the library instead of ranking it. Golden examples now enter only through `cap optimize capture`.
 

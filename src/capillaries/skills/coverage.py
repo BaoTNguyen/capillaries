@@ -90,29 +90,6 @@ class SkillCoverage:
                 f"({self.matched}/{self.total} steps)")
 
 
-def stuck_drafts(days: int = 14, db_config: dict | None = None) -> list[dict]:
-    """Skills promoted but never activated.
-
-    promote() writes status='draft' while prompts default to 'active', so a
-    skill nobody activates is not broken, not logged, and not retrievable —
-    it simply never appears. One forgotten skill is noticeable; eighty are
-    not.
-    """
-    conn = psycopg2.connect(**(db_config or DB_CONFIG))
-    try:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(
-                "SELECT name, tag, created_at, created_by FROM skills.skills "
-                "WHERE status = 'draft' "
-                "  AND created_at < NOW() - make_interval(days => %s) "
-                "ORDER BY created_at",
-                (days,),
-            )
-            return [dict(r) for r in cur.fetchall()]
-    finally:
-        conn.close()
-
-
 def score_skills(
     ranked: list,
     db_config: dict | None = None,

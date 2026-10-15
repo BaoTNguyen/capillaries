@@ -318,7 +318,7 @@ async def find(
         for model-specific variants when needed.
     """
     # Normalized before the search, not after: episode_id/turn_id ride along to
-    # the serving log, which is what makes a serving row joinable to its reward.
+    # the serving log, which is what makes a serving row joinable to its episode.
     normalized = normalize_agent_context(agent_context)
     engine = _get_engine()
     result = await engine.find(

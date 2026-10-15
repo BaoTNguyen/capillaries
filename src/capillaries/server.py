@@ -33,7 +33,6 @@ from capillaries.config import DB_CONFIG
 from capillaries.find import _get_engine
 from capillaries.search.api import PromptSearch
 from capillaries.agent.api import router as agent_router
-from capillaries.agent.catalog import get_discover_response
 
 
 # --- App lifecycle -------------------------------------------------------
@@ -107,12 +106,6 @@ class SearchRequest(BaseModel):
 async def health():
     """Liveness check. Returns ready=true when models are loaded."""
     return {"status": "ok", "ready": _search is not None}
-
-
-@app.get("/agent/discover")
-async def discover():
-    """Self-describing endpoint for agent discovery."""
-    return get_discover_response()
 
 
 @app.post("/search")
