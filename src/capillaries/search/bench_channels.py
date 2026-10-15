@@ -35,7 +35,6 @@ import psycopg2
 
 from capillaries.config import DB_CONFIG
 from capillaries.search.channels import exact_search, keyword_search, vector_search
-from capillaries.search.retriever import SearchResult
 
 
 def _load(bench: str) -> list[tuple[str, str]]:
@@ -107,40 +106,6 @@ def overlap(pop: list[tuple[str, str]], k: int = 10) -> dict:
     return {"n": n, "both": both / n, "vector_only": v_only / n,
             "lexical_only": l_only / n, "neither": neither / n,
             "oracle": (both + v_only + l_only) / n}
-
-
-def union_rerank(query: str, reranker, texts: dict, k: int = 10) -> list[str]:
-    """Both channels' top-k, deduped, reordered by the cross-encoder.
-
-    The shippable approximation of the oracle: it needs only to judge
-    (query, text) relevance, never to know the answer.
-
-    Note that R@k here is near-tautological — a union of two top-10 lists is
-    10-20 candidates, so returning 10 of them recovers most of the union by
-    construction. The honest measures are R@1 and MRR, which ask whether the
-    reranker can actually put the right one on top.
-    """
-    ids: list[str] = []
-    for h in vector_search(query, top_k=k) + keyword_search(query, top_k=k):
-        if h.prompt_id not in ids:
-            ids.append(h.prompt_id)
-    if not ids:
-        return []
-
-    cands = [SearchResult(prompt_id=i, title="", prompt_text=texts.get(i, ""),
-                          rrf_score=0.0, dense_rank=None, sparse_rank=None,
-                          dense_sim=None, sparse_sim=None) for i in ids]
-    return [r.prompt_id for r in reranker.rerank(query, cands, top_k=k)]
-
-
-def _prompt_texts() -> dict:
-    conn = psycopg2.connect(**DB_CONFIG)
-    try:
-        with conn.cursor() as cur:
-            cur.execute("SELECT prompt_id::text, prompt_text FROM prompts")
-            return dict(cur.fetchall())
-    finally:
-        conn.close()
 
 
 def main() -> None:

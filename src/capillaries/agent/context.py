@@ -21,7 +21,7 @@ class AgentContext:
     session_id: str | None = None
     cwd: str | None = None
     capabilities: dict[str, Any] | None = None
-    # Join keys for the reward signal. Without them a serving_log row cannot be
+    # Join keys for the episode outcome. Without them a serving_log row cannot be
     # matched to the episode it belonged to, and the outcome join returns
     # nothing — which is the state the log was in until these were threaded.
     episode_id: str | None = None
