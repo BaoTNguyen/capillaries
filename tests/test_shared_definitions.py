@@ -37,6 +37,6 @@ def test_row_metadata_is_defined_once():
 
     handwritten = [
         p for p in SRC.rglob("*.py")
-        if p.name != "retriever.py" and re.search(r'"summary": row\.get', p.read_text())
+        if p.name != "retriever.py" and re.search(r'"summary": row(\.get|\[\d)', p.read_text())
     ]
     assert handwritten == [], f"row metadata respelled in {handwritten}"

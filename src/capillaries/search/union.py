@@ -33,6 +33,7 @@ import asyncio
 from typing import Any
 
 import psycopg2
+import psycopg2.extras
 
 from capillaries.config import DB_CONFIG
 from capillaries.search.channels import vector_search
@@ -123,9 +124,9 @@ def fetch_by_ids(prompt_ids: list[str]) -> list[SearchResult]:
         return []
     conn = psycopg2.connect(**DB_CONFIG)
     try:
-        with conn.cursor() as cur:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
-                "SELECT prompt_id::text, title, prompt_text, summary, intent, task_type, "
+                "SELECT prompt_id::text AS prompt_id, title, prompt_text, summary, intent, task_type, "
                 "       domain, status, notes "
                 "FROM prompts WHERE prompt_id::text = ANY(%s) AND status = 'active'",
                 (prompt_ids,),
@@ -134,20 +135,10 @@ def fetch_by_ids(prompt_ids: list[str]) -> list[SearchResult]:
     finally:
         conn.close()
 
-    return [
-        SearchResult(
-            prompt_id=row[0], title=row[1], prompt_text=row[2],
-            rrf_score=0.0, dense_rank=None, sparse_rank=None,
-            dense_sim=None, sparse_sim=None,
-            metadata={
-                "summary": row[3] or "",
-                "intent": row[4] or [], "task_type": row[5] or [],
-                "domain": row[6] or [], "status": row[7], "notes": row[8],
-                "boosted": True,
-            },
-        )
-        for row in rows
-    ]
+    results = [_from_row(row) for row in rows]
+    for r in results:
+        r.metadata["boosted"] = True
+    return results
 
 
 def _from_row(row: dict, dense_rank=None, sparse_rank=None) -> SearchResult:
@@ -171,23 +162,19 @@ def _fill_text(by_id: dict[str, SearchResult]) -> None:
         return
     conn = psycopg2.connect(**DB_CONFIG)
     try:
-        with conn.cursor() as cur:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
-                "SELECT prompt_id::text, title, prompt_text, summary, intent, task_type, "
+                "SELECT prompt_id::text AS prompt_id, title, prompt_text, summary, intent, task_type, "
                 "       domain, status, notes "
                 "FROM prompts WHERE prompt_id::text = ANY(%s)",
                 (list(by_id),),
             )
             for row in cur.fetchall():
-                r = by_id[row[0]]
-                r.title = row[1]
-                r.prompt_text = row[2]
-                r.metadata = {
-                    "summary": row[3] or "",
-                    "intent": row[4] or [], "task_type": row[5] or [],
-                    "domain": row[6] or [],
-                    "status": row[7], "notes": row[8],
-                }
+                r = by_id[row["prompt_id"]]
+                r.title = row["title"]
+                r.prompt_text = row["prompt_text"]
+                r.metadata = _row_metadata(row)
+        with conn.cursor() as cur:
             chunk_ids = [r.matched_chunk_id for r in by_id.values()
                          if r.matched_chunk_id]
             if chunk_ids:
