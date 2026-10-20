@@ -1,5 +1,5 @@
 """
-Tests for M6 (STACK_READINESS §5): serving log + top-k, reward-grounded
+Tests for M6 (STACK_READINESS §5): serving log + top-k, episode-keyed
 serving log, fence protection, and the A/B promotion gate.
 
 Run:
@@ -97,7 +97,7 @@ class FenceTests(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Serving log + reward join — needs a live DB
+# Serving log — needs a live DB
 # ---------------------------------------------------------------------------
 
 @unittest.skipUnless(DB_UP, "Postgres not reachable")
@@ -121,7 +121,6 @@ class ServingLogTests(unittest.TestCase):
     def tearDown(self):
         cur = self.conn.cursor()
         cur.execute("DELETE FROM serving_log WHERE episode_id LIKE %s", (self.EP_PREFIX + "%",))
-        cur.execute("DELETE FROM arteries.rewards WHERE episode_id LIKE %s", (self.EP_PREFIX + "%",))
         cur.execute("DELETE FROM prompts WHERE title IN (%s, %s)", (self.PROMPT_TITLE_A, self.PROMPT_TITLE_B))
         cur.close()
         self.conn.close()
@@ -144,15 +143,6 @@ class ServingLogTests(unittest.TestCase):
             VALUES (%s, %s, %s, %s, %s)
             """,
             (episode_id, query, served_kind, served_id, json.dumps(candidates)),
-        )
-
-    def _insert_reward(self, cur, episode_id, value):
-        cur.execute(
-            """
-            INSERT INTO arteries.rewards (episode_id, project_id, reward_type, value, source)
-            VALUES (%s, %s, 'episode', %s, %s)
-            """,
-            (episode_id, "m6-test-project", value, "test"),
         )
 
     def test_log_serving_writes_row(self):
@@ -186,36 +176,6 @@ class ServingLogTests(unittest.TestCase):
         from capillaries.optimize.serving import log_serving
         # Bad config -> should swallow the error, not raise.
         log_serving("q", "single_prompt", "x", [], db_config={"host": "nonexistent-host-xyz", "port": 1})
-
-    def test_serving_row_carries_episode_for_reward_join(self):
-        """The join key harvest.py used to consume — still the point of the log.
-
-        harvest.py is gone (it captured the retrieved prompt as the golden
-        *output*, which trains an optimizer to reproduce the library). What it
-        depended on is not gone: a serving row has to carry the episode_id that
-        matches it to a reward, or no downstream consumer can learn anything.
-        """
-        cur = self.conn.cursor()
-        ep = self.EP_PREFIX + "reward-join-1"
-        self._insert_serving(cur, ep, "m6 reward join query", "single_prompt", self.prompt_id_a,
-                              [{"id": self.prompt_id_a, "score": 0.9}])
-        self._insert_reward(cur, ep, 0.8)
-
-        cur.execute(
-            """
-            SELECT s.served_id, r.value
-            FROM serving_log s
-            JOIN arteries.rewards r ON r.episode_id = s.episode_id
-            WHERE s.episode_id = %s
-            """,
-            (ep,),
-        )
-        row = cur.fetchone()
-        cur.close()
-
-        self.assertIsNotNone(row, "serving row did not join to its reward")
-        self.assertEqual(row[0], self.prompt_id_a)
-        self.assertAlmostEqual(row[1], 0.8, places=5)
 
 
 # ---------------------------------------------------------------------------

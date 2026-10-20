@@ -10,7 +10,7 @@ import json
 from dataclasses import asdict
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -32,7 +32,6 @@ class RouteRequest(BaseModel):
     intent: list[str] | None = Field(None, description="Intent hints")
     prefer: str = Field(default="auto", description="'single', 'skill', or 'auto'")
     context: dict[str, Any] | None = Field(None, description="Structured context for template filling")
-    session_id: str | None = Field(None, description="For continuing previous interaction")
     # Named memory_context (not `context`, which is already the template-fill field
     # above) to hold the MemoryFrame from the memory project without colliding.
     memory_context: dict[str, Any] | None = Field(None, description="MemoryFrame from the memory project (ephemeral/persistent/scope tiers)")
@@ -49,11 +48,8 @@ class StepRequest(BaseModel):
     step_order: int = Field(..., ge=1)
     previous_output: str | None = Field(None, max_length=50000)
     variables: dict[str, str] | None = None
-    agent_context: dict[str, Any] | None = Field(None, description="Normalized agent/CLI metadata from Arteries or another adapter")
     action: str = Field(default="execute", description="'execute', 'skip', or 'abort'")
     skip_reason: str | None = None
-    run: bool = Field(default=False, description="Run the step's prompt through an LLM and return the completion")
-    model: str | None = Field(None, description="LLM model override")
 
 
 class FeedbackRequest(BaseModel):
@@ -67,11 +63,6 @@ class FeedbackRequest(BaseModel):
     session_id: str | None = None
     per_step_feedback: list[dict] | None = None
     agent_context: dict[str, Any] | None = None
-
-
-class CatalogRequest(BaseModel):
-    view: str = Field(default="overview", description="'overview', 'domains', or 'skills'")
-    domain_filter: str | None = None
 
 
 _router: AgentRouter | None = None
@@ -177,7 +168,6 @@ async def route(req: RouteRequest) -> dict | StreamingResponse:
         intent=req.intent,
         prefer=req.prefer,
         context=template_context,
-        session_id=req.session_id,
         source=req.source,
         modality=req.modality,
         memory_context=context_frame,

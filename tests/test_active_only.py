@@ -71,7 +71,6 @@ if __name__ == "__main__":
 def test_inactivation_refuses_to_wipe_the_corpus():
     """An empty agent_feedback table is a telemetry outage, not evidence that
     every prompt is stale. Acting on it would inactivate everything."""
-    import pytest
 
     from capillaries.lifecycle.inactivate import (
         InactivationRefused,

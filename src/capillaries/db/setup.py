@@ -6,9 +6,7 @@ This module only defines the database schema. Data ingestion from
 the Obsidian vault is a separate concern in the obsidian_sync package.
 """
 
-import json
 import psycopg2
-from typing import List, Dict, Any
 
 from capillaries.config.paths import DB_CONFIG, EMBED_DIM
 

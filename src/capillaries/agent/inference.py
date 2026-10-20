@@ -7,11 +7,8 @@ Falls back to defaults when confidence is low.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
-from typing import Any
 
-DOMAINS = ["AI", "business", "career", "finance", "learning", "personal", "product", "strategy", "technical", "writing"]
 INTENT_KEYWORDS = {
     "build": ["build", "create", "implement", "develop", "make", "construct", "design", "setup", "architect"],
     "debug": ["debug", "fix", "troubleshoot", "error", "bug", "crash", "issue", "problem", "wrong", "fails", "broken"],

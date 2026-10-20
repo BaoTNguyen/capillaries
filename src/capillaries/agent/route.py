@@ -11,7 +11,6 @@ import json
 import re
 import uuid
 from dataclasses import dataclass, field
-from typing import Any
 
 import psycopg2
 import psycopg2.extras
@@ -163,7 +162,7 @@ class AgentRouter:
 
     def __init__(self, db_config: dict | None = None):
         self._db_config = db_config or DB_CONFIG
-    async def route(self, situation: str, domain: list[str] | None = None, intent: list[str] | None = None, prefer: str = "auto", context: dict | None = None, session_id: str | None = None, source: str = "private", modality: str = "text", memory_context=None, model: str | None = None) -> RouteResponse:
+    async def route(self, situation: str, domain: list[str] | None = None, intent: list[str] | None = None, prefer: str = "auto", context: dict | None = None, source: str = "private", modality: str = "text", memory_context=None, model: str | None = None) -> RouteResponse:
         """
         Find the best prompt or skill for the given situation.
 

@@ -21,7 +21,6 @@ from capillaries.agent.gate import (
     SPECIFICITY_THRESHOLD,
     WORD_BAND_HIGH,
     WORD_BAND_LOW,
-    GateDecision,
     _band_decision,
     _heuristic_check,
     gate,
