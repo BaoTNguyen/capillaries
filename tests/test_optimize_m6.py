@@ -148,29 +148,36 @@ class ServingLogTests(unittest.TestCase):
     def test_log_serving_writes_row(self):
         from capillaries.optimize.serving import log_serving
 
-        os.environ["ARTERIES_EPISODE_ID"] = self.EP_PREFIX + "direct"
-        try:
-            log_serving(
-                query="m6 direct-call query",
-                served_kind="single_prompt",
-                served_id=self.prompt_id_a,
-                candidates=[{"id": self.prompt_id_a, "score": 0.7}],
-                db_config=DB_CONFIG,
-            )
-        finally:
-            del os.environ["ARTERIES_EPISODE_ID"]
+        saved = {k: os.environ.get(k) for k in ("ARTERIES_EPISODE_ID", "EVENT_JOURNAL_DIR")}
+        with tempfile.TemporaryDirectory() as journal:
+            os.environ["ARTERIES_EPISODE_ID"] = self.EP_PREFIX + "direct"
+            os.environ["EVENT_JOURNAL_DIR"] = journal
+            try:
+                log_serving(
+                    query="m6 direct-call query",
+                    served_kind="single_prompt",
+                    served_id=self.prompt_id_a,
+                    candidates=[{"id": self.prompt_id_a, "score": 0.7}],
+                    db_config=DB_CONFIG,
+                )
+            finally:
+                for k, v in saved.items():
+                    if v is None:
+                        os.environ.pop(k, None)
+                    else:
+                        os.environ[k] = v
 
-        cur = self.conn.cursor()
-        cur.execute(
-            "SELECT episode_id, served_kind, served_id, candidates FROM serving_log WHERE episode_id = %s",
-            (self.EP_PREFIX + "direct",),
-        )
-        row = cur.fetchone()
-        cur.close()
-        self.assertIsNotNone(row)
-        self.assertEqual(row[1], "single_prompt")
-        self.assertEqual(row[2], self.prompt_id_a)
-        self.assertEqual(len(row[3]), 1)
+            events = [
+                e for f in Path(journal).glob("*.ndjson")
+                for line in f.read_text().splitlines() if line.strip()
+                for e in [json.loads(line)] if e["kind"] == "retrieval.served"
+            ]
+        self.assertEqual(len(events), 1)
+        payload = events[0]["payload"]
+        self.assertEqual(payload["episode_id"], self.EP_PREFIX + "direct")
+        self.assertEqual(payload["served_kind"], "single_prompt")
+        self.assertEqual(payload["served_id"], self.prompt_id_a)
+        self.assertEqual(len(payload["candidates"]), 1)
 
     def test_log_serving_never_raises_on_bad_db(self):
         from capillaries.optimize.serving import log_serving
