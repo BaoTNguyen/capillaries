@@ -13,8 +13,7 @@ One-time setup of the test database:
 
     createdb capillaries_test
     sudo -u postgres psql -d capillaries_test -c 'CREATE EXTENSION vector'   # pgvector 0.7+
-    DB_NAME=capillaries_test python -m capillaries.db.setup
-    DB_NAME=capillaries_test python -m capillaries.db.setup_skills
+    DB_NAME=capillaries_test python scripts/setup_db.py
 """
 import os
 
