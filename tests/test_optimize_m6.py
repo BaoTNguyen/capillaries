@@ -120,7 +120,6 @@ class ServingLogTests(unittest.TestCase):
 
     def tearDown(self):
         cur = self.conn.cursor()
-        cur.execute("DELETE FROM serving_log WHERE episode_id LIKE %s", (self.EP_PREFIX + "%",))
         cur.execute("DELETE FROM prompts WHERE title IN (%s, %s)", (self.PROMPT_TITLE_A, self.PROMPT_TITLE_B))
         cur.close()
         self.conn.close()
@@ -135,15 +134,6 @@ class ServingLogTests(unittest.TestCase):
             (pid, title, "test/path.md", text, "m6-test-hash"),
         )
         return pid
-
-    def _insert_serving(self, cur, episode_id, query, served_kind, served_id, candidates):
-        cur.execute(
-            """
-            INSERT INTO serving_log (episode_id, query, served_kind, served_id, candidates)
-            VALUES (%s, %s, %s, %s, %s)
-            """,
-            (episode_id, query, served_kind, served_id, json.dumps(candidates)),
-        )
 
     def test_log_serving_writes_row(self):
         from capillaries.optimize.serving import log_serving

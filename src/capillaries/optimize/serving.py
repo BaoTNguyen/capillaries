@@ -48,15 +48,28 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_serving_log_ts ON serving_log (ts);",
 ]
 
+ARCHIVE_SQL = [
+    """CREATE OR REPLACE FUNCTION archive_read_only() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION '% is a read-only archive (pulse P5); write an event instead', TG_TABLE_NAME; END $$;""",
+    "DROP TRIGGER IF EXISTS read_only_archive ON serving_log;",
+    "CREATE TRIGGER read_only_archive BEFORE INSERT OR UPDATE OR DELETE ON serving_log FOR EACH ROW EXECUTE FUNCTION archive_read_only();",
+    # Fresh databases no longer create batch_processing_log (db/setup.py).
+    """DO $do$ BEGIN
+    IF to_regclass('batch_processing_log') IS NOT NULL THEN
+        DROP TRIGGER IF EXISTS read_only_archive ON batch_processing_log;
+        CREATE TRIGGER read_only_archive BEFORE INSERT OR UPDATE OR DELETE ON batch_processing_log FOR EACH ROW EXECUTE FUNCTION archive_read_only();
+    END IF;
+END $do$;""",
+]
+
 
 def apply_ddl(db_config: dict | None = None) -> None:
-    """Create serving_log the way db/setup.py applies the rest of the schema."""
+    """Create serving_log and make it (and batch_processing_log) a read-only archive. Idempotent."""
     config = db_config or DB_CONFIG
     conn = psycopg2.connect(**config)
     try:
         cur = conn.cursor()
         cur.execute(DDL)
-        for sql in INDEXES:
+        for sql in INDEXES + ARCHIVE_SQL:
             cur.execute(sql)
         conn.commit()
         cur.close()

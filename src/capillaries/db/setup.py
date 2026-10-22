@@ -192,22 +192,6 @@ def create_database_schema(cursor):
     """
     cursor.execute(create_feedback_table)
 
-    # Batch processing tracking
-    create_batch_log_table = """
-    CREATE TABLE IF NOT EXISTS batch_processing_log (
-        id SERIAL PRIMARY KEY,
-        batch_id VARCHAR NOT NULL,
-        title VARCHAR REFERENCES prompts(title),
-        processing_stage VARCHAR NOT NULL,
-        status VARCHAR CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
-        error_message TEXT,
-        processing_time_ms INTEGER,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        completed_at TIMESTAMP
-    );
-    """
-    cursor.execute(create_batch_log_table)
-
     cursor.execute("""
     CREATE SCHEMA IF NOT EXISTS skills;
     """)
