@@ -50,28 +50,29 @@ def test_absent_keys_stay_none():
     assert "episode_id" not in ctx.to_dict()
 
 
-def test_log_serving_prefers_argument_over_env(monkeypatch):
+def test_log_serving_prefers_argument_over_env(monkeypatch, tmp_path):
     """The argument wins; the env var remains a fallback for in-process callers."""
-    from capillaries.optimize import serving
+    import json
 
-    captured = {}
+    from capillaries import pulse_emit
+    from capillaries.optimize import serving
 
     def fake_connect(**_kw):
         raise RuntimeError("no database in this test")
 
+    journal = tmp_path / "events"
     monkeypatch.setattr(serving.psycopg2, "connect", fake_connect)
+    monkeypatch.setattr(pulse_emit, "_announced", set())
+    monkeypatch.setenv("VASCULAR_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("EVENT_JOURNAL_DIR", str(journal))
     monkeypatch.setenv("ARTERIES_EPISODE_ID", "from-env")
+    monkeypatch.chdir(tmp_path)
 
-    # log_serving swallows everything, so observe the resolution directly.
-    def resolve(episode_id=None):
-        import os
-        return episode_id or os.environ.get("ARTERIES_EPISODE_ID")
+    serving.log_serving("q", "none", None, [], episode_id="from-arg")
 
-    captured["arg"] = resolve("from-arg")
-    captured["fallback"] = resolve(None)
-
-    assert captured["arg"] == "from-arg"
-    assert captured["fallback"] == "from-env"
+    [ev] = [e for f in journal.glob("*.ndjson") for l in f.read_text().splitlines()
+            for e in [json.loads(l)] if e["kind"] == "retrieval.served"]
+    assert ev["payload"]["episode_id"] == "from-arg"
 
 
 def test_search_forwards_context_to_log(monkeypatch):

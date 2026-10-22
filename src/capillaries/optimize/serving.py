@@ -9,18 +9,23 @@ using the served prompt as its golden output, and nothing has replaced it yet.
 The log is still worth keeping: it is the record a future consumer needs, and
 it cannot be reconstructed after the fact.
 
+Serving records are events now: log_serving emits `retrieval.served` onto the
+event spine and stores the query text as a pulse artifact, so it never touches
+Postgres. The serving_log table is a read-only archive (pulse P5); DDL and
+apply_ddl remain only so existing setups can still create it.
+
 Best-effort by design: a serving log is observability, not correctness. If
-Postgres is down or anything else goes wrong, log_serving drops the record
-silently rather than breaking retrieval.
+the journal is unwritable or anything else goes wrong, log_serving drops the
+record silently rather than breaking retrieval.
 """
 
 from __future__ import annotations
 
-import json
 import os
 
 import psycopg2
 
+from capillaries import pulse_emit, spine, vascular_paths
 from capillaries.config.paths import DB_CONFIG
 
 MAX_CANDIDATES = 10
@@ -43,15 +48,28 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_serving_log_ts ON serving_log (ts);",
 ]
 
+ARCHIVE_SQL = [
+    """CREATE OR REPLACE FUNCTION archive_read_only() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION '% is a read-only archive (pulse P5); write an event instead', TG_TABLE_NAME; END $$;""",
+    "DROP TRIGGER IF EXISTS read_only_archive ON serving_log;",
+    "CREATE TRIGGER read_only_archive BEFORE INSERT OR UPDATE OR DELETE ON serving_log FOR EACH ROW EXECUTE FUNCTION archive_read_only();",
+    # Fresh databases no longer create batch_processing_log (db/setup.py).
+    """DO $do$ BEGIN
+    IF to_regclass('batch_processing_log') IS NOT NULL THEN
+        DROP TRIGGER IF EXISTS read_only_archive ON batch_processing_log;
+        CREATE TRIGGER read_only_archive BEFORE INSERT OR UPDATE OR DELETE ON batch_processing_log FOR EACH ROW EXECUTE FUNCTION archive_read_only();
+    END IF;
+END $do$;""",
+]
+
 
 def apply_ddl(db_config: dict | None = None) -> None:
-    """Create serving_log the way db/setup.py applies the rest of the schema."""
+    """Create serving_log and make it (and batch_processing_log) a read-only archive. Idempotent."""
     config = db_config or DB_CONFIG
     conn = psycopg2.connect(**config)
     try:
         cur = conn.cursor()
         cur.execute(DDL)
-        for sql in INDEXES:
+        for sql in INDEXES + ARCHIVE_SQL:
             cur.execute(sql)
         conn.commit()
         cur.close()
@@ -83,7 +101,9 @@ def log_serving(
     The env vars remain as a fallback so in-process callers that predate the
     argument keep working.
 
-    Best-effort: never raises. DB down or any other failure -> silently drop.
+    db_config is accepted for caller compatibility and ignored.
+
+    Best-effort: never raises. Any failure -> silently drop.
     """
     try:
         episode_id = episode_id or os.environ.get("ARTERIES_EPISODE_ID")
@@ -94,20 +114,16 @@ def log_serving(
             for c in (candidates or [])[:MAX_CANDIDATES]
         ]
 
-        config = db_config or DB_CONFIG
-        conn = psycopg2.connect(**config)
-        try:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO serving_log
-                        (episode_id, turn_id, query, served_kind, served_id, candidates)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                    """,
-                    (episode_id, turn_id, query, served_kind, served_id, json.dumps(capped)),
-                )
-                conn.commit()
-        finally:
-            conn.close()
+        ids = {k: v for k, v in (("episode_id", episode_id), ("turn_id", turn_id)) if v is not None}
+        spine.emit(
+            "retrieval.served",
+            envelope_episode_id=episode_id,
+            served_kind=served_kind,
+            served_id=served_id,
+            candidates=capped,
+            query_chars=len(query),
+            query_artifact=pulse_emit.artifact(query.encode(), vascular_paths.journal_dir()),
+            **ids,
+        )
     except Exception:
         pass  # observability must never take down retrieval
