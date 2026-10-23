@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
@@ -54,7 +54,9 @@ class StepRequest(BaseModel):
 
 class FeedbackRequest(BaseModel):
     trace_id: str
-    outcome: str = Field(..., description="'success', 'partial', 'failure', or 'skipped'")
+    # the column's CHECK; typed so a bad value is a 422, not a 500 the caller
+    # swallows (CAPILLARIES-B15)
+    outcome: Literal["success", "partial", "failure", "skipped"]
     quality_score: float | None = Field(None, ge=0, le=1)
     failure_step: int | None = None
     failure_reason: str | None = Field(None, description="'irrelevant', 'too_vague', 'too_specific', 'wrong_domain', 'outdated', 'template_unfillable', 'other'")
