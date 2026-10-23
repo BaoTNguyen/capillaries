@@ -73,7 +73,8 @@ def test_context_started_once_across_processes(journal, monkeypatch, tmp_path):
     cid = started[0]["context_id"]
     assert {e["context_id"] for e in lines} == {cid}
     state = tmp_path / "home" / "state" / "pulse" / "contexts"
-    assert [p.name for p in state.iterdir()] == [cid]
+    # one marker, keyed by context and journal (PULSE-B03)
+    assert [p.name.split("-")[0] for p in state.iterdir()] == [cid]
 
 
 def test_never_raises_when_append_fails(journal, monkeypatch):
