@@ -279,6 +279,20 @@ CREATE TRIGGER trg_sync_chunk_status
 # of being stemmed into something a query can no longer name.
 
 
+def apply_ddl(cur) -> None:
+    """Create prompt_chunks, its status trigger and non-vector indexes (idempotent).
+
+    Does not commit; the caller owns the transaction. The HNSW index
+    (INDEXES[-1]) is left to backfill(), which builds it once rows exist.
+    """
+    cur.execute(_ddl())
+    cur.execute("ALTER TABLE prompt_chunks ADD COLUMN IF NOT EXISTS status "
+                "VARCHAR NOT NULL DEFAULT 'active';")
+    cur.execute(SYNC_STATUS_SQL)
+    for sql in INDEXES[:-1]:   # HNSW comes last, after the rows exist
+        cur.execute(sql)
+
+
 def backfill(dry: bool = False, db_config: dict | None = None) -> dict:
     """Chunk every prompt, embed each chunk, write prompt_chunks.
 
@@ -289,12 +303,7 @@ def backfill(dry: bool = False, db_config: dict | None = None) -> dict:
     cur = conn.cursor()
 
     if not dry:
-        cur.execute(_ddl())
-        cur.execute("ALTER TABLE prompt_chunks ADD COLUMN IF NOT EXISTS status "
-                    "VARCHAR NOT NULL DEFAULT 'active';")
-        cur.execute(SYNC_STATUS_SQL)
-        for sql in INDEXES[:-1]:   # HNSW comes last, after the rows exist
-            cur.execute(sql)
+        apply_ddl(cur)
         conn.commit()
 
     cur.execute(

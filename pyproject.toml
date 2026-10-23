@@ -89,6 +89,7 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 markers = [
     "db: needs a live Postgres + embedding endpoint (deselect with -m 'not db')",
+    "corpus: needs the real prompt corpus loaded into capillaries_test (skipped when prompts is empty)",
 ]
 
 # `uv sync` installs this group by default. arteries stays undeclared for the

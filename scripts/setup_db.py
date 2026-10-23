@@ -2,6 +2,9 @@
 """
 Set up the capillaries database: create schemas, optionally embed and classify.
 
+Schemas created: prompts, prompt_chunks (without its HNSW index, which
+`python -m capillaries.chunk --backfill` builds once rows exist), and skills.
+
 This script only touches the database. Obsidian sync (ingest, frontmatter
 writeback) is a separate concern — run those explicitly:
     python -m obsidian_sync.ingest
@@ -19,6 +22,7 @@ import asyncio
 
 import psycopg2
 
+from capillaries.chunk import apply_ddl as apply_chunk_ddl
 from capillaries.config.paths import DB_CONFIG
 from capillaries.db.setup import create_database_schema, mark_low_confidence_prompts
 from capillaries.db.setup_skills import (
@@ -35,12 +39,15 @@ from capillaries.db.setup_skills import (
 
 
 def setup_schemas() -> None:
-    """Create prompts and skills schemas (idempotent)."""
+    """Create prompts, prompt_chunks and skills schemas (idempotent)."""
     conn = psycopg2.connect(**DB_CONFIG)
     cur = conn.cursor()
 
     print("Creating prompts schema...")
     create_database_schema(cur)
+    # prompt_chunks references prompts(prompt_id), so it must follow.
+    print("Creating prompt_chunks...")
+    apply_chunk_ddl(cur)
     conn.commit()
 
     print("Creating skills schema...")

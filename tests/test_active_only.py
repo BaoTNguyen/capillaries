@@ -13,7 +13,7 @@ import pytest
 # Every test here opens a Postgres connection, so it belongs behind the `db`
 # marker CI deselects with `-m "not db"`. Without the mark these failed on
 # every machine without a database, which is every machine but this one.
-pytestmark = pytest.mark.db
+pytestmark = [pytest.mark.db, pytest.mark.corpus]
 
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent

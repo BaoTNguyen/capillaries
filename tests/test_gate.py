@@ -257,6 +257,7 @@ class TestReport:
 # 6. Live: the frozen similarities still reflect the real corpus
 # ---------------------------------------------------------------------------
 @pytest.mark.db
+@pytest.mark.corpus
 class TestLiveGate:
     @pytest.mark.parametrize("label,text,frozen_sim,want", [
         r for r in GOLDEN_GATE if r[0] in ("planner (a spec)", "feature spec", "vague-but-real")
