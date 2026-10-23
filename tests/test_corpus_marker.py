@@ -9,7 +9,7 @@ _spec = importlib.util.spec_from_file_location("_conftest_under_test", TESTS / "
 conftest = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(conftest)
 
-EMPTY_REASON = "pg_dump capillaries | psql capillaries_test"
+EMPTY_REASON = "pg_dump --data-only"
 
 
 class FakeItem:

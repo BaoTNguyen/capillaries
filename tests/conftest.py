@@ -15,9 +15,14 @@ One-time setup of the test database:
     sudo -u postgres psql -d capillaries_test -c 'CREATE EXTENSION vector'   # pgvector 0.7+
     DB_NAME=capillaries_test python scripts/setup_db.py
 
-`corpus` tests also need the real prompts; they skip while the table is empty:
+`corpus` tests also need the real prompts; they skip while the table is empty.
+Copy the data (not the schema) of capillaries' own schemas into the one setup
+built. The arteries schema shares the live database, and the archive tables'
+read-only trigger would reject their rows:
 
-    pg_dump capillaries | psql capillaries_test
+    pg_dump --data-only --schema=public --schema=skills \
+        --exclude-table='serving_log*' --exclude-table='batch_processing_log*' \
+        capillaries | psql capillaries_test
 """
 import os
 
@@ -70,7 +75,7 @@ def pytest_collection_modifyitems(config, items):
         if corpus_items and not _corpus_loaded():
             skip = pytest.mark.skip(
                 reason="prompts table in capillaries_test is empty; "
-                "load the corpus first: pg_dump capillaries | psql capillaries_test"
+                "load the corpus first (see the pg_dump --data-only command in tests/conftest.py)"
             )
             for item in corpus_items:
                 item.add_marker(skip)
