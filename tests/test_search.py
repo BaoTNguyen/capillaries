@@ -154,6 +154,7 @@ def _find_rank(results, expected: str | tuple[str, ...]) -> tuple[bool, int | No
     return False, None, ""
 
 
+@pytest.mark.corpus
 class TestGoldenSet:
     """Known query → expected prompt must appear within top_k results."""
 
@@ -227,6 +228,7 @@ class TestGoldenSet:
 # 2. RANKING QUALITY
 # ---------------------------------------------------------------------------
 
+@pytest.mark.corpus
 class TestRankingQuality:
     """Rerank scores should be monotonically decreasing."""
 

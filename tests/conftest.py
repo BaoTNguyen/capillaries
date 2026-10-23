@@ -14,6 +14,10 @@ One-time setup of the test database:
     createdb capillaries_test
     sudo -u postgres psql -d capillaries_test -c 'CREATE EXTENSION vector'   # pgvector 0.7+
     DB_NAME=capillaries_test python scripts/setup_db.py
+
+`corpus` tests also need the real prompts; they skip while the table is empty:
+
+    pg_dump capillaries | psql capillaries_test
 """
 import os
 
@@ -34,6 +38,21 @@ def _db_reachable() -> bool:
         return False
 
 
+def _corpus_loaded() -> bool:
+    try:
+        import psycopg2
+        from capillaries.config.paths import DB_CONFIG
+        conn = psycopg2.connect(**DB_CONFIG, connect_timeout=2)
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT EXISTS (SELECT 1 FROM prompts)")
+                return bool(cur.fetchone()[0])
+        finally:
+            conn.close()
+    except Exception:
+        return False
+
+
 def pytest_collection_modifyitems(config, items):
     db_items = [i for i in items if "db" in i.keywords]
     if not db_items:
@@ -47,6 +66,14 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip)
         return
     if _db_reachable():
+        corpus_items = [i for i in items if "corpus" in i.keywords]
+        if corpus_items and not _corpus_loaded():
+            skip = pytest.mark.skip(
+                reason="prompts table in capillaries_test is empty; "
+                "load the corpus first: pg_dump capillaries | psql capillaries_test"
+            )
+            for item in corpus_items:
+                item.add_marker(skip)
         return
     skip = pytest.mark.skip(reason="Postgres unreachable (see DB_* in .env.example)")
     for item in db_items:
