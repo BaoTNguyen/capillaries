@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "capillaries"
 version = "0.1.0"
 description = "Prompt search and management system with semantic retrieval"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 # arteries is optional and undeclared (see the note on [dependency-groups]).
 # Only `arteries.memory_types` is imported — stdlib dataclasses defining the
 # MemoryFrame contract, with no psycopg2 or DB access on that path.
