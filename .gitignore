@@ -230,3 +230,8 @@ demo/
 .arteries/
 .marrow/
 .vascular/
+
+# Private, never committed anywhere: agent reasoning traces and compaction
+# transcripts (DIRECTION §14).
+*reasoning_trace*
+.compaction-corpus/
