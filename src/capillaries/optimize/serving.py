@@ -2,7 +2,7 @@
 Serving log: records what was served for a query, plus the top-k candidates
 the ranker considered but didn't necessarily serve.
 
-Prerequisite for any ranking signal (STACK_READINESS §5.1) — without the
+Prerequisite for any ranking signal (docs/adr/2026-07-20-log-unserved-candidates.md) — without the
 candidates that *weren't* served, an optimizer can't learn ranking, only "was
 the served thing good". harvest.py used to be the consumer; it was deleted for
 using the served prompt as its golden output, and nothing has replaced it yet.

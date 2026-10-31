@@ -177,7 +177,7 @@ def assert_index_matches_model(cur, table: str = "prompts") -> None:
     Vectors from two models share a column but not a space; querying across
     them returns confident nonsense and raises nothing. That is exactly how
     every embedding in this database came to be garbage without anyone
-    noticing (see docs/rework_actions.md). Cheap check, loud failure.
+    noticing (docs/adr/2026-09-08-refuse-mismatched-embedder.md). Cheap check, loud failure.
     """
     cur.execute(
         f"SELECT DISTINCT embedding_version FROM {table} WHERE embedding IS NOT NULL"

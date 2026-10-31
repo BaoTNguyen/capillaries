@@ -1,5 +1,5 @@
 """
-Tests for M6 (STACK_READINESS §5): serving log + top-k, episode-keyed
+Tests for M6 (docs/adr/2026-07-20-log-unserved-candidates.md): serving log + top-k, episode-keyed
 serving log, fence protection, and the A/B promotion gate.
 
 Run:
