@@ -1,6 +1,10 @@
-# Capillaries
+# About
 
-Semantic prompt retrieval for AI agents. You describe a situation, it returns the right prompt.
+capillaries is part of [vascular](https://github.com/BaoTNguyen/vascular), the software factory
+monorepo. This repo acts as the engine that picks the right prompt or skill for a
+situation.
+
+You describe a situation; it returns the right prompt.
 
 Capillaries sits between an agent and a library of ~1,000 prompts stored as markdown files. Instead of hard-coding prompt selection or asking the agent to figure out which prompt fits, the agent calls Capillaries with a natural language description of what it needs. A hybrid search runs, a cross-encoder reranks the candidates, and the best match comes back ready to use.
 
@@ -8,8 +12,7 @@ The system also handles skills, which are multi-step procedures with their own r
 
 ## Where it sits in the stack
 
-Capillaries is part of [vascular](https://github.com/BaoTNguyen/vascular), the
-monorepo that holds the whole stack in one clone. It answers one question,
+Capillaries answers one question,
 which prompt fits this situation, and leaves memory and orchestration to the
 rest of the stack. It imports and runs on its own.
 
