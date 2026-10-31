@@ -87,7 +87,8 @@ TRACEBACK = (
 #         label              text                         frozen_sim  want_retrieve
 # Re-frozen for Qwen/Qwen3-Embedding-0.6B. The previous values belonged to
 # snowflake-arctic-embed-m-v2.0, which was silently returning collapsed vectors
-# (see docs/rework_actions.md) — under it these numbers did not separate at all:
+# (docs/adr/2026-09-08-refuse-mismatched-embedder.md). Under it these numbers
+# did not separate at all:
 # the highest-scoring case in the whole set (planner, 0.699) was a should-SKIP,
 # while should-RETRIEVE topped out at 0.536. No threshold could have classified
 # them, which is why the old 0.47 sat in a 0.036-wide gap and needed hand-tuning.

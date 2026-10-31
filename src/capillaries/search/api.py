@@ -253,8 +253,8 @@ class PromptSearch:
 
         # Top-k candidates the ranker considered, regardless of which tier is
         # ultimately served — the ranking signal any optimizer needs
-        # (STACK_READINESS §5.1: "without the candidates that weren't served,
-        # the optimizer can't learn ranking"). harvest.py was the consumer and
+        # (docs/adr/2026-07-20-log-unserved-candidates.md: without the candidates
+        # that weren't served, an optimizer can't learn ranking). harvest.py was the consumer and
         # is gone; the record still has to be written while it is observable.
         ranked_candidates = [
             {"id": r.prompt_id, "score": r.rerank_score} for r in ranked

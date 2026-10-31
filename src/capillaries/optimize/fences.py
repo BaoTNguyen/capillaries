@@ -1,5 +1,5 @@
 """
-Text/code fence protection (STACK_READINESS §5.2).
+Text/code fence protection (docs/adr/2026-07-20-optimizer-never-edits-code.md).
 
 Skills and prompts are text + code, and only the text is DSPy-optimizable.
 Code improves through execution-verified episodes (a heart episode running

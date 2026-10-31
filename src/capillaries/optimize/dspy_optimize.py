@@ -141,9 +141,10 @@ class PromptOptimizer:
         optimized_text = self._extract_optimized_text(optimized, prompt_text)
 
         # Code improves through execution-verified episodes, never through a
-        # prompt optimizer (STACK_READINESS §5.2). An optimizer that rewrote
-        # a code fence or frontmatter is a hard failure: log it, don't write
-        # the variant, don't touch the canonical text.
+        # prompt optimizer (docs/adr/2026-07-20-optimizer-never-edits-code.md).
+        # An optimizer that rewrote a code fence or frontmatter is a hard
+        # failure: log it, don't write the variant, don't touch the canonical
+        # text.
         try:
             assert_fences_unchanged(prompt_text, optimized_text)
         except ValueError as e:

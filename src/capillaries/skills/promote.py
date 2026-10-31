@@ -603,7 +603,8 @@ class SkillPromoter:
                 )
 
 
-# ── A/B promotion gate (STACK_READINESS §5.3) ──────────────────────────────
+# ── A/B promotion gate ───────────────────────────────────────────────────────
+# docs/adr/2026-07-20-ab-gate-before-promotion.md
 #
 # Evaluate a candidate prompt text against the current canonical text over the
 # golden_examples table, and promote only on a strict win. Never promotes
