@@ -8,7 +8,7 @@ The system also handles skills, which are multi-step procedures with their own r
 
 ## Where it sits in the stack
 
-Capillaries is the retrieval layer under a five-repo agent stack. Each repo does one job and imports downward:
+Capillaries is the retrieval layer under a six-repo agent stack. Each repo does one job and imports downward:
 
 ```text
 capillaries  prompt/skill retrieval                <- this repo
@@ -16,6 +16,7 @@ arteries     memory + trace substrate
 heart        orchestration + environment
 plexus       goal decomposition + acceptance loop
 marrow       RL training on heart's episodes
+pulse        event journal: collection, store, queries
 ```
 
 Arteries wraps capillaries with per-project memory, heart runs coding agents through it, plexus drives goals, and marrow trains on the results. Capillaries owns nothing above the retrieval line. It answers one question, which prompt fits this situation, and leaves memory and orchestration to the repos above it.
