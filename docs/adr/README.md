@@ -12,7 +12,7 @@ table is stale.
 | Decision | Date |
 |---|---|
 | [Search refuses an index embedded by a different model](2026-09-08-refuse-mismatched-embedder.md) | 2026-09-08 |
-| [Dense and sparse fuse at 50/50](2026-09-08-fusion-weights.md) | 2026-09-08 |
+| [Dense and sparse candidates are unioned, then reranked, with no ratio](2026-08-17-union-then-rerank.md) | 2026-08-17 |
 | [The prompt optimizer edits prose, never code](2026-07-20-optimizer-never-edits-code.md) | 2026-07-20 |
 | [The gate logs the candidates it didn't serve](2026-07-20-log-unserved-candidates.md) | 2026-07-20 |
 | [A candidate prompt or skill is promoted only after winning an A/B](2026-07-20-ab-gate-before-promotion.md) | 2026-07-20 |
