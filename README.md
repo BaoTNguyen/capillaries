@@ -8,18 +8,10 @@ The system also handles skills, which are multi-step procedures with their own r
 
 ## Where it sits in the stack
 
-Capillaries is the retrieval layer under a six-repo agent stack. Each repo does one job and imports downward:
-
-```text
-capillaries  prompt/skill retrieval                <- this repo
-arteries     memory + trace substrate
-heart        orchestration + environment
-plexus       goal decomposition + acceptance loop
-marrow       RL training on heart's episodes
-pulse        event journal: collection, store, queries
-```
-
-Arteries wraps capillaries with per-project memory, heart runs coding agents through it, plexus drives goals, and marrow trains on the results. Capillaries owns nothing above the retrieval line. It answers one question, which prompt fits this situation, and leaves memory and orchestration to the repos above it.
+Capillaries is part of [vascular](https://github.com/BaoTNguyen/vascular), the
+monorepo that holds the whole stack in one clone. It answers one question,
+which prompt fits this situation, and leaves memory and orchestration to the
+rest of the stack. It imports and runs on its own.
 
 ## What sets it apart
 
@@ -56,7 +48,7 @@ Dense embeddings come from Qwen3-Embedding-0.6B (1024 dimensions), served throug
 
 ## Interfaces
 
-**MCP server.** Agents running in Claude Code, Cursor, OpenCode, Hermes, or any MCP client get four tools: `capillaries_find` (describe a situation, get a prompt or skill), `capillaries_execute_step` (run the next step in a multi-step skill), `capillaries_feedback` (report whether the result worked), and `capillaries_catalog` (browse available domains and skills). MCP tools accept optional `agent_context` metadata from Arteries adapters.
+**MCP server.** Agents running in Claude Code, Cursor, OpenCode, Hermes, or any MCP client get four tools: `capillaries_find` (describe a situation, get a prompt or skill), `capillaries_execute_step` (run the next step in a multi-step skill), `capillaries_feedback` (report whether the result worked), and `capillaries_catalog` (browse available domains and skills). MCP tools accept optional `agent_context` metadata from memory adapters.
 
 **HTTP API.** FastAPI endpoints at `/agent/route`, `/agent/step`, `/agent/feedback`, `/agent/catalog`, plus `/search` for direct retrieval. `/agent/route` and `/agent/feedback` accept optional normalized `agent_context` metadata.
 
@@ -70,7 +62,7 @@ result.prompt_text   # the prompt, ready to use
 result.confidence    # rerank score
 result.mode          # 'single', 'skill', or 'none'
 
-# Optional metadata from Arteries or another adapter is preserved, not used
+# Optional metadata from a memory adapter is preserved, not used
 # for CLI-specific branching inside Capillaries.
 result = await find(
     "debug auth middleware",
@@ -111,7 +103,7 @@ src/capillaries/
 obsidian_sync/     bidirectional sync with an Obsidian vault
 scripts/           setup, teardown, ingest, model download, service management
 eval/              labeled query sets for retrieval evaluation
-hooks/             arteries memory system integration
+hooks/             memory system integration
 ```
 
 `retriever.py` and `channels.py` both search, and that is deliberate. `channels.py` is the honest version of each channel in isolation, used for benchmarking; `union.py` serves from `retriever.py`'s broader lexical search because a first stage owes the reranker recall, not precision. The reasoning, with numbers, is in `union.py`'s docstring.
@@ -124,9 +116,8 @@ match the embedding service and database schema.
 
 ```bash
 git clone https://github.com/BaoTNguyen/capillaries && cd capillaries
-# memory-aware retrieval (MemoryFrame context) also needs arteries beside it:
-#   git clone https://github.com/BaoTNguyen/arteries ../arteries && uv pip install -e ../arteries
-# or take the whole stack: git clone --recursive https://github.com/BaoTNguyen/vascular
+# memory-aware retrieval needs the rest of the stack: clone vascular instead
+#   git clone --recursive https://github.com/BaoTNguyen/vascular
 
 uv sync                             # core
 uv sync --extra lightweight         # + local embeddings, reranker
@@ -237,17 +228,14 @@ until verification is complete.
 
 Or run `./scripts/setup.sh`, which does all of this in order and ends by running a live `find()` against what it built. Full details in [docs/quick_start_guide.md](docs/quick_start_guide.md).
 
-### A note on arteries
+### Memory-aware retrieval
 
-The `MemoryFrame` contract — the shape arteries hands down when it wants retrieval to be memory-aware — is defined in `arteries.memory_types` and imported, never copied. Arteries produces those frames, so arteries owns their definition.
-
-Capillaries imports and runs without arteries installed. Every reference to the contract is a type annotation, kept as a string by `from __future__ import annotations`, except at one place: `agent/api.py:_build_context_frame`, which constructs a frame from a posted JSON body and imports the types inside the function. Retrieval works standalone; the memory-aware path needs arteries and says so at the point of use rather than at import.
-
-The dependency isn't declared in `pyproject.toml` because the name is unclaimed on PyPI, and declaring it would resolve to a stranger's package. Install the sibling checkout if you want the memory path:
-
-```bash
-uv pip install -e ../arteries    # `uv run` keeps it; a plain `uv sync` removes it
-```
+Retrieval works standalone. The memory-aware path takes a `MemoryFrame`, a
+contract defined by the stack's memory package rather than here, and needs that
+package installed; it says so at the point of use (`agent/api.py:_build_context_frame`)
+rather than at import. Every other reference to the contract is a string type
+annotation. [vascular](https://github.com/BaoTNguyen/vascular) installs both
+side by side.
 
 ### Tearing it down
 
@@ -307,9 +295,9 @@ The optimizer is meant to be grounded in real outcomes, not a proxy metric. A se
 
 The piece that turned that log into training examples is currently missing. `optimize/harvest.py` was deleted rather than fixed: it captured the retrieved prompt as the golden *output*, which trains an optimizer to reproduce the library instead of ranking it. Golden examples now enter only through `cap optimize capture`.
 
-Its replacement lives in marrow, not here, under `marrow/capillaries_opt/` — the label format spec, a pooled-judgment harness, and an HMAC membership oracle for the holdout. Marrow owns training for the whole stack, and a holdout it can enumerate is not a holdout. Labels key on prompt **title** rather than `prompt_id`, because `prompt_id` is `gen_random_uuid()` and does not survive a rebuild of the corpus.
+Its replacement lives in the stack's training package, not here — the label format spec, a pooled-judgment harness, and an HMAC membership oracle for the holdout. Training is owned in one place for the whole stack, and a holdout this repo can enumerate is not a holdout. Labels key on prompt **title** rather than `prompt_id`, because `prompt_id` is `gen_random_uuid()` and does not survive a rebuild of the corpus.
 
-What remains is the acceptance side, and it still holds: a fence guard keeps an optimized variant from shipping unless it clears the base text on held-out examples, and new variants roll out behind an A/B gate rather than replacing the base outright. Optimization events tee to heart's event spine, so a variant's win or regression is visible in the same `pulse` view as everything else in the stack.
+What remains is the acceptance side, and it still holds: a fence guard keeps an optimized variant from shipping unless it clears the base text on held-out examples, and new variants roll out behind an A/B gate rather than replacing the base outright. Optimization events go to the stack's event journal, so a variant's win or regression is visible next to everything else in the stack.
 
 ## Obsidian sync
 
@@ -339,6 +327,6 @@ Prompts and skills that go unused get auto-inactivated. The lifecycle module tra
 | `EMBED_DIM` | `1024` | Vector width; must match the schema |
 | `RERANKER_MODEL` | `Qwen/Qwen3-Reranker-0.6B` | Cross-encoder |
 | `OBSIDIAN_VAULT_PATH` | unset | Obsidian vault root |
-| `ARTERIES_ROOT` | unset | Arteries memory project (optional) |
+| `ARTERIES_ROOT` | unset | Memory package root (optional) |
 
 Full reference in [docs/quick_start_guide.md](docs/quick_start_guide.md).
